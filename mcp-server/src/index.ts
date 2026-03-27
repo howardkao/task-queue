@@ -1,0 +1,396 @@
+#!/usr/bin/env node
+
+import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
+import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
+import { z } from 'zod';
+import {
+  listTasks,
+  getTask,
+  createTask,
+  updateTask,
+  completeTask,
+  iceboxTask,
+} from './tasks.js';
+import {
+  listProjects,
+  getProject,
+  createProject,
+  updateProject,
+  toggleProjectStatus,
+} from './projects.js';
+
+const server = new McpServer({
+  name: 'task-queue',
+  version: '1.0.0',
+});
+
+// ─── Task Tools ───────────────────────────────────────────────
+
+server.tool(
+  'add_task',
+  'Create a new task. Lands in inbox (unclassified) by default, or specify classification to place directly.',
+  {
+    title: z.string().describe('Task title'),
+    notes: z.string().optional().describe('Optional notes or context'),
+    classification: z.enum(['unclassified', 'boulder', 'pebble']).optional().describe('Task type. Defaults to unclassified (inbox).'),
+    projectId: z.string().optional().describe('Project ID to link this task to'),
+    deadline: z.string().optional().describe('Deadline as ISO date string (e.g. "2026-04-01")'),
+  },
+  async ({ title, notes, classification, projectId, deadline }) => {
+    const task = await createTask({ title, notes, classification, projectId, deadline });
+    return {
+      content: [{ type: 'text', text: JSON.stringify(task, null, 2) }],
+    };
+  }
+);
+
+server.tool(
+  'list_inbox',
+  'List all unclassified tasks in the triage inbox.',
+  {},
+  async () => {
+    const tasks = await listTasks({ classification: 'unclassified', status: 'active' });
+    return {
+      content: [{
+        type: 'text',
+        text: tasks.length === 0
+          ? 'Inbox is empty — nothing to triage.'
+          : `${tasks.length} task(s) in inbox:\n\n${tasks.map((t, i) => `${i + 1}. "${t.title}"${t.notes ? ` — ${t.notes}` : ''} [id: ${t.id}]`).join('\n')}`,
+      }],
+    };
+  }
+);
+
+server.tool(
+  'classify_task',
+  'Classify an inbox task as boulder or pebble. Optionally assign to a project and set a deadline.',
+  {
+    taskId: z.string().describe('ID of the task to classify'),
+    classification: z.enum(['boulder', 'pebble']).describe('Classify as boulder (deep work) or pebble (small task)'),
+    projectId: z.string().optional().describe('Project ID to link this task to'),
+    deadline: z.string().optional().describe('Deadline as ISO date string'),
+  },
+  async ({ taskId, classification, projectId, deadline }) => {
+    const task = await updateTask(taskId, {
+      classification,
+      projectId: projectId ?? undefined,
+      deadline: deadline ?? undefined,
+    });
+    return {
+      content: [{ type: 'text', text: `Classified "${task.title}" as ${classification}${task.projectId ? ` (linked to project)` : ''}.` }],
+    };
+  }
+);
+
+server.tool(
+  'complete_task',
+  'Mark a task as completed. If it has a recurrence rule, the next occurrence is auto-generated.',
+  {
+    taskId: z.string().describe('ID of the task to complete'),
+  },
+  async ({ taskId }) => {
+    const result = await completeTask(taskId);
+    let msg = `Completed: "${result.completed.title}"`;
+    if (result.nextOccurrence) {
+      msg += `\nNext occurrence created: "${result.nextOccurrence.title}" (due ${result.nextOccurrence.deadline || 'no deadline'})`;
+    }
+    return { content: [{ type: 'text', text: msg }] };
+  }
+);
+
+server.tool(
+  'icebox_task',
+  'Icebox a task — removes it from active lists without deleting. Can be retrieved later.',
+  {
+    taskId: z.string().describe('ID of the task to icebox'),
+  },
+  async ({ taskId }) => {
+    const task = await iceboxTask(taskId);
+    return { content: [{ type: 'text', text: `Iceboxed: "${task.title}"` }] };
+  }
+);
+
+server.tool(
+  'list_boulders',
+  'List all active boulders (deep work tasks). These are candidates for daily planning.',
+  {},
+  async () => {
+    const tasks = await listTasks({ classification: 'boulder', status: 'active' });
+    if (tasks.length === 0) {
+      return { content: [{ type: 'text', text: 'No active boulders.' }] };
+    }
+
+    // Group by project
+    const standalone = tasks.filter(t => !t.projectId);
+    const byProject = new Map<string, typeof tasks>();
+    for (const t of tasks.filter(t => t.projectId)) {
+      const pid = t.projectId!;
+      if (!byProject.has(pid)) byProject.set(pid, []);
+      byProject.get(pid)!.push(t);
+    }
+
+    let text = `${tasks.length} active boulder(s):\n`;
+
+    if (standalone.length > 0) {
+      text += `\nStandalone:\n${standalone.map(t => `  • "${t.title}"${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}`;
+    }
+
+    for (const [pid, projectTasks] of byProject) {
+      try {
+        const project = await getProject(pid);
+        text += `\n\n${project.name}:\n${projectTasks.map(t => `  • "${t.title}"${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}`;
+      } catch {
+        text += `\n\nUnknown project (${pid}):\n${projectTasks.map(t => `  • "${t.title}" [id: ${t.id}]`).join('\n')}`;
+      }
+    }
+
+    return { content: [{ type: 'text', text }] };
+  }
+);
+
+server.tool(
+  'list_pebbles',
+  'List active pebbles in priority order. Optionally filter to only stale pebbles (older than N days).',
+  {
+    staleDays: z.number().optional().describe('Only show pebbles older than this many days'),
+    limit: z.number().optional().describe('Max number of pebbles to return (default: all)'),
+  },
+  async ({ staleDays, limit }) => {
+    const tasks = await listTasks({
+      classification: 'pebble',
+      status: 'active',
+      staleThresholdDays: staleDays,
+    });
+
+    const limited = limit ? tasks.slice(0, limit) : tasks;
+
+    if (limited.length === 0) {
+      return { content: [{ type: 'text', text: staleDays ? `No pebbles older than ${staleDays} days.` : 'No active pebbles.' }] };
+    }
+
+    const text = limited.map((t, i) => {
+      const age = t.createdAt ? Math.floor((Date.now() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60 * 24)) : '?';
+      return `${i + 1}. "${t.title}"${t.deadline ? ` ⚑ due ${t.deadline.slice(0, 10)}` : ''} (${age}d old)${t.projectId ? ' [project-linked]' : ''} [id: ${t.id}]`;
+    }).join('\n');
+
+    return {
+      content: [{ type: 'text', text: `${limited.length} pebble(s)${staleDays ? ` older than ${staleDays} days` : ''}:\n\n${text}` }],
+    };
+  }
+);
+
+// ─── Project Tools ────────────────────────────────────────────
+
+server.tool(
+  'list_projects',
+  'List all projects with their status.',
+  {
+    status: z.enum(['active', 'on_hold']).optional().describe('Filter by status'),
+  },
+  async ({ status }) => {
+    const projects = await listProjects(status ? { status } : undefined);
+    if (projects.length === 0) {
+      return { content: [{ type: 'text', text: 'No projects.' }] };
+    }
+
+    const text = projects.map(p =>
+      `• ${p.name} [${p.status}] [id: ${p.id}]`
+    ).join('\n');
+
+    return { content: [{ type: 'text', text: `${projects.length} project(s):\n\n${text}` }] };
+  }
+);
+
+server.tool(
+  'get_project',
+  'Get a project\'s full details: markdown document, associated active tasks, and completed tasks. Use this to understand a project before suggesting next steps.',
+  {
+    projectId: z.string().describe('Project ID'),
+  },
+  async ({ projectId }) => {
+    const project = await getProject(projectId);
+    const activeTasks = await listTasks({ projectId, status: 'active' });
+    const completedTasks = await listTasks({ projectId, status: 'completed' });
+
+    const boulders = activeTasks.filter(t => t.classification === 'boulder');
+    const pebbles = activeTasks.filter(t => t.classification === 'pebble');
+    const unclassified = activeTasks.filter(t => t.classification === 'unclassified');
+
+    let text = `# ${project.name}\n`;
+    text += `Status: ${project.status}\n`;
+    text += `\n---\n\n## Project Document\n\n${project.markdown}\n`;
+
+    text += `\n---\n\n## Active Tasks\n`;
+
+    if (boulders.length > 0) {
+      text += `\nBoulders (${boulders.length}):\n${boulders.map(t => `  • "${t.title}"${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}\n`;
+    }
+    if (pebbles.length > 0) {
+      text += `\nPebbles (${pebbles.length}):\n${pebbles.map(t => `  • "${t.title}"${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}\n`;
+    }
+    if (unclassified.length > 0) {
+      text += `\nUnclassified (${unclassified.length}):\n${unclassified.map(t => `  • "${t.title}" [id: ${t.id}]`).join('\n')}\n`;
+    }
+    if (activeTasks.length === 0) {
+      text += '\nNo active tasks.\n';
+    }
+
+    if (completedTasks.length > 0) {
+      text += `\n## Completed Tasks (${completedTasks.length})\n`;
+      text += completedTasks.map(t =>
+        `  ✓ "${t.title}"${t.completedAt ? ` (${new Date(t.completedAt).toLocaleDateString()})` : ''}`
+      ).join('\n') + '\n';
+    }
+
+    return { content: [{ type: 'text', text }] };
+  }
+);
+
+server.tool(
+  'create_project',
+  'Create a new project with a name and optional initial markdown content.',
+  {
+    name: z.string().describe('Project name'),
+    markdown: z.string().optional().describe('Initial markdown content. Defaults to "# {name}\\n\\n"'),
+  },
+  async ({ name, markdown }) => {
+    const project = await createProject({ name, markdown });
+    return { content: [{ type: 'text', text: `Created project: "${project.name}" [id: ${project.id}]` }] };
+  }
+);
+
+server.tool(
+  'update_project',
+  'Update a project\'s markdown document, name, or status.',
+  {
+    projectId: z.string().describe('Project ID'),
+    name: z.string().optional().describe('New project name'),
+    markdown: z.string().optional().describe('New markdown content (replaces entire document)'),
+    status: z.enum(['active', 'on_hold']).optional().describe('New status'),
+  },
+  async ({ projectId, name, markdown, status }) => {
+    const updates: Record<string, string | undefined> = {};
+    if (name !== undefined) updates.name = name;
+    if (markdown !== undefined) updates.markdown = markdown;
+    if (status !== undefined) updates.status = status;
+
+    if (Object.keys(updates).length === 0) {
+      return { content: [{ type: 'text', text: 'No updates provided.' }] };
+    }
+
+    const project = await updateProject(projectId, updates);
+    return { content: [{ type: 'text', text: `Updated project: "${project.name}" [${project.status}]` }] };
+  }
+);
+
+// ─── Composite Tools ──────────────────────────────────────────
+
+server.tool(
+  'get_today',
+  'Get a snapshot of today: active boulders to choose from, top pebbles, and inbox count. Use this to help with daily planning.',
+  {},
+  async () => {
+    const [boulders, pebbles, inbox] = await Promise.all([
+      listTasks({ classification: 'boulder', status: 'active' }),
+      listTasks({ classification: 'pebble', status: 'active' }),
+      listTasks({ classification: 'unclassified', status: 'active' }),
+    ]);
+
+    let text = '# Today\n\n';
+
+    // Inbox
+    if (inbox.length > 0) {
+      text += `⚠️ ${inbox.length} task(s) in inbox awaiting triage.\n\n`;
+    }
+
+    // Boulders
+    text += `## Boulder Candidates (${boulders.length})\n`;
+    if (boulders.length === 0) {
+      text += 'No active boulders. Consider decomposing a project into boulders.\n';
+    } else {
+      for (const t of boulders) {
+        let line = `• "${t.title}"`;
+        if (t.deadline) line += ` (due ${t.deadline.slice(0, 10)})`;
+        if (t.projectId) {
+          try {
+            const p = await getProject(t.projectId);
+            line += ` — ${p.name}`;
+          } catch { /* ignore */ }
+        } else {
+          line += ' — standalone';
+        }
+        line += ` [id: ${t.id}]`;
+        text += line + '\n';
+      }
+    }
+
+    // Top pebbles
+    text += `\n## Top Pebbles\n`;
+    const topPebbles = pebbles.slice(0, 10);
+    if (topPebbles.length === 0) {
+      text += 'No active pebbles.\n';
+    } else {
+      topPebbles.forEach((t, i) => {
+        text += `${i + 1}. "${t.title}"${t.deadline ? ` ⚑ ${t.deadline.slice(0, 10)}` : ''} [id: ${t.id}]\n`;
+      });
+      if (pebbles.length > 10) {
+        text += `\n...and ${pebbles.length - 10} more pebbles.\n`;
+      }
+    }
+
+    return { content: [{ type: 'text', text }] };
+  }
+);
+
+server.tool(
+  'suggest_tasks_for_project',
+  'Get a project\'s full context (markdown + all tasks) formatted for you to suggest next boulders and pebbles. After reviewing, use add_task to create the tasks the user approves.',
+  {
+    projectId: z.string().describe('Project ID'),
+  },
+  async ({ projectId }) => {
+    const project = await getProject(projectId);
+    const activeTasks = await listTasks({ projectId, status: 'active' });
+    const completedTasks = await listTasks({ projectId, status: 'completed' });
+    const iceboxedTasks = await listTasks({ projectId, status: 'iceboxed' });
+
+    let text = `# Project: ${project.name}\n`;
+    text += `Status: ${project.status}\n\n`;
+    text += `## Document\n\n${project.markdown}\n\n`;
+
+    text += `## Current State\n\n`;
+
+    const boulders = activeTasks.filter(t => t.classification === 'boulder');
+    const pebbles = activeTasks.filter(t => t.classification === 'pebble');
+
+    text += `Active boulders (${boulders.length}):\n`;
+    boulders.forEach(t => { text += `  • "${t.title}"\n`; });
+    text += `\nActive pebbles (${pebbles.length}):\n`;
+    pebbles.forEach(t => { text += `  • "${t.title}"\n`; });
+
+    if (completedTasks.length > 0) {
+      text += `\nCompleted (${completedTasks.length}):\n`;
+      completedTasks.forEach(t => { text += `  ✓ "${t.title}"\n`; });
+    }
+    if (iceboxedTasks.length > 0) {
+      text += `\nIceboxed (${iceboxedTasks.length}):\n`;
+      iceboxedTasks.forEach(t => { text += `  ❄ "${t.title}"\n`; });
+    }
+
+    text += `\n---\n\nBased on the project document and task history above, suggest next boulders (deep work blocks) and pebbles (small tasks) that would move this project forward. Present them for the user to approve, then use add_task to create the approved ones.`;
+
+    return { content: [{ type: 'text', text }] };
+  }
+);
+
+// ─── Start Server ─────────────────────────────────────────────
+
+async function main() {
+  const transport = new StdioServerTransport();
+  await server.connect(transport);
+}
+
+main().catch((error) => {
+  console.error('MCP server failed to start:', error);
+  process.exit(1);
+});

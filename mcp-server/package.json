@@ -1,0 +1,20 @@
+{
+  "name": "task-queue-mcp",
+  "version": "1.0.0",
+  "description": "MCP server for Task Queue — gives Claude read/write access to tasks and projects",
+  "type": "module",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsc && node dist/index.js"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.1",
+    "firebase": "^12.11.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.5.0"
+  }
+}

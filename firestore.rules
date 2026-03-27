@@ -1,0 +1,84 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(data) {
+      return isSignedIn() && data.ownerUid == request.auth.uid;
+    }
+
+    function isAdmin() {
+      return isSignedIn() &&
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    function authBootstrapComplete() {
+      return exists(/databases/$(database)/documents/bootstrap/auth);
+    }
+
+    match /bootstrap/auth {
+      allow get: if true;
+      allow list: if false;
+      allow create: if isSignedIn() &&
+        !authBootstrapComplete() &&
+        request.resource.data.keys().hasOnly(["adminUid", "createdAt"]) &&
+        request.resource.data.adminUid == request.auth.uid;
+      allow update, delete: if false;
+    }
+
+    match /admins/{uid} {
+      allow get: if isSignedIn() && request.auth.uid == uid;
+      allow list: if false;
+      allow create: if isSignedIn() &&
+        request.auth.uid == uid &&
+        !authBootstrapComplete() &&
+        request.resource.data.keys().hasOnly(["email", "createdAt"]);
+      allow update, delete: if false;
+    }
+
+    match /inviteCodes/{code} {
+      allow get: if (
+          resource.data.used == false &&
+          (!resource.data.keys().hasAny(["expiresAt"]) || resource.data.expiresAt > request.time)
+        ) || isAdmin();
+      allow list: if isAdmin();
+      allow create, delete: if isAdmin();
+      allow update: if (
+          isSignedIn() &&
+          resource.data.used == false &&
+          request.resource.data.code == resource.data.code &&
+          request.resource.data.createdAt == resource.data.createdAt &&
+          request.resource.data.expiresAt == resource.data.expiresAt &&
+          request.resource.data.used == true &&
+          request.resource.data.usedBy == request.auth.uid &&
+          request.resource.data.usedAt == request.time
+        ) || isAdmin();
+    }
+
+    match /tasks/{taskId} {
+      allow create: if isOwner(request.resource.data);
+      allow read, update, delete: if isOwner(resource.data);
+    }
+
+    match /projects/{projectId} {
+      allow create: if isOwner(request.resource.data);
+      allow read, update, delete: if isOwner(resource.data);
+    }
+
+    match /activityLog/{entryId} {
+      allow create: if isOwner(request.resource.data);
+      allow read, update, delete: if isOwner(resource.data);
+    }
+
+    match /settings/{docId} {
+      allow read, write: if isAdmin();
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
