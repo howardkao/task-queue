@@ -1,7 +1,7 @@
 {
   "name": "task-queue-mcp",
   "version": "1.0.0",
-  "description": "MCP server for Task Queue — gives Claude read/write access to tasks and projects",
+  "description": "MCP server for Task Queue — gives an MCP-compatible assistant read/write access to tasks and projects",
   "type": "module",
   "main": "dist/index.js",
   "scripts": {

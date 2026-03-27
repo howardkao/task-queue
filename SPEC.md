@@ -4,7 +4,7 @@
 
 ### High-Level Overview
 
-Task Queue is a single-page React application backed by Firebase Auth + Firestore, designed for a small number of authenticated users to manage tasks using a boulders (deep work) and pebbles (small tasks) mental model. AI integration happens externally via an MCP server — the app itself is a simple, durable CRUD system.
+Task Queue is a single-page React application backed by Firebase Auth + Firestore, designed for a small number of authenticated users to manage tasks using a boulders (deep work) and pebbles (small tasks) mental model. Assistant integration happens externally via an MCP server; the app itself remains a simple, durable CRUD system.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -41,7 +41,7 @@ Task Queue is a single-page React application backed by Firebase Auth + Firestor
                                  │
                     ┌────────────┴────────────┐
                     │    MCP Server (stdio)   │
-                    │  Claude Desktop/Code    │
+                    │ MCP-compatible client   │
                     └─────────────────────────┘
 ```
 
@@ -53,7 +53,7 @@ Current responsibilities:
 - **Firebase Auth**: email/password sign-in, admin detection, invite-gated signup
 - **Firestore**: owner-scoped app data (`tasks`, `projects`, `activityLog`) plus auth/admin metadata
 - **Cloudflare Worker**: fetches private iCal feeds and verifies Firebase ID tokens before returning calendar data
-- **MCP server**: local stdio bridge for Claude/Desktop/Code workflows
+- **MCP server**: local stdio bridge for MCP-compatible assistant workflows
 
 ### Tech Stack
 
@@ -274,7 +274,7 @@ ProjectDetailView
 │       ├── Boulders section (click title → TaskEditPanel)
 │       ├── Pebbles section (click title → TaskEditPanel)
 │       ├── Completed section (collapsible)
-│       └── Claude hint text
+│       └── Assistant hint text
 ```
 
 **Auto-save behavior:**
@@ -524,7 +524,7 @@ Required composite index (defined in `firestore.indexes.json`):
 
 **Decision:** Activity log writes use `.catch(() => {})` — failures are silently ignored.
 
-**Context:** The activity log is supplementary context for humans and Claude, not a critical data path. A failed log write should never block or error on a task completion.
+**Context:** The activity log is supplementary context for humans and assistant workflows, not a critical data path. A failed log write should never block or error on a task completion.
 
 **Consequences:**
 - (+) Zero UX impact from log write failures
@@ -557,27 +557,27 @@ Required composite index (defined in `firestore.indexes.json`):
 
 **Decision:** Projects are freeform markdown blobs, not structured databases with hierarchies or dependencies.
 
-**Context:** The user explored tree views, mind maps, and hierarchical task structures. All were discarded in favor of the insight that premature decomposition kills projects. Let intent evolve in prose; let Claude decompose into tasks on demand via MCP.
+**Context:** Tree views, mind maps, and hierarchical task structures were discarded in favor of the insight that premature decomposition kills projects. Let intent evolve in prose and let an external assistant decompose it into tasks on demand via MCP.
 
 **Consequences:**
 - (+) Dramatically simpler data model — just a text field
 - (+) Zero UI complexity for "structure" — just a textarea
-- (+) Claude can reason about the full project context by reading markdown
-- (-) No structured metadata extraction (milestones, deadlines) from project docs — that's Claude's job
+- (+) An assistant can reason about the full project context by reading markdown
+- (-) No structured metadata extraction (milestones, deadlines) from project docs; that remains an external workflow
 
 ---
 
 ### ADR-006: AI Lives Outside the App
 
-**Decision:** No AI features, API keys, or ML models in the codebase. All intelligence provided by Claude via MCP server.
+**Decision:** No AI features, API keys, or ML models in the codebase. Any assistant intelligence is provided externally via the MCP server.
 
-**Context:** Baking AI into the app means managing API keys, prompt engineering in the frontend, loading states for AI calls, error handling for AI failures, and coupling to a specific model. By keeping the app as a pure CRUD system, it stays simple and durable. Claude provides capture, triage assistance, project decomposition, cleanup, and auditing — all through conversation.
+**Context:** Baking AI into the app means managing API keys, prompt engineering in the frontend, loading states for AI calls, error handling for AI failures, and coupling to a specific model. By keeping the app as a pure CRUD system, it stays simple and durable. Assistant-driven capture, triage assistance, project decomposition, cleanup, and auditing stay outside the app.
 
 **Consequences:**
 - (+) App codebase stays simple — no AI dependency, no API costs
-- (+) AI capabilities upgrade for free as Claude improves
-- (+) Mobile capture solved without building mobile UI — just talk to Claude
-- (-) AI features require Claude Desktop/Code running — no in-app intelligence
+- (+) Assistant capabilities can improve independently of the app
+- (+) Mobile capture can be supported without building a dedicated mobile UI
+- (-) Assistant-driven workflows require an MCP-compatible client running; there is no in-app intelligence
 - (-) MCP server is an additional deployment artifact to maintain
 
 ---
@@ -662,9 +662,9 @@ Required composite index (defined in `firestore.indexes.json`):
 | `create_project` | Create new project |
 | `update_project` | Update project markdown, name, or status |
 | `get_today` | Daily planning snapshot: boulders, top pebbles, inbox count |
-| `suggest_tasks_for_project` | Full project context formatted for Claude to suggest next tasks |
+| `suggest_tasks_for_project` | Full project context formatted for an assistant to suggest next tasks |
 
-**Setup:** `cd mcp-server && npm install && npm run build`, then configure in Claude Desktop/Code:
+**Setup:** `cd mcp-server && npm install && npm run build`, then configure it in your MCP-compatible client:
 ```json
 {
   "mcpServers": {
@@ -721,7 +721,7 @@ Required composite index (defined in `firestore.indexes.json`):
   - [x] Set up TypeScript MCP server project with stdio transport
   - [x] Connect to Firestore via Firebase Web SDK (no service account needed)
   - [x] All 13 tools implemented and tested
-  - [ ] Configure in Claude Desktop / Claude Code and test conversationally
+  - [ ] Configure in an MCP-compatible client and test conversationally
 
 - [x] **Phase 6: iCal + Recurring Tasks + Polish**
   - [x] Cloudflare Worker for iCal feed fetching and Firebase-token verification

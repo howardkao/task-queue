@@ -250,7 +250,7 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
             marginTop: '12px', fontSize: '12px', color: '#9ca3af',
             fontStyle: 'italic', lineHeight: '1.5',
           }}>
-            Tasks are generated via Claude conversations.<br />
+            Tasks can be generated via assistant workflows.<br />
             "What should I work on next for this project?"
           </div>
         </div>

@@ -1,6 +1,6 @@
 # Task Queue
 
-This repository has been sanitized for public use. It does not include live Firebase project bindings, local Claude/MCP config, private calendar feed URLs, or local `.env` files.
+This repository has been sanitized for public use. It does not include live Firebase project bindings, local assistant tooling config, private calendar feed URLs, or local `.env` files.
 
 ## Required configuration
 
