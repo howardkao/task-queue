@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { Task, RecurrenceRule } from '../../types';
+import type { Task, RecurrenceRule, Classification } from '../../types';
 import { useUpdateTask } from '../../hooks/useTasks';
 import { useProjects } from '../../hooks/useProjects';
 
@@ -48,6 +48,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
 
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes);
+  const [classification, setClassification] = useState<Classification>(task.classification);
   const [projectId, setProjectId] = useState(task.projectId || '');
   const [deadline, setDeadline] = useState(parseDeadline(task.deadline));
 
@@ -72,7 +73,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   const [dirty, setDirty] = useState(false);
 
   // Track changes
-  useEffect(() => { setDirty(true); }, [title, notes, projectId, deadline, recMode, weeklyDays, periodicallyDays, customUnit, customInterval, customDays]);
+  useEffect(() => { setDirty(true); }, [title, notes, classification, projectId, deadline, recMode, weeklyDays, periodicallyDays, customUnit, customInterval, customDays]);
   useEffect(() => { setDirty(false); }, []); // reset on mount
 
   const buildRecurrence = (): RecurrenceRule | null => {
@@ -94,6 +95,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     const data: any = {};
     if (title !== task.title) data.title = title;
     if (notes !== task.notes) data.notes = notes;
+    if (classification !== task.classification) data.classification = classification;
     if ((projectId || null) !== (task.projectId || null)) data.projectId = projectId || null;
 
     const newDeadline = deadline || null;
@@ -152,6 +154,14 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
 
       {/* Metadata row */}
       <div style={{ display: 'flex', gap: '10px', alignItems: 'center', flexWrap: 'wrap', marginBottom: '8px' }}>
+        <label style={labelStyle}>
+          Type:{' '}
+          <select value={classification} onChange={e => setClassification(e.target.value as Classification)} style={selectStyle}>
+            <option value="boulder">Boulder</option>
+            <option value="pebble">Pebble</option>
+            <option value="unclassified">Unclassified</option>
+          </select>
+        </label>
         <label style={labelStyle}>
           Project:{' '}
           <select value={projectId} onChange={e => setProjectId(e.target.value)} style={selectStyle}>
