@@ -12,10 +12,12 @@ export interface CalEvent {
 
 interface DayCalendarProps {
   date: string;
+  dateKey: string; // ISO date string (YYYY-MM-DD) identifying this day
   events: CalEvent[];
   startHour?: number;
   endHour?: number;
-  onBoulderDrop?: (boulderId: string, startHour: number) => void;
+  compact?: boolean; // narrower layout for multi-day view
+  onBoulderDrop?: (boulderId: string, startHour: number, dateKey: string) => void;
   onBoulderMove?: (boulderId: string, startHour: number) => void;
   onBoulderResize?: (boulderId: string, duration: number) => void;
   onBoulderRemove?: (boulderId: string) => void;
@@ -30,7 +32,7 @@ function snapToGrid(hour: number): number {
 }
 
 export function DayCalendar({
-  date, events, startHour = 7, endHour = 22,
+  date, dateKey, events, startHour = 7, endHour = 22, compact = false,
   onBoulderDrop, onBoulderMove, onBoulderResize, onBoulderRemove,
 }: DayCalendarProps) {
   const gridRef = useRef<HTMLDivElement>(null);
@@ -87,8 +89,14 @@ export function DayCalendar({
     const boulderId = e.dataTransfer.getData('boulder-id');
     if (!boulderId || !onBoulderDrop) return;
     const hour = yToHour(e.clientY);
-    onBoulderDrop(boulderId, hour);
-  }, [yToHour, onBoulderDrop]);
+    onBoulderDrop(boulderId, hour, dateKey);
+  }, [yToHour, onBoulderDrop, dateKey]);
+
+  const handlePlacedBoulderDragStart = useCallback((e: React.DragEvent, eventId: string) => {
+    const boulderId = eventId.replace('boulder-', '');
+    e.dataTransfer.setData('boulder-id', boulderId);
+    e.dataTransfer.effectAllowed = 'move';
+  }, []);
 
   // Mouse-based: move or resize a placed boulder
   const handleMouseDown = useCallback((e: React.MouseEvent, eventId: string, action: 'move' | 'resize') => {
@@ -130,6 +138,8 @@ export function DayCalendar({
     window.addEventListener('mouseup', handleMouseUp);
   }, [events, startHour, endHour, onBoulderMove, onBoulderResize]);
 
+  const timeColWidth = compact ? 40 : 60;
+
   const getEventStyle = (event: CalEvent): React.CSSProperties => {
     const top = (event.startHour - startHour) * PX_PER_HOUR;
     const height = event.duration * PX_PER_HOUR - 4;
@@ -137,12 +147,12 @@ export function DayCalendar({
     const baseStyle: React.CSSProperties = {
       position: 'absolute',
       top: `${top}px`,
-      left: '68px',
-      right: '8px',
+      left: `${timeColWidth + 8}px`,
+      right: '4px',
       height: `${Math.max(height, 24)}px`,
       borderRadius: '12px',
       padding: '4px 8px',
-      fontSize: '13px',
+      fontSize: compact ? '11px' : '13px',
       overflow: 'hidden',
       zIndex: interacting?.eventId === event.id ? 10 : 1,
       boxSizing: 'border-box',
@@ -189,10 +199,10 @@ export function DayCalendar({
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{
-        fontSize: '16px',
+        fontSize: compact ? '13px' : '16px',
         fontWeight: 700,
         color: '#1f2937',
-        padding: '12px 16px',
+        padding: compact ? '8px 10px' : '12px 16px',
         border: '1px solid #e5e7eb',
         borderRadius: '16px 16px 0 0',
         background: '#fff',
@@ -221,9 +231,9 @@ export function DayCalendar({
             borderBottom: '1px dashed #f3f4f6',
           }}>
             <div style={{
-              width: '60px',
-              padding: '4px 8px',
-              fontSize: '12px',
+              width: compact ? '40px' : '60px',
+              padding: compact ? '4px 4px' : '4px 8px',
+              fontSize: compact ? '10px' : '12px',
               color: '#9ca3af',
               textAlign: 'right',
               flexShrink: 0,
@@ -240,7 +250,7 @@ export function DayCalendar({
             <div style={{
               position: 'absolute',
               top: `${(dragOverHour - startHour) * PX_PER_HOUR}px`,
-              left: '60px',
+              left: `${timeColWidth}px`,
               right: '0',
               height: '2px',
               background: '#FF7A7A',
@@ -284,6 +294,26 @@ export function DayCalendar({
                       <div style={{ fontSize: '12px', color: '#6b7280' }}>{event.projectName}</div>
                     )}
                   </div>
+                  <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
+                    <div
+                      draggable
+                      onDragStart={(e) => handlePlacedBoulderDragStart(e, event.id)}
+                      onMouseDown={(e) => e.stopPropagation()}
+                      style={{
+                        padding: '2px 6px',
+                        border: '1px solid #fecaca',
+                        borderRadius: '6px',
+                        background: '#fff',
+                        cursor: 'grab',
+                        fontSize: '12px',
+                        color: '#FF6B6B',
+                        lineHeight: '1',
+                        flexShrink: 0,
+                      }}
+                      title="Drag to another day or time"
+                    >
+                      ⠿
+                    </div>
                   {onBoulderRemove && (
                     <button
                       onClick={(e) => { e.stopPropagation(); onBoulderRemove(event.id.replace('boulder-', '')); }}
@@ -305,6 +335,7 @@ export function DayCalendar({
                       →
                     </button>
                   )}
+                  </div>
                 </div>
                 {/* Resize handle */}
                 <div
