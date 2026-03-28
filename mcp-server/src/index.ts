@@ -83,6 +83,101 @@ server.tool(
 );
 
 server.tool(
+  'search_tasks',
+  'Search tasks by title and optionally filter by status or classification. Use this to find task IDs before reading or updating a task.',
+  {
+    query: z.string().describe('Case-insensitive text to search for in the task title'),
+    status: z.enum(['active', 'completed', 'iceboxed']).optional().describe('Optional status filter'),
+    classification: z.enum(['unclassified', 'boulder', 'pebble']).optional().describe('Optional classification filter'),
+    limit: z.number().optional().describe('Maximum number of matches to return (default: 10)'),
+  },
+  async ({ query, status, classification, limit }) => {
+    const normalized = query.trim().toLowerCase();
+    const tasks = await listTasks({
+      status,
+      classification,
+    });
+
+    const matches = tasks
+      .filter((task) => task.title.toLowerCase().includes(normalized))
+      .slice(0, limit ?? 10);
+
+    if (matches.length === 0) {
+      return {
+        content: [{ type: 'text', text: `No tasks found matching "${query}".` }],
+      };
+    }
+
+    const text = matches.map((task, index) => (
+      `${index + 1}. "${task.title}" [id: ${task.id}]`
+      + ` [${task.classification}/${task.status}]`
+      + `${task.projectId ? ' [project-linked]' : ''}`
+      + `${task.notes ? `\n   Notes: ${task.notes}` : ''}`
+    )).join('\n');
+
+    return {
+      content: [{ type: 'text', text: `${matches.length} matching task(s):\n\n${text}` }],
+    };
+  }
+);
+
+server.tool(
+  'get_task',
+  'Get a task\'s full details, including notes/description. Use this before revising a task based on information from another task.',
+  {
+    taskId: z.string().describe('ID of the task to retrieve'),
+  },
+  async ({ taskId }) => {
+    const task = await getTask(taskId);
+    return {
+      content: [{ type: 'text', text: JSON.stringify(task, null, 2) }],
+    };
+  }
+);
+
+server.tool(
+  'update_task',
+  'Update an existing task. This can replace the notes/description after incorporating context from another task.',
+  {
+    taskId: z.string().describe('ID of the task to update'),
+    title: z.string().optional().describe('Optional new task title'),
+    notes: z.string().optional().describe('Optional full replacement for the task notes/description'),
+    classification: z.enum(['unclassified', 'boulder', 'pebble']).optional().describe('Optional new classification'),
+    status: z.enum(['active', 'completed', 'iceboxed']).optional().describe('Optional new status'),
+    projectId: z.string().nullable().optional().describe('Optional project link; pass null to clear'),
+    deadline: z.string().nullable().optional().describe('Optional ISO date string deadline; pass null to clear'),
+  },
+  async ({ taskId, title, notes, classification, status, projectId, deadline }) => {
+    const updates: {
+      title?: string;
+      notes?: string;
+      classification?: 'unclassified' | 'boulder' | 'pebble';
+      status?: 'active' | 'completed' | 'iceboxed';
+      projectId?: string | null;
+      deadline?: string | null;
+    } = {};
+
+    if (title !== undefined) updates.title = title;
+    if (notes !== undefined) updates.notes = notes;
+    if (classification !== undefined) updates.classification = classification;
+    if (status !== undefined) updates.status = status;
+    if (projectId !== undefined) updates.projectId = projectId;
+    if (deadline !== undefined) updates.deadline = deadline;
+
+    if (Object.keys(updates).length === 0) {
+      return {
+        content: [{ type: 'text', text: 'No updates provided.' }],
+      };
+    }
+
+    const task = await updateTask(taskId, updates);
+    return {
+      content: [{ type: 'text', text: JSON.stringify(task, null, 2) }],
+    };
+  }
+);
+
+server.tool(
   'complete_task',
   'Mark a task as completed. If it has a recurrence rule, the next occurrence is auto-generated.',
   {
