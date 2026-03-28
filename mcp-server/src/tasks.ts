@@ -1,20 +1,7 @@
-import {
-  db,
-  collection,
-  doc,
-  addDoc,
-  getDoc,
-  getDocs,
-  updateDoc,
-  query,
-  where,
-  orderBy,
-  serverTimestamp,
-  Timestamp,
-} from './firestore.js';
+import { db, OWNER_UID, FieldValue, Timestamp } from './firestore.js';
 
-const tasksRef = collection(db, 'tasks');
-const logRef = collection(db, 'activityLog');
+const tasksRef = db.collection('tasks');
+const logRef = db.collection('activityLog');
 
 export interface Task {
   id: string;
@@ -34,6 +21,7 @@ export interface Task {
 function tsToISO(ts: any): string | null {
   if (!ts) return null;
   if (ts.toDate) return ts.toDate().toISOString();
+  if (ts._seconds !== undefined) return new Date(ts._seconds * 1000).toISOString();
   if (ts.seconds) return new Date(ts.seconds * 1000).toISOString();
   return null;
 }
@@ -61,14 +49,13 @@ export async function listTasks(filters?: {
   projectId?: string;
   staleThresholdDays?: number;
 }): Promise<Task[]> {
-  const constraints: any[] = [];
+  let q: FirebaseFirestore.Query = tasksRef.where('ownerUid', '==', OWNER_UID);
 
   if (filters?.status) {
-    constraints.push(where('status', '==', filters.status));
+    q = q.where('status', '==', filters.status);
   }
 
-  const q = query(tasksRef, ...constraints);
-  const snapshot = await getDocs(q);
+  const snapshot = await q.get();
   let tasks = snapshot.docs.map(d => toTask(d.id, d.data()));
 
   if (filters?.classification) {
@@ -98,20 +85,19 @@ export async function listTasks(filters?: {
 }
 
 export async function getTask(id: string): Promise<Task> {
-  const d = await getDoc(doc(tasksRef, id));
-  if (!d.exists()) throw new Error('Task not found');
+  const d = await tasksRef.doc(id).get();
+  if (!d.exists) throw new Error('Task not found');
   return toTask(d.id, d.data());
 }
 
 async function getNewPebbleSortOrder(): Promise<number> {
   try {
-    const q = query(
-      tasksRef,
-      where('classification', '==', 'pebble'),
-      where('status', '==', 'active'),
-      orderBy('sortOrder', 'asc'),
-    );
-    const snapshot = await getDocs(q);
+    const snapshot = await tasksRef
+      .where('ownerUid', '==', OWNER_UID)
+      .where('classification', '==', 'pebble')
+      .where('status', '==', 'active')
+      .orderBy('sortOrder', 'asc')
+      .get();
 
     if (snapshot.empty) return 1000;
 
@@ -131,9 +117,10 @@ async function addLogEntry(entry: {
   description: string;
   taskId?: string;
 }): Promise<void> {
-  await addDoc(logRef, {
+  await logRef.add({
     ...entry,
-    timestamp: serverTimestamp(),
+    ownerUid: OWNER_UID,
+    timestamp: FieldValue.serverTimestamp(),
   });
 }
 
@@ -159,11 +146,12 @@ export async function createTask(data: {
     recurrence: data.recurrence || null,
     projectId: data.projectId || null,
     sortOrder,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    ownerUid: OWNER_UID,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   };
 
-  const ref = await addDoc(tasksRef, taskData);
+  const ref = await tasksRef.add(taskData);
 
   if (data.projectId) {
     addLogEntry({
@@ -186,7 +174,7 @@ export async function updateTask(id: string, data: {
   projectId?: string | null;
   sortOrder?: number;
 }): Promise<Task> {
-  const updates: any = { updatedAt: serverTimestamp() };
+  const updates: any = { updatedAt: FieldValue.serverTimestamp() };
 
   if (data.title !== undefined) updates.title = data.title;
   if (data.notes !== undefined) updates.notes = data.notes;
@@ -203,16 +191,16 @@ export async function updateTask(id: string, data: {
   if (data.projectId !== undefined) updates.projectId = data.projectId;
   if (data.sortOrder !== undefined) updates.sortOrder = data.sortOrder;
 
-  await updateDoc(doc(tasksRef, id), updates);
+  await tasksRef.doc(id).update(updates);
   return getTask(id);
 }
 
 export async function completeTask(id: string): Promise<{ completed: Task; nextOccurrence: Task | null }> {
   const task = await getTask(id);
-  await updateDoc(doc(tasksRef, id), {
+  await tasksRef.doc(id).update({
     status: 'completed',
-    completedAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    completedAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   });
 
   if (task.projectId) {

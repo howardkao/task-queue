@@ -246,8 +246,8 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
   const tz = url.searchParams.get('tz') || 'America/Los_Angeles';
   const now = new Date();
 
-  // Get today's date string in the user's timezone (e.g. "2026-03-25")
-  const todayStr = now.toLocaleDateString('en-CA', { timeZone: tz }); // en-CA gives YYYY-MM-DD
+  // Support ?date=YYYY-MM-DD for fetching a specific day (defaults to today)
+  const todayStr = url.searchParams.get('date') || now.toLocaleDateString('en-CA', { timeZone: tz }); // en-CA gives YYYY-MM-DD
 
   // Build midnight-to-midnight in the user's timezone as UTC instants
   // by using a known reference point approach

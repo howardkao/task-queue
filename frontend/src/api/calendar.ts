@@ -22,13 +22,21 @@ async function getAuthHeaders(contentType?: string): Promise<Record<string, stri
 
 /** Returns null when API is not configured, empty array when configured but no events */
 export async function fetchTodayEvents(): Promise<CalendarEvent[] | null> {
+  return fetchEventsForDate();
+}
+
+/** Fetch calendar events for a specific date (YYYY-MM-DD). Omit date for today. */
+export async function fetchEventsForDate(date?: string): Promise<CalendarEvent[] | null> {
   if (!API_BASE) {
-    // No API configured yet
     return null;
   }
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const res = await fetch(`${API_BASE}/calendar/today?tz=${encodeURIComponent(tz)}`, {
+  let url = `${API_BASE}/calendar/today?tz=${encodeURIComponent(tz)}`;
+  if (date) {
+    url += `&date=${encodeURIComponent(date)}`;
+  }
+  const res = await fetch(url, {
     headers: await getAuthHeaders(),
   });
   if (res.status === 401 || res.status === 403) {

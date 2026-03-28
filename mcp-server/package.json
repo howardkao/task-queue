@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
-    "firebase": "^12.11.0"
+    "firebase-admin": "^13.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

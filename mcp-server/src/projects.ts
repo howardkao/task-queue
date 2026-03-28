@@ -1,18 +1,7 @@
-import {
-  db,
-  collection,
-  doc,
-  addDoc,
-  getDoc,
-  getDocs,
-  updateDoc,
-  query,
-  where,
-  serverTimestamp,
-} from './firestore.js';
+import { db, OWNER_UID, FieldValue } from './firestore.js';
 
-const projectsRef = collection(db, 'projects');
-const logRef = collection(db, 'activityLog');
+const projectsRef = db.collection('projects');
+const logRef = db.collection('activityLog');
 
 export interface Project {
   id: string;
@@ -27,6 +16,7 @@ export interface Project {
 function tsToISO(ts: any): string | null {
   if (!ts) return null;
   if (ts.toDate) return ts.toDate().toISOString();
+  if (ts._seconds !== undefined) return new Date(ts._seconds * 1000).toISOString();
   if (ts.seconds) return new Date(ts.seconds * 1000).toISOString();
   return null;
 }
@@ -44,13 +34,13 @@ function toProject(id: string, data: any): Project {
 }
 
 export async function listProjects(filters?: { status?: string }): Promise<Project[]> {
-  const constraints: any[] = [];
+  let q: FirebaseFirestore.Query = projectsRef.where('ownerUid', '==', OWNER_UID);
+
   if (filters?.status) {
-    constraints.push(where('status', '==', filters.status));
+    q = q.where('status', '==', filters.status);
   }
 
-  const q = query(projectsRef, ...constraints);
-  const snapshot = await getDocs(q);
+  const snapshot = await q.get();
   const projects = snapshot.docs.map(d => toProject(d.id, d.data()));
 
   projects.sort((a, b) => {
@@ -62,8 +52,8 @@ export async function listProjects(filters?: { status?: string }): Promise<Proje
 }
 
 export async function getProject(id: string): Promise<Project> {
-  const d = await getDoc(doc(projectsRef, id));
-  if (!d.exists()) throw new Error('Project not found');
+  const d = await projectsRef.doc(id).get();
+  if (!d.exists) throw new Error('Project not found');
   return toProject(d.id, d.data());
 }
 
@@ -77,17 +67,19 @@ export async function createProject(data: {
     markdown: data.markdown || `# ${data.name}\n\n`,
     status: data.status || 'active',
     visibility: 'personal',
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
+    ownerUid: OWNER_UID,
+    createdAt: FieldValue.serverTimestamp(),
+    updatedAt: FieldValue.serverTimestamp(),
   };
 
-  const ref = await addDoc(projectsRef, projectData);
+  const ref = await projectsRef.add(projectData);
 
-  addDoc(logRef, {
+  logRef.add({
     projectId: ref.id,
     action: 'project_created',
     description: `Project "${data.name}" created`,
-    timestamp: serverTimestamp(),
+    ownerUid: OWNER_UID,
+    timestamp: FieldValue.serverTimestamp(),
   }).catch(() => {});
 
   return getProject(ref.id);
@@ -98,13 +90,13 @@ export async function updateProject(id: string, data: {
   markdown?: string;
   status?: string;
 }): Promise<Project> {
-  const updates: any = { updatedAt: serverTimestamp() };
+  const updates: any = { updatedAt: FieldValue.serverTimestamp() };
 
   if (data.name !== undefined) updates.name = data.name;
   if (data.markdown !== undefined) updates.markdown = data.markdown;
   if (data.status !== undefined) updates.status = data.status;
 
-  await updateDoc(doc(projectsRef, id), updates);
+  await projectsRef.doc(id).update(updates);
   return getProject(id);
 }
 
@@ -113,11 +105,12 @@ export async function toggleProjectStatus(id: string): Promise<Project> {
   const newStatus = project.status === 'active' ? 'on_hold' : 'active';
   const result = await updateProject(id, { status: newStatus });
 
-  addDoc(logRef, {
+  logRef.add({
     projectId: id,
     action: 'project_status_changed',
     description: `Project ${newStatus === 'active' ? 'reactivated' : 'put on hold'}`,
-    timestamp: serverTimestamp(),
+    ownerUid: OWNER_UID,
+    timestamp: FieldValue.serverTimestamp(),
   }).catch(() => {});
 
   return result;

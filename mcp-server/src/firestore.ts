@@ -1,52 +1,23 @@
-import { initializeApp } from 'firebase/app';
-import {
-  getFirestore,
-  collection,
-  doc,
-  addDoc,
-  getDoc,
-  getDocs,
-  updateDoc,
-  query,
-  where,
-  orderBy,
-  limit as firestoreLimit,
-  serverTimestamp,
-  Timestamp,
-} from 'firebase/firestore';
+import { initializeApp, cert, type ServiceAccount } from 'firebase-admin/app';
+import { getFirestore, FieldValue, Timestamp } from 'firebase-admin/firestore';
+import { readFileSync } from 'fs';
 
-function requireEnv(name: string) {
+function requireEnv(name: string): string {
   const value = process.env[name];
-  if (!value) {
-    throw new Error(`Missing required Firebase config: ${name}`);
-  }
+  if (!value) throw new Error(`Missing required env var: ${name}`);
   return value;
 }
 
-const firebaseConfig = {
-  projectId: requireEnv('FIREBASE_PROJECT_ID'),
-  appId: requireEnv('FIREBASE_APP_ID'),
-  storageBucket: requireEnv('FIREBASE_STORAGE_BUCKET'),
-  apiKey: requireEnv('FIREBASE_API_KEY'),
-  authDomain: requireEnv('FIREBASE_AUTH_DOMAIN'),
-  messagingSenderId: requireEnv('FIREBASE_MESSAGING_SENDER_ID'),
-};
+// Try service account key file first, fall back to application default credentials
+const saPath = process.env.GOOGLE_APPLICATION_CREDENTIALS;
+if (saPath) {
+  const sa = JSON.parse(readFileSync(saPath, 'utf8')) as ServiceAccount;
+  initializeApp({ credential: cert(sa) });
+} else {
+  // Requires gcloud auth application-default login, or running in a GCP environment
+  initializeApp({ projectId: requireEnv('FIREBASE_PROJECT_ID') });
+}
 
-const app = initializeApp(firebaseConfig);
-export const db = getFirestore(app);
-
-// Re-export utilities that tasks.ts and projects.ts need
-export {
-  collection,
-  doc,
-  addDoc,
-  getDoc,
-  getDocs,
-  updateDoc,
-  query,
-  where,
-  orderBy,
-  firestoreLimit,
-  serverTimestamp,
-  Timestamp,
-};
+export const db = getFirestore();
+export const OWNER_UID = requireEnv('OWNER_UID');
+export { FieldValue, Timestamp };

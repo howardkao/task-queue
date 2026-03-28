@@ -14,7 +14,7 @@ export function PebbleSidebar() {
   const projectMap = new Map(projects.map(p => [p.id, p.name]));
 
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [dragOverIndex, setDragOverIndex] = useState<number | null>(null);
+  const [dropGapIndex, setDropGapIndex] = useState<number | null>(null);
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
   const [localOrder, setLocalOrder] = useState<Task[] | null>(null);
 
@@ -62,20 +62,34 @@ export function PebbleSidebar() {
 
   const handleDragOver = useCallback((e: React.DragEvent, index: number) => {
     e.preventDefault();
-    setDragOverIndex(index);
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    const gap = e.clientY < midY ? index : index + 1;
+    setDropGapIndex(gap);
   }, []);
 
   const handleDragLeave = useCallback(() => {
-    setDragOverIndex(null);
+    setDropGapIndex(null);
   }, []);
 
-  const handleDrop = useCallback((_e: React.DragEvent, toIndex: number) => {
-    setDragOverIndex(null);
-    if (dragFromIndex !== null && dragFromIndex !== toIndex) {
-      applyReorder(dragFromIndex, toIndex);
+  const handleDropOnCard = useCallback((_e: React.DragEvent) => {
+    if (dragFromIndex === null || dropGapIndex === null) {
+      setDropGapIndex(null);
+      setDragFromIndex(null);
+      return;
     }
+    const toIdx = dropGapIndex > dragFromIndex ? dropGapIndex - 1 : dropGapIndex;
+    if (toIdx !== dragFromIndex) {
+      applyReorder(dragFromIndex, toIdx);
+    }
+    setDropGapIndex(null);
     setDragFromIndex(null);
-  }, [dragFromIndex, applyReorder]);
+  }, [dragFromIndex, dropGapIndex, applyReorder]);
+
+  const handleDragEnd = useCallback(() => {
+    setDragFromIndex(null);
+    setDropGapIndex(null);
+  }, []);
 
   if (localOrder && pebbles.length !== localOrder.length && dragFromIndex === null) {
     setLocalOrder(null);
@@ -96,26 +110,26 @@ export function PebbleSidebar() {
       <div style={{ maxHeight: 'calc(100vh - 160px)', overflowY: 'auto' }}>
         {displayPebbles.map((task, index) => {
           const isEditing = editingId === task.id;
-          const isDragOver = dragOverIndex === index;
           const projectName = task.projectId ? projectMap.get(task.projectId) : null;
           const deadlineStr = task.deadline ? formatDeadline(task.deadline) : null;
           const ageInDays = task.createdAt ? getAgeDays(task.createdAt) : null;
+          const showGapBefore = dragFromIndex !== null && dropGapIndex === index && dropGapIndex !== dragFromIndex && dropGapIndex !== dragFromIndex + 1;
 
           return (
-            <div
-              key={task.id}
-              draggable
-              onDragStart={(e) => handleDragStart(e, index)}
-              onDragOver={(e) => handleDragOver(e, index)}
-              onDragLeave={handleDragLeave}
-              onDrop={(e) => handleDrop(e, index)}
-              style={{
-                ...cardStyle,
-                background: isDragOver ? '#fef3c7' : '#fff',
-                borderColor: isDragOver ? '#FF7A7A' : '#e5e7eb',
-                boxShadow: isDragOver ? '0 2px 4px rgba(0,0,0,0.1)' : '0 1px 3px rgba(0,0,0,0.1)',
-              }}
-            >
+            <div key={task.id}>
+              {showGapBefore && <div style={dropIndicatorLine} />}
+              <div
+                draggable
+                onDragStart={(e) => handleDragStart(e, index)}
+                onDragOver={(e) => handleDragOver(e, index)}
+                onDragLeave={handleDragLeave}
+                onDrop={handleDropOnCard}
+                onDragEnd={handleDragEnd}
+                style={{
+                  ...cardStyle,
+                  ...(dragFromIndex === index ? { opacity: 0.4 } : {}),
+                }}
+              >
               <div style={cardInner}>
                 {/* Drag handle + reorder buttons stacked vertically */}
                 <div style={{
@@ -181,6 +195,12 @@ export function PebbleSidebar() {
                   onIcebox={handleIcebox}
                 />
               )}
+              </div>
+              {index === displayPebbles.length - 1
+                && dragFromIndex !== null
+                && dropGapIndex === displayPebbles.length
+                && dropGapIndex !== dragFromIndex + 1
+                && <div style={dropIndicatorLine} />}
             </div>
           );
         })}
@@ -204,6 +224,13 @@ const emptyStyle: React.CSSProperties = {
   fontStyle: 'italic',
   fontSize: '14px',
   textAlign: 'center',
+};
+
+const dropIndicatorLine: React.CSSProperties = {
+  height: '3px',
+  background: '#FF7A7A',
+  borderRadius: '2px',
+  margin: '2px 0',
 };
 
 const cardStyle: React.CSSProperties = {
