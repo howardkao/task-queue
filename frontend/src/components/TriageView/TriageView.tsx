@@ -3,11 +3,7 @@ import { TriageCard } from './TriageCard';
 import { useInboxTasks, useCreateTask, useClassifyTask, useIceboxTask } from '../../hooks/useTasks';
 import type { Classification, RecurrenceRule } from '../../types';
 
-interface TriageViewProps {
-  projects: Array<{ id: string; name: string }>;
-}
-
-export function TriageView({ projects }: TriageViewProps) {
+export function TriageView() {
   const { data: inboxTasks = [], isLoading } = useInboxTasks();
   const createTask = useCreateTask();
   const classifyTask = useClassifyTask();
@@ -62,7 +58,6 @@ export function TriageView({ projects }: TriageViewProps) {
         <TriageCard
           key={task.id}
           task={task}
-          projects={projects}
           onClassify={handleClassify}
           onDelete={handleDelete}
         />

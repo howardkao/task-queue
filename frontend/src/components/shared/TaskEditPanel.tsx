@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import type { Task, RecurrenceRule, Classification } from '../../types';
 import { useUpdateTask } from '../../hooks/useTasks';
-import { useProjects } from '../../hooks/useProjects';
+import { useProjects, useCreateProject } from '../../hooks/useProjects';
+import { ProjectPicker } from './ProjectPicker';
 
 interface TaskEditPanelProps {
   task: Task;
@@ -44,7 +45,8 @@ function parseDeadline(deadline: string | null): string {
 
 export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditPanelProps) {
   const updateTask = useUpdateTask();
-  const { data: projects = [] } = useProjects('active');
+  const { data: projects = [] } = useProjects();
+  const createProject = useCreateProject();
 
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes);
@@ -163,14 +165,14 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
           </select>
         </label>
         <label style={labelStyle}>
-          Project:{' '}
-          <select value={projectId} onChange={e => setProjectId(e.target.value)} style={selectStyle}>
-            <option value="">None</option>
-            {projects.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+          Project:
         </label>
+        <ProjectPicker
+          projects={projects}
+          value={projectId}
+          onChange={setProjectId}
+          onCreateProject={(name) => createProject.mutateAsync({ name })}
+        />
         <label style={labelStyle}>
           Deadline:{' '}
           <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} style={selectStyle} />

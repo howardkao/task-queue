@@ -1,9 +1,10 @@
 import { useState } from 'react';
 import type { Task, Classification, RecurrenceRule } from '../../types';
+import { useProjects, useCreateProject } from '../../hooks/useProjects';
+import { ProjectPicker } from '../shared/ProjectPicker';
 
 interface TriageCardProps {
   task: Task;
-  projects: Array<{ id: string; name: string }>;
   onClassify: (id: string, classification: Classification, projectId?: string | null, deadline?: string | null, recurrence?: RecurrenceRule | null) => void;
   onDelete: (id: string) => void;
 }
@@ -25,7 +26,9 @@ function dayOfWeekFromDate(dateStr: string): string {
   }
 }
 
-export function TriageCard({ task, projects, onClassify, onDelete }: TriageCardProps) {
+export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
+  const { data: projects = [] } = useProjects();
+  const createProject = useCreateProject();
   const [showNotes, setShowNotes] = useState(!!task.notes);
   const [projectId, setProjectId] = useState<string>('');
   const [deadline, setDeadline] = useState<string>('');
@@ -159,14 +162,14 @@ export function TriageCard({ task, projects, onClassify, onDelete }: TriageCardP
       {/* Metadata row */}
       <div style={{ display: 'flex', gap: '12px', marginTop: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
         <label style={labelStyle}>
-          Project:{' '}
-          <select value={projectId} onChange={e => setProjectId(e.target.value)} style={selectStyle}>
-            <option value="">None</option>
-            {projects.map(p => (
-              <option key={p.id} value={p.id}>{p.name}</option>
-            ))}
-          </select>
+          Project:
         </label>
+        <ProjectPicker
+          projects={projects}
+          value={projectId}
+          onChange={setProjectId}
+          onCreateProject={(name) => createProject.mutateAsync({ name })}
+        />
         <label style={labelStyle}>
           Deadline:{' '}
           <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} style={selectStyle} />
