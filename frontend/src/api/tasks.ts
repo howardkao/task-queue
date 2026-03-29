@@ -39,6 +39,7 @@ export async function createTask(data: {
   title: string;
   notes?: string;
   classification?: Classification;
+  priority?: 'high' | 'med' | 'low';
   deadline?: string;
   projectId?: string;
   recurrence?: any;
