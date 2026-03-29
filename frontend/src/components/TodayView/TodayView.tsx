@@ -65,12 +65,15 @@ function formatDateHeader(d: Date, isToday: boolean): string {
 export function TodayView() {
   const isMobile = useIsMobile();
   const { data: projects = [] } = useProjects('active');
+  const unfilteredProjectFilter = useMemo<TodayProjectFilter>(() => [], []);
   const [projectFilter, setProjectFilter] = useState<TodayProjectFilter>(() => {
     const saved = localStorage.getItem('today_projectFilter');
     return saved ? JSON.parse(saved) : [];
   });
   const { data: boulders = [] } = useTodayBoulders(projectFilter);
   const { data: rocks = [] } = useTodayRocks(projectFilter);
+  const { data: allBoulders = [] } = useTodayBoulders(unfilteredProjectFilter);
+  const { data: allRocks = [] } = useTodayRocks(unfilteredProjectFilter);
   const { data: inboxTasks = [] } = useTodayInboxTasks(projectFilter);
   const createTask = useCreateTask();
   const classifyTask = useClassifyTask();
@@ -120,13 +123,13 @@ export function TodayView() {
   // Derived map for easy lookup
   const placedTasksMap = useMemo(() => {
     const map: Record<string, { date: string; startHour: number; duration: number }> = {};
-    [...boulders, ...rocks].forEach(t => {
+    [...allBoulders, ...allRocks].forEach(t => {
       if (t.placement) {
         map[t.id] = t.placement;
       }
     });
     return map;
-  }, [boulders, rocks]);
+  }, [allBoulders, allRocks]);
 
   // Fetch calendar events for all visible dates
   const calendarQueries = useEventsForDates(dateKeys);
@@ -160,7 +163,7 @@ export function TodayView() {
 
       const events: CalEvent[] = [...baseEvents];
 
-      const schedulableTasks = [...boulders, ...rocks];
+      const schedulableTasks = [...allBoulders, ...allRocks];
       // Add placed schedulable tasks for this day
       for (const task of schedulableTasks) {
         if (task.placement && task.placement.date === dateKey) {
@@ -177,10 +180,10 @@ export function TodayView() {
 
       return events;
     });
-  }, [dateKeys, calendarQueries, boulders, rocks, todayKey]);
+  }, [dateKeys, calendarQueries, allBoulders, allRocks, todayKey]);
 
   const handleBoulderDrop = useCallback((boulderId: string, startHour: number, dateKey: string) => {
-    const task = [...boulders, ...rocks].find(t => t.id === boulderId);
+    const task = [...allBoulders, ...allRocks].find(t => t.id === boulderId);
     if (!task) return;
     updateTask.mutate({
       id: boulderId,
@@ -192,10 +195,10 @@ export function TodayView() {
         },
       },
     });
-  }, [boulders, rocks, updateTask]);
+  }, [allBoulders, allRocks, updateTask]);
 
   const handleBoulderMove = useCallback((boulderId: string, startHour: number) => {
-    const task = [...boulders, ...rocks].find(t => t.id === boulderId);
+    const task = [...allBoulders, ...allRocks].find(t => t.id === boulderId);
     if (!task || !task.placement) return;
     updateTask.mutate({
       id: boulderId,
@@ -203,10 +206,10 @@ export function TodayView() {
         placement: { ...task.placement, startHour },
       },
     });
-  }, [boulders, rocks, updateTask]);
+  }, [allBoulders, allRocks, updateTask]);
 
   const handleBoulderResize = useCallback((boulderId: string, duration: number) => {
-    const task = [...boulders, ...rocks].find(t => t.id === boulderId);
+    const task = [...allBoulders, ...allRocks].find(t => t.id === boulderId);
     if (!task || !task.placement) return;
     updateTask.mutate({
       id: boulderId,
@@ -214,7 +217,7 @@ export function TodayView() {
         placement: { ...task.placement, duration },
       },
     });
-  }, [boulders, rocks, updateTask]);
+  }, [allBoulders, allRocks, updateTask]);
 
   const handleBoulderRemove = useCallback((boulderId: string) => {
     updateTask.mutate({

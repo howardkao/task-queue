@@ -2,9 +2,11 @@ import { useState, useEffect, lazy, Suspense } from 'react';
 import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
 import { TabBar } from './components/shared/TabBar';
 import type { TabId } from './components/shared/TabBar';
+import { SideDrawer } from './components/shared/SideDrawer';
 import { useIceboxedTasks } from './hooks/useTasks';
 import { useAuth } from './hooks/useAuth';
 import { ToastProvider, useToast } from './components/shared/Toast';
+import { useIsMobile } from './hooks/useViewport';
 
 const TodayView = lazy(() => import('./components/TodayView/TodayView').then(module => ({ default: module.TodayView })));
 const IceboxView = lazy(() => import('./components/IceboxView/IceboxView').then(module => ({ default: module.IceboxView })));
@@ -41,16 +43,23 @@ function AppContent() {
   const { data: iceboxTasks = [] } = useIceboxedTasks();
   const [openProjectId, setOpenProjectId] = useState<string | null>(null);
   const [showAdmin, setShowAdmin] = useState(false);
+  const [showMenu, setShowMenu] = useState(false);
+  const isMobile = useIsMobile();
 
   const tabs = [
     { id: 'today' as TabId, label: 'Today' },
-    { id: 'icebox' as TabId, label: 'Icebox', badge: iceboxTasks.length },
     { id: 'projects' as TabId, label: 'Projects' },
   ];
 
   const handleTabChange = (tab: TabId) => {
     setActiveTab(tab);
     if (tab !== 'projects') setOpenProjectId(null);
+    setShowMenu(false);
+  };
+
+  const handleSignOut = () => {
+    setShowMenu(false);
+    signOut();
   };
 
   // Keyboard shortcuts: 1-3 to switch tabs
@@ -104,17 +113,50 @@ function AppContent() {
           display: 'flex', alignItems: 'center', gap: '8px',
           padding: '12px 16px', flexShrink: 0,
         }}>
-          {user.isAdmin && (
-            <button onClick={() => setShowAdmin(true)} style={headerBtn} title="Manage invite codes">
-              Invites
-            </button>
-          )}
-          <span style={{ fontSize: '12px', color: '#9ca3af' }}>{user.email}</span>
-          <button onClick={signOut} style={headerBtn}>
-            Sign Out
+          <button
+            onClick={() => setShowMenu(true)}
+            style={menuBtn}
+            aria-label="Open menu"
+            title="Open menu"
+          >
+            {isMobile ? '☰' : 'Menu'}
           </button>
         </div>
       </div>
+
+      <SideDrawer open={showMenu} onClose={() => setShowMenu(false)} title="Menu">
+        <div style={{ display: 'grid', gap: '8px' }}>
+          <button
+            onClick={() => handleTabChange('icebox')}
+            style={drawerActionBtn}
+          >
+            Icebox
+            {iceboxTasks.length > 0 && (
+              <span style={drawerBadge}>{iceboxTasks.length}</span>
+            )}
+          </button>
+
+          {user.isAdmin && (
+            <button
+              onClick={() => {
+                setShowMenu(false);
+                setShowAdmin(true);
+              }}
+              style={drawerActionBtn}
+            >
+              Invites
+            </button>
+          )}
+
+          <div style={{ fontSize: '12px', color: '#9ca3af', padding: '6px 4px' }}>
+            {user.email}
+          </div>
+
+          <button onClick={handleSignOut} style={drawerActionBtn}>
+            Sign Out
+          </button>
+        </div>
+      </SideDrawer>
 
       <Suspense fallback={<SectionLoading />}>
         {activeTab === 'today' && (
@@ -186,6 +228,38 @@ const headerBtn: React.CSSProperties = {
   fontWeight: 600,
   color: '#4b5563',
   fontFamily: 'inherit',
+};
+
+const menuBtn: React.CSSProperties = {
+  ...headerBtn,
+  minWidth: '42px',
+  textAlign: 'center',
+};
+
+const drawerActionBtn: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: '8px',
+  width: '100%',
+  padding: '10px 12px',
+  border: '1px solid #e5e7eb',
+  borderRadius: '10px',
+  background: '#f9fafb',
+  cursor: 'pointer',
+  color: '#374151',
+  fontSize: '14px',
+  fontWeight: 600,
+  fontFamily: 'inherit',
+};
+
+const drawerBadge: React.CSSProperties = {
+  background: '#FF7A7A',
+  color: '#fff',
+  fontSize: '11px',
+  fontWeight: 700,
+  padding: '2px 7px',
+  borderRadius: '9999px',
 };
 
 function App() {
