@@ -469,7 +469,7 @@ export function TodayView() {
               date={formatDateHeader(date, dateKeys[i] === todayKey)}
               dateKey={dateKeys[i]}
               events={eventsPerDay[i]}
-              startHour={7}
+              startHour={8}
               endHour={22}
               compact
               onBoulderDrop={handleBoulderDrop}

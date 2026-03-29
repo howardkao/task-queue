@@ -23,9 +23,9 @@ interface DayCalendarProps {
   onBoulderRemove?: (boulderId: string) => void;
 }
 
-const SLOT_HEIGHT = 22; // px per half hour
+const SLOT_HEIGHT = 33; // px per half hour
 const SNAP = 0.25; // 15 minutes
-const PX_PER_HOUR = SLOT_HEIGHT * 2; // 44px per hour
+const PX_PER_HOUR = SLOT_HEIGHT * 2; // 66px per hour
 
 function snapToGrid(hour: number): number {
   return Math.round(hour / SNAP) * SNAP;
@@ -286,13 +286,7 @@ export function DayCalendar({
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <div style={{ fontSize: '11px', color: event.type === 'rock' ? '#c08457' : '#FF6B6B', fontWeight: 700 }}>
-                      {event.type === 'rock' ? '🪨 Rock' : '🪨'} {formatHourMinute(event.startHour)}–{formatHourMinute(event.startHour + event.duration)}
-                    </div>
                     <div style={{ fontWeight: 700, fontSize: '14px', color: '#1f2937' }}>{event.title}</div>
-                    {event.projectName && (
-                      <div style={{ fontSize: '12px', color: '#6b7280' }}>{event.projectName}</div>
-                    )}
                   </div>
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
                     <div
@@ -379,7 +373,7 @@ export function DayCalendar({
 /**
  * Find the first free slot of given duration in hours.
  */
-export function findFreeSlot(events: CalEvent[], durationHours: number = 2, startHour: number = 7, endHour: number = 22): number {
+export function findFreeSlot(events: CalEvent[], durationHours: number = 2, startHour: number = 8, endHour: number = 22): number {
   const busyEvents = events.filter(e => e.busy !== false && e.type !== 'boulder' && e.type !== 'rock');
   const busy = new Set<number>();
   for (const ev of busyEvents) {
