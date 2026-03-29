@@ -177,7 +177,7 @@ export function TodayView() {
 
       return events;
     });
-  }, [dateKeys, calendarQueries, filteredBoulders, filteredRocks, todayKey]);
+  }, [dateKeys, calendarQueries, boulders, rocks, todayKey]);
 
   const handleBoulderDrop = useCallback((boulderId: string, startHour: number, dateKey: string) => {
     const task = [...boulders, ...rocks].find(t => t.id === boulderId);
