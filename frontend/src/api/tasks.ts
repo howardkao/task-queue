@@ -148,7 +148,16 @@ export async function updateTask(id: string, data: Partial<Task>): Promise<Task>
   }
   if (data.projectId !== undefined) updates.projectId = data.projectId;
   if (data.sortOrder !== undefined) updates.sortOrder = data.sortOrder;
-  if (data.recurrence !== undefined) updates.recurrence = data.recurrence;
+  if (data.recurrence !== undefined) {
+    if (data.recurrence) {
+      // Strip undefined values — Firestore rejects them
+      updates.recurrence = Object.fromEntries(
+        Object.entries(data.recurrence).filter(([, v]) => v !== undefined)
+      );
+    } else {
+      updates.recurrence = null;
+    }
+  }
 
   await updateDoc(doc(tasksRef, id), updates);
   return getTask(id);

@@ -120,14 +120,15 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     if (!showRecurrence) return null;
     switch (recMode) {
       case 'daily': return { freq: 'daily' };
-      case 'weekly': return { freq: 'weekly', days: weeklyDays.length > 0 ? weeklyDays : undefined };
+      case 'weekly': return weeklyDays.length > 0 ? { freq: 'weekly', days: weeklyDays } : { freq: 'weekly' };
       case 'monthly': return { freq: 'monthly' };
       case 'yearly': return { freq: 'yearly' };
       case 'periodically': return { freq: 'periodically', interval: periodicallyDays };
-      case 'custom': return {
-        freq: 'custom', customUnit, interval: customInterval,
-        days: customUnit === 'weekly' && customDays.length > 0 ? customDays : undefined,
-      };
+      case 'custom': {
+        const base: RecurrenceRule = { freq: 'custom', customUnit, interval: customInterval };
+        if (customUnit === 'weekly' && customDays.length > 0) base.days = customDays;
+        return base;
+      }
       default: return null;
     }
   };
