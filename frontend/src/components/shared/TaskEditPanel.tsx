@@ -276,7 +276,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     switch (field) {
       case 'notes': setShowNotes(false); setNotes(''); break;
       case 'project': setShowProject(false); setProjectId(''); break;
-      case 'deadline': setShowDeadline(false); setDeadline(''); setShowRecurrence(false); setRecMode(''); break;
+      case 'deadline': setShowDeadline(false); setDeadlineDate(''); setDeadlineTime(''); setShowRecurrence(false); setRecMode(''); break;
       case 'recurrence': setShowRecurrence(false); setRecMode(''); break;
     }
   };

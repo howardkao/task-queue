@@ -38,12 +38,6 @@ function icalToCalEvents(events: CalendarEvent[]): CalEvent[] {
   });
 }
 
-interface PlacedBoulder {
-  startHour: number;
-  duration: number;
-  date: string; // YYYY-MM-DD
-}
-
 type SidebarMode = 'boulders' | 'rocks' | 'pebbles';
 
 function toDateKey(d: Date): string {
