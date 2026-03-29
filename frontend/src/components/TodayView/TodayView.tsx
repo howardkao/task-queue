@@ -160,7 +160,7 @@ export function TodayView() {
 
       const events: CalEvent[] = [...baseEvents];
 
-      const schedulableTasks = [...filteredBoulders, ...filteredRocks];
+      const schedulableTasks = [...boulders, ...rocks];
       // Add placed schedulable tasks for this day
       for (const task of schedulableTasks) {
         if (task.placement && task.placement.date === dateKey) {
