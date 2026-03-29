@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useProject, useUpdateProject, useToggleProjectStatus, useDeleteProject } from '../../hooks/useProjects';
-import { useTasks, useCompleteTask, useCreateTask } from '../../hooks/useTasks';
+import { useTasks, useCompleteTask, useCreateTask, useIceboxTask } from '../../hooks/useTasks';
 import { useProjectActivityLog } from '../../hooks/useActivityLog';
 import { useIsMobile } from '../../hooks/useViewport';
 import type { Task, Classification } from '../../types';
@@ -20,6 +20,7 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
   const toggleStatus = useToggleProjectStatus();
   const deleteProject = useDeleteProject();
   const completeTask = useCompleteTask();
+  const iceboxTask = useIceboxTask();
   const createTask = useCreateTask();
   const { data: activityLog = [] } = useProjectActivityLog(projectId);
 
@@ -168,7 +169,12 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
         <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Boulders</h2>
         {boulders.length === 0 && <div style={emptyTaskStyle}>No boulders yet</div>}
         {boulders.map(t => (
-          <TaskRow key={t.id} task={t} onComplete={() => completeTask.mutate(t.id)} />
+          <TaskRow
+            key={t.id}
+            task={t}
+            onComplete={(id) => completeTask.mutate(id)}
+            onIcebox={(id) => iceboxTask.mutate(id)}
+          />
         ))}
       </div>
 
@@ -177,7 +183,12 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
         <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Rocks</h2>
         {rocks.length === 0 && <div style={emptyTaskStyle}>No rocks yet</div>}
         {rocks.map(t => (
-          <TaskRow key={t.id} task={t} onComplete={() => completeTask.mutate(t.id)} />
+          <TaskRow
+            key={t.id}
+            task={t}
+            onComplete={(id) => completeTask.mutate(id)}
+            onIcebox={(id) => iceboxTask.mutate(id)}
+          />
         ))}
       </div>
 
@@ -186,7 +197,12 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
         <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Pebbles</h2>
         {pebbles.length === 0 && <div style={emptyTaskStyle}>No pebbles yet</div>}
         {pebbles.map(t => (
-          <TaskRow key={t.id} task={t} onComplete={() => completeTask.mutate(t.id)} />
+          <TaskRow
+            key={t.id}
+            task={t}
+            onComplete={(id) => completeTask.mutate(id)}
+            onIcebox={(id) => iceboxTask.mutate(id)}
+          />
         ))}
       </div>
 
@@ -195,7 +211,12 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
         <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Unclassified</h2>
         {unclassified.length === 0 && <div style={emptyTaskStyle}>No unclassified tasks</div>}
         {unclassified.map(t => (
-          <TaskRow key={t.id} task={t} onComplete={() => completeTask.mutate(t.id)} />
+          <TaskRow
+            key={t.id}
+            task={t}
+            onComplete={(id) => completeTask.mutate(id)}
+            onIcebox={(id) => iceboxTask.mutate(id)}
+          />
         ))}
       </div>
 
@@ -316,7 +337,15 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
   );
 }
 
-function TaskRow({ task, onComplete }: { task: Task; onComplete: () => void }) {
+function TaskRow({
+  task,
+  onComplete,
+  onIcebox,
+}: {
+  task: Task;
+  onComplete: (id: string) => void;
+  onIcebox: (id: string) => void;
+}) {
   const [editing, setEditing] = useState(false);
   const deadlineStr = task.deadline ? formatDeadline(task.deadline) : null;
   const typeStyles = getTaskTypeStyles(task.classification);
@@ -336,40 +365,49 @@ function TaskRow({ task, onComplete }: { task: Task; onComplete: () => void }) {
           ...taskRowCardStyle,
           borderColor: typeStyles.border,
           background: typeStyles.bg,
-          display: 'flex', alignItems: 'center', gap: '8px',
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '10px',
           padding: '10px 12px',
           cursor: 'grab',
         }}
       >
-        <span style={{ ...taskDragHandleStyle, color: typeStyles.handle }}>⠿</span>
-        <div
-          onClick={onComplete}
-          style={{
-            width: '16px', height: '16px', border: '2px solid #d1d5db',
-            borderRadius: '6px', flexShrink: 0, cursor: 'pointer',
-            display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '11px',
-            transition: 'all 0.2s ease',
-          }}
-          title="Complete"
-        />
         <span
-          onClick={() => setEditing(!editing)}
-          style={{
-            fontSize: '14px', flex: 1, color: '#1f2937', cursor: 'pointer',
-            borderBottom: editing ? '1px dashed #FF7A7A' : '1px dashed transparent',
-          }}
-          title="Click to edit"
+          style={{ ...taskDragHandleStyle, color: typeStyles.handle }}
+          onMouseDown={(e) => e.stopPropagation()}
         >
-          {task.title}
+          ⠿
         </span>
-        {task.recurrence && (
-          <span style={{ fontSize: '11px', color: '#6b7280' }}>↻</span>
-        )}
-        {deadlineStr && (
-          <span style={{ fontSize: '12px', color: '#FF6B6B' }}>⚑ {deadlineStr}</span>
-        )}
+        <div
+          style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+          onClick={() => setEditing(prev => !prev)}
+        >
+          <div
+            style={{
+              fontSize: '14px',
+              color: '#1f2937',
+              fontWeight: 500,
+              borderBottom: editing ? '1px dashed #FF7A7A' : '1px dashed transparent',
+            }}
+          >
+            {task.title}
+          </div>
+          {(task.recurrence || deadlineStr) && (
+            <div style={taskRowMetaStyle}>
+              {task.recurrence && <span style={{ marginRight: '4px' }}>↻</span>}
+              {deadlineStr && <span style={{ color: '#FF6B6B' }}>⚑ {deadlineStr}</span>}
+            </div>
+          )}
+        </div>
       </div>
-      {editing && <TaskEditPanel task={task} onClose={() => setEditing(false)} />}
+      {editing && (
+        <TaskEditPanel
+          task={task}
+          onClose={() => setEditing(false)}
+          onComplete={onComplete}
+          onIcebox={onIcebox}
+        />
+      )}
     </div>
   );
 }
@@ -420,9 +458,16 @@ const emptyTaskStyle: React.CSSProperties = {
 };
 
 const taskDragHandleStyle: React.CSSProperties = {
-  fontSize: '15px',
+  fontSize: '16px',
   userSelect: 'none',
   flexShrink: 0,
+  marginTop: '1px',
+};
+
+const taskRowMetaStyle: React.CSSProperties = {
+  fontSize: '12px',
+  color: '#9ca3af',
+  marginTop: '2px',
 };
 
 const taskRowCardStyle: React.CSSProperties = {
