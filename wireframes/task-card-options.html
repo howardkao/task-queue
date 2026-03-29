@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Task Card Expanded — Design Options</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    background: #f3f4f6;
+    color: #1f2937;
+    padding: 32px;
+  }
+  h1 { font-size: 22px; font-weight: 800; margin-bottom: 8px; }
+  .subtitle { font-size: 14px; color: #6b7280; margin-bottom: 32px; }
+  .option-section {
+    margin-bottom: 48px;
+  }
+  .option-label {
+    font-size: 13px; font-weight: 700; color: #FF7A7A; text-transform: uppercase;
+    letter-spacing: 0.5px; margin-bottom: 6px;
+  }
+  .option-title {
+    font-size: 18px; font-weight: 700; margin-bottom: 4px;
+  }
+  .option-desc {
+    font-size: 13px; color: #6b7280; margin-bottom: 16px; max-width: 600px; line-height: 1.5;
+  }
+  .mock-row {
+    display: flex; gap: 24px; flex-wrap: wrap;
+  }
+
+  /* Shared card shell */
+  .card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 16px;
+    padding: 16px;
+    width: 380px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08);
+    flex-shrink: 0;
+  }
+  .card-title {
+    font-size: 15px; font-weight: 700; color: #1f2937; margin-bottom: 6px;
+  }
+  .card-notes-toggle {
+    font-size: 12px; color: #9ca3af; cursor: pointer; margin-bottom: 8px;
+    user-select: none;
+  }
+  .card-notes {
+    width: 100%; border: 1px solid #e5e7eb; border-radius: 10px;
+    padding: 8px 12px; font-size: 13px; color: #4b5563; resize: none;
+    font-family: inherit; outline: none; margin-bottom: 10px; min-height: 44px;
+    background: #fafafa;
+  }
+
+  /* Buttons */
+  .btn {
+    display: inline-flex; align-items: center; gap: 4px;
+    padding: 6px 14px; border: 1px solid #e5e7eb; border-radius: 10px;
+    background: #f9fafb; cursor: pointer; font-size: 12px; font-weight: 600;
+    color: #4b5563; font-family: inherit; transition: all 0.15s ease;
+  }
+  .btn:hover { background: #f3f4f6; }
+  .btn-primary { background: #FF7A7A; color: #fff; border-color: #FF7A7A; }
+  .btn-primary:hover { background: #ff6b6b; }
+  .btn-danger { color: #ef4444; border-color: #fca5a5; }
+  .btn-success { color: #22c55e; border-color: #bbf7d0; }
+
+  /* Metadata */
+  .meta-label { font-size: 12px; color: #6b7280; }
+  .meta-input {
+    padding: 4px 8px; border: 1px solid #e5e7eb; border-radius: 8px;
+    font-size: 12px; background: #fff; font-family: inherit; color: #4b5563;
+  }
+  .meta-row {
+    display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-bottom: 8px;
+  }
+  .day-btn {
+    width: 28px; height: 26px; border: 1px solid #e5e7eb; border-radius: 6px;
+    cursor: pointer; font-size: 10px; font-weight: 600; font-family: inherit;
+    display: flex; align-items: center; justify-content: center;
+    background: #fff; color: #4b5563; transition: all 0.15s;
+  }
+  .day-btn.active { background: #FF7A7A; color: #fff; border-color: #FF7A7A; }
+  .actions-row { display: flex; gap: 8px; align-items: center; }
+  .spacer { flex: 1; }
+
+  /* Current/baseline label */
+  .badge-current {
+    display: inline-block; font-size: 10px; font-weight: 700;
+    padding: 2px 8px; background: #fee2e2; color: #ef4444;
+    border-radius: 6px; margin-left: 8px; vertical-align: middle;
+  }
+
+  /* Tabs for Option A */
+  .tabs { display: flex; gap: 0; margin-bottom: 12px; border-bottom: 1px solid #e5e7eb; }
+  .tab {
+    padding: 6px 16px; font-size: 12px; font-weight: 600; color: #9ca3af;
+    cursor: pointer; border-bottom: 2px solid transparent; transition: all 0.15s;
+    user-select: none;
+  }
+  .tab.active { color: #FF7A7A; border-bottom-color: #FF7A7A; }
+  .tab:hover { color: #4b5563; }
+
+  /* Collapsible section for Option B */
+  .section-header {
+    display: flex; align-items: center; gap: 8px; cursor: pointer;
+    padding: 6px 0; user-select: none;
+  }
+  .section-label { font-size: 12px; font-weight: 600; color: #6b7280; }
+  .section-badge {
+    font-size: 11px; color: #9ca3af; background: #f3f4f6;
+    padding: 2px 8px; border-radius: 6px;
+  }
+  .section-caret { font-size: 10px; color: #9ca3af; transition: transform 0.15s; }
+  .section-content { padding: 8px 0 4px 0; }
+
+  /* Popover for Option C */
+  .popover-trigger {
+    width: 30px; height: 30px; border: 1px solid #e5e7eb; border-radius: 8px;
+    display: flex; align-items: center; justify-content: center;
+    cursor: pointer; background: #f9fafb; font-size: 14px; color: #9ca3af;
+    transition: all 0.15s; position: relative;
+  }
+  .popover-trigger:hover { background: #f3f4f6; color: #6b7280; }
+  .popover {
+    position: absolute; top: 36px; right: 0; z-index: 10;
+    background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;
+    padding: 14px; width: 280px; box-shadow: 0 8px 24px rgba(0,0,0,0.12);
+  }
+
+  /* Two-column for Option D */
+  .two-col { display: flex; gap: 16px; }
+  .col-main { flex: 1; min-width: 0; }
+  .col-side { width: 150px; flex-shrink: 0; }
+  .side-field { margin-bottom: 10px; }
+  .side-field label { display: block; font-size: 11px; color: #9ca3af; margin-bottom: 3px; font-weight: 600; }
+  .side-input {
+    width: 100%; padding: 5px 8px; border: 1px solid #e5e7eb; border-radius: 8px;
+    font-size: 12px; background: #fff; font-family: inherit; color: #4b5563;
+  }
+
+  /* Add-field link for Option E */
+  .add-field {
+    font-size: 12px; color: #9ca3af; cursor: pointer; padding: 3px 0;
+    transition: color 0.15s; user-select: none;
+  }
+  .add-field:hover { color: #FF7A7A; }
+
+  /* Type toggle */
+  .type-toggle-btn {
+    padding: 6px 18px; border: 1px solid #e5e7eb; cursor: pointer;
+    font-size: 12px; font-weight: 600; font-family: inherit;
+    transition: all 0.15s ease;
+  }
+  .type-toggle-btn:hover { opacity: 0.85; }
+
+  /* Remove X */
+  .remove-x {
+    font-size: 12px; color: #d1d5db; cursor: pointer; transition: color 0.15s;
+    user-select: none; padding: 0 2px;
+  }
+  .remove-x:hover { color: #ef4444; }
+
+  /* Annotation */
+  .annotation {
+    font-size: 11px; color: #b0b0b0; font-style: italic; margin-top: 10px;
+    line-height: 1.4;
+  }
+
+  .divider { border: none; border-top: 1px solid #e5e7eb; margin: 10px 0; }
+</style>
+</head>
+<body>
+
+<h1>Task Card (Expanded) — Option E: Smart Defaults</h1>
+<p class="subtitle">Show only what's set. Empty fields hide behind "+ Add ..." links. A type toggle (Boulder/Pebble) is always visible below the title.</p>
+
+<!-- ================================================================== -->
+<!-- CURRENT (baseline) -->
+<!-- ================================================================== -->
+<div class="option-section">
+  <div class="option-label">Current <span class="badge-current">Baseline</span></div>
+  <div class="option-title">Flat layout (status quo)</div>
+  <div class="option-desc">Everything visible at once for comparison.</div>
+  <div class="mock-row">
+    <div class="card">
+      <div class="card-title">Research new dentist</div>
+      <div class="card-notes-toggle">▲ Notes</div>
+      <textarea class="card-notes" readonly>Check insurance network, read reviews on Yelp, ask Sarah for her recommendation</textarea>
+
+      <div style="display:flex;gap:8px;margin-bottom:8px;">
+        <button class="btn">🪨 Boulder</button>
+        <button class="btn">Pebble</button>
+        <button class="btn btn-danger">Delete</button>
+      </div>
+
+      <div class="meta-row">
+        <span class="meta-label">Project:</span>
+        <select class="meta-input"><option>Health &amp; Wellness</option></select>
+        <span class="meta-label">Deadline:</span>
+        <input type="date" value="2026-04-03" class="meta-input" />
+        <span class="meta-label">Repeats:</span>
+        <select class="meta-input"><option>Weekly</option></select>
+      </div>
+
+      <div style="display:flex;gap:4px;align-items:center;">
+        <span style="font-size:12px;color:#6b7280;margin-right:4px;">On:</span>
+        <button class="day-btn">M</button>
+        <button class="day-btn active">T</button>
+        <button class="day-btn">W</button>
+        <button class="day-btn">Th</button>
+        <button class="day-btn active">F</button>
+        <button class="day-btn">Sa</button>
+        <button class="day-btn">Su</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ================================================================== -->
+<!-- OPTION E: Progressive / Smart defaults -->
+<!-- ================================================================== -->
+<div class="option-section">
+  <div class="option-label">Option E — Revised</div>
+  <div class="option-title">Smart defaults with type toggle</div>
+  <div class="option-desc">The type toggle is always visible since classification is a core action. Everything else uses progressive disclosure.</div>
+  <div class="mock-row">
+
+    <!-- Minimal task (nothing set, unclassified) -->
+    <div class="card">
+      <div style="font-size:11px;font-weight:600;color:#9ca3af;margin-bottom:6px;">EMPTY TASK (UNCLASSIFIED)</div>
+      <input type="text" value="Research new dentist" style="width:100%;padding:6px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;color:#1f2937;outline:none;margin-bottom:8px;" readonly />
+
+      <!-- Type toggle — always visible -->
+      <div style="display:flex;gap:0;margin-bottom:10px;">
+        <button class="type-toggle-btn" style="border-radius:8px 0 0 8px;background:#f9fafb;color:#4b5563;border-color:#e5e7eb;">Boulder</button>
+        <button class="type-toggle-btn" style="border-radius:0 8px 8px 0;background:#f9fafb;color:#4b5563;border-left:none;border-color:#e5e7eb;">Pebble</button>
+      </div>
+
+      <div style="display:flex;gap:12px;margin-bottom:10px;flex-wrap:wrap;">
+        <span class="add-field">+ Add notes</span>
+        <span class="add-field">+ Add project</span>
+        <span class="add-field">+ Add deadline</span>
+      </div>
+
+      <hr class="divider" />
+      <div class="actions-row">
+        <button class="btn btn-success">Complete</button>
+        <button class="btn">Icebox</button>
+        <div class="spacer"></div>
+        <button class="btn">Cancel</button>
+        <button class="btn btn-primary">Save</button>
+      </div>
+      <p class="annotation">Nothing configured. Type toggle is unselected. Compact and focused.</p>
+    </div>
+
+    <!-- Partially configured (pebble selected, deadline set) -->
+    <div class="card">
+      <div style="font-size:11px;font-weight:600;color:#9ca3af;margin-bottom:6px;">PARTIALLY CONFIGURED (PEBBLE)</div>
+      <input type="text" value="Research new dentist" style="width:100%;padding:6px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;color:#1f2937;outline:none;margin-bottom:8px;" readonly />
+
+      <!-- Type toggle — pebble selected -->
+      <div style="display:flex;gap:0;margin-bottom:10px;">
+        <button class="type-toggle-btn" style="border-radius:8px 0 0 8px;background:#f9fafb;color:#4b5563;border-color:#e5e7eb;">Boulder</button>
+        <button class="type-toggle-btn" style="border-radius:0 8px 8px 0;background:#FF7A7A;color:#fff;border-color:#FF7A7A;">Pebble</button>
+      </div>
+
+      <textarea class="card-notes" readonly>Check insurance network, read reviews on Yelp</textarea>
+
+      <div class="meta-row">
+        <span class="meta-label">Deadline:</span>
+        <input type="date" value="2026-04-03" class="meta-input" />
+        <span class="remove-x">✕</span>
+      </div>
+
+      <div style="display:flex;gap:12px;margin-bottom:10px;">
+        <span class="add-field">+ Add project</span>
+        <span class="add-field">+ Add recurrence</span>
+      </div>
+
+      <hr class="divider" />
+      <div class="actions-row">
+        <button class="btn btn-success">Complete</button>
+        <button class="btn">Icebox</button>
+        <div class="spacer"></div>
+        <button class="btn">Cancel</button>
+        <button class="btn btn-primary">Save</button>
+      </div>
+      <p class="annotation">Pebble selected, deadline set. Still compact — only set fields shown.</p>
+    </div>
+
+    <!-- Fully configured (boulder) -->
+    <div class="card">
+      <div style="font-size:11px;font-weight:600;color:#9ca3af;margin-bottom:6px;">FULLY CONFIGURED (BOULDER)</div>
+      <input type="text" value="Research new dentist" style="width:100%;padding:6px 10px;border:1px solid #e5e7eb;border-radius:8px;font-size:13px;font-weight:600;font-family:inherit;color:#1f2937;outline:none;margin-bottom:8px;" readonly />
+
+      <!-- Type toggle — boulder selected -->
+      <div style="display:flex;gap:0;margin-bottom:10px;">
+        <button class="type-toggle-btn" style="border-radius:8px 0 0 8px;background:#FF7A7A;color:#fff;border-color:#FF7A7A;">Boulder</button>
+        <button class="type-toggle-btn" style="border-radius:0 8px 8px 0;background:#f9fafb;color:#4b5563;border-left:none;border-color:#e5e7eb;">Pebble</button>
+      </div>
+
+      <textarea class="card-notes" readonly>Check insurance network, read reviews on Yelp, ask Sarah for her recommendation</textarea>
+
+      <div class="meta-row">
+        <span class="meta-label">Project:</span>
+        <select class="meta-input"><option>Health &amp; Wellness</option></select>
+        <span class="remove-x">✕</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Deadline:</span>
+        <input type="date" value="2026-04-03" class="meta-input" />
+        <span class="remove-x">✕</span>
+      </div>
+      <div class="meta-row">
+        <span class="meta-label">Repeats:</span>
+        <select class="meta-input"><option>Weekly</option></select>
+        <span class="remove-x">✕</span>
+      </div>
+      <div style="display:flex;gap:4px;align-items:center;margin-bottom:8px;">
+        <span style="font-size:12px;color:#6b7280;margin-right:4px;">On:</span>
+        <button class="day-btn">M</button>
+        <button class="day-btn active">T</button>
+        <button class="day-btn">W</button>
+        <button class="day-btn">Th</button>
+        <button class="day-btn active">F</button>
+        <button class="day-btn">Sa</button>
+        <button class="day-btn">Su</button>
+      </div>
+
+      <hr class="divider" />
+      <div class="actions-row">
+        <button class="btn btn-success">Complete</button>
+        <button class="btn">Icebox</button>
+        <div class="spacer"></div>
+        <button class="btn">Cancel</button>
+        <button class="btn btn-primary">Save</button>
+      </div>
+      <p class="annotation">Everything set. Boulder selected. Card grows with complexity but each field can be removed with ✕.</p>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>

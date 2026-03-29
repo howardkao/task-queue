@@ -2,19 +2,23 @@ import { db, OWNER_UID, FieldValue, Timestamp } from './firestore.js';
 
 const tasksRef = db.collection('tasks');
 const logRef = db.collection('activityLog');
+const ORDERED_CLASSIFICATIONS = new Set(['boulder', 'rock', 'pebble']);
+
+export type Classification = 'unclassified' | 'boulder' | 'rock' | 'pebble';
 
 export interface Task {
   id: string;
   title: string;
   notes: string;
-  classification: 'unclassified' | 'boulder' | 'pebble';
+  classification: Classification;
   status: 'active' | 'completed' | 'iceboxed';
   priority: 'high' | 'med' | 'low';
   deadline: string | null;
-  recurrence: { freq: string; interval?: number; day?: string } | null;
+  recurrence: { freq: string; interval?: number; days?: string[]; customUnit?: string; periodUnit?: string } | null;
   projectId: string | null;
   sortOrder: number;
   completedAt: string | null;
+  lastOccurrenceCompletedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
 }
@@ -40,6 +44,7 @@ function toTask(id: string, data: any): Task {
     projectId: data.projectId || null,
     sortOrder: data.sortOrder || 0,
     completedAt: tsToISO(data.completedAt),
+    lastOccurrenceCompletedAt: tsToISO(data.lastOccurrenceCompletedAt),
     createdAt: tsToISO(data.createdAt),
     updatedAt: tsToISO(data.updatedAt),
   };
@@ -75,7 +80,7 @@ export async function listTasks(filters?: {
   }
 
   tasks.sort((a, b) => {
-    if (a.classification === 'pebble' && b.classification === 'pebble') {
+    if (a.classification === b.classification && ORDERED_CLASSIFICATIONS.has(a.classification)) {
       return (a.sortOrder || 0) - (b.sortOrder || 0);
     }
     const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
@@ -92,22 +97,19 @@ export async function getTask(id: string): Promise<Task> {
   return toTask(d.id, d.data());
 }
 
-async function getNewPebbleSortOrder(): Promise<number> {
+async function getTopSortOrder(classification: Classification): Promise<number> {
   try {
     const snapshot = await tasksRef
       .where('ownerUid', '==', OWNER_UID)
-      .where('classification', '==', 'pebble')
+      .where('classification', '==', classification)
       .where('status', '==', 'active')
       .orderBy('sortOrder', 'asc')
       .get();
 
     if (snapshot.empty) return 1000;
 
-    const orders = snapshot.docs.map(d => d.data().sortOrder as number);
-    if (orders.length < 4) {
-      return orders[orders.length - 1] + 1000;
-    }
-    return orders[2] + (orders[3] - orders[2]) / 2;
+    const minOrder = snapshot.docs[0].data().sortOrder as number;
+    return minOrder - 1000;
   } catch {
     return 500 + Math.random() * 100;
   }
@@ -134,10 +136,11 @@ export async function createTask(data: {
   deadline?: string;
   projectId?: string;
   recurrence?: any;
+  lastOccurrenceCompletedAt?: any;
 }): Promise<Task> {
   let sortOrder = 0;
-  if (data.classification === 'pebble') {
-    sortOrder = await getNewPebbleSortOrder();
+  if (data.classification && ORDERED_CLASSIFICATIONS.has(data.classification)) {
+    sortOrder = await getTopSortOrder(data.classification as Classification);
   }
 
   const taskData: any = {
@@ -149,6 +152,7 @@ export async function createTask(data: {
     deadline: data.deadline ? Timestamp.fromDate(new Date(data.deadline)) : null,
     recurrence: data.recurrence || null,
     projectId: data.projectId || null,
+    lastOccurrenceCompletedAt: data.lastOccurrenceCompletedAt || null,
     sortOrder,
     ownerUid: OWNER_UID,
     createdAt: FieldValue.serverTimestamp(),
@@ -185,8 +189,8 @@ export async function updateTask(id: string, data: {
   if (data.notes !== undefined) updates.notes = data.notes;
   if (data.classification !== undefined) {
     updates.classification = data.classification;
-    if (data.classification === 'pebble' && data.sortOrder === undefined) {
-      updates.sortOrder = await getNewPebbleSortOrder();
+    if (ORDERED_CLASSIFICATIONS.has(data.classification) && data.sortOrder === undefined) {
+      updates.sortOrder = await getTopSortOrder(data.classification as Classification);
     }
   }
   if (data.priority !== undefined) updates.priority = data.priority;
@@ -196,16 +200,30 @@ export async function updateTask(id: string, data: {
   }
   if (data.projectId !== undefined) updates.projectId = data.projectId;
   if (data.sortOrder !== undefined) updates.sortOrder = data.sortOrder;
+  if ((data as any).placement !== undefined) updates.placement = (data as any).placement;
+  if ((data as any).lastOccurrenceCompletedAt !== undefined) updates.lastOccurrenceCompletedAt = (data as any).lastOccurrenceCompletedAt;
 
   await tasksRef.doc(id).update(updates);
   return getTask(id);
 }
 
+export async function reorderTasks(order: Array<{ id: string; sortOrder: number }>): Promise<void> {
+  const batch = db.batch();
+  for (const item of order) {
+    batch.update(tasksRef.doc(item.id), {
+      sortOrder: item.sortOrder,
+      updatedAt: FieldValue.serverTimestamp(),
+    });
+  }
+  await batch.commit();
+}
+
 export async function completeTask(id: string): Promise<{ completed: Task; nextOccurrence: Task | null }> {
   const task = await getTask(id);
+  const now = FieldValue.serverTimestamp();
   await tasksRef.doc(id).update({
     status: 'completed',
-    completedAt: FieldValue.serverTimestamp(),
+    completedAt: now,
     updatedAt: FieldValue.serverTimestamp(),
   });
 
@@ -228,6 +246,7 @@ export async function completeTask(id: string): Promise<{ completed: Task; nextO
       deadline: nextDeadline || undefined,
       projectId: task.projectId || undefined,
       recurrence: task.recurrence,
+      lastOccurrenceCompletedAt: now,
     });
   }
 
@@ -305,7 +324,15 @@ function calculateNextOccurrence(recurrence: any, currentDeadline: string | null
     }
     case 'periodically': {
       const next = new Date(now);
-      next.setDate(next.getDate() + (recurrence.interval || 7));
+      const interval = recurrence.interval || 1;
+      const unit = recurrence.periodUnit || 'days';
+      if (unit === 'hours') {
+        next.setHours(next.getHours() + interval);
+      } else if (unit === 'weeks') {
+        next.setDate(next.getDate() + interval * 7);
+      } else {
+        next.setDate(next.getDate() + interval);
+      }
       return next.toISOString();
     }
     case 'custom': {

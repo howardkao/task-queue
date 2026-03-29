@@ -29,7 +29,9 @@ function toTask(id: string, data: any): Task {
     recurrence: data.recurrence || null,
     projectId: data.projectId || null,
     sortOrder: data.sortOrder || 0,
+    placement: data.placement || null,
     completedAt: data.completedAt || null,
+    lastOccurrenceCompletedAt: data.lastOccurrenceCompletedAt || null,
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
   };
@@ -43,6 +45,7 @@ export async function createTask(data: {
   deadline?: string;
   projectId?: string;
   recurrence?: any;
+  lastOccurrenceCompletedAt?: any;
 }): Promise<Task> {
   const user = requireUser();
   let sortOrder = 0;
@@ -59,6 +62,7 @@ export async function createTask(data: {
     deadline: data.deadline ? Timestamp.fromDate(new Date(data.deadline)) : null,
     recurrence: data.recurrence || null,
     projectId: data.projectId || null,
+    lastOccurrenceCompletedAt: data.lastOccurrenceCompletedAt || null,
     ownerUid: user.uid,
     sortOrder,
     createdAt: serverTimestamp(),
@@ -148,6 +152,8 @@ export async function updateTask(id: string, data: Partial<Task>): Promise<Task>
   }
   if (data.projectId !== undefined) updates.projectId = data.projectId;
   if (data.sortOrder !== undefined) updates.sortOrder = data.sortOrder;
+  if (data.placement !== undefined) updates.placement = data.placement;
+  if (data.lastOccurrenceCompletedAt !== undefined) updates.lastOccurrenceCompletedAt = data.lastOccurrenceCompletedAt;
   if (data.recurrence !== undefined) {
     if (data.recurrence) {
       // Strip undefined values — Firestore rejects them
@@ -166,9 +172,10 @@ export async function updateTask(id: string, data: Partial<Task>): Promise<Task>
 export async function completeTask(id: string): Promise<{ completed: Task; nextOccurrence: Task | null }> {
   requireUser();
   const task = await getTask(id);
+  const now = Timestamp.now();
   await updateDoc(doc(tasksRef, id), {
     status: 'completed',
-    completedAt: serverTimestamp(),
+    completedAt: now,
     updatedAt: serverTimestamp(),
   });
 
@@ -192,10 +199,11 @@ export async function completeTask(id: string): Promise<{ completed: Task; nextO
       deadline: nextDeadline || undefined,
       projectId: task.projectId || undefined,
       recurrence: task.recurrence,
+      lastOccurrenceCompletedAt: now,
     });
   }
 
-  return { completed: { ...task, status: 'completed' }, nextOccurrence };
+  return { completed: { ...task, status: 'completed', completedAt: now.toDate().toISOString() }, nextOccurrence };
 }
 
 export async function iceboxTask(id: string): Promise<Task> {
@@ -312,7 +320,15 @@ function calculateNextOccurrence(recurrence: any, currentDeadline: string | null
     case 'periodically': {
       // Always relative to completion (now), not deadline
       const next = new Date(now);
-      next.setDate(next.getDate() + (recurrence.interval || 7));
+      const interval = recurrence.interval || 1;
+      const unit = recurrence.periodUnit || 'days';
+      if (unit === 'hours') {
+        next.setHours(next.getHours() + interval);
+      } else if (unit === 'weeks') {
+        next.setDate(next.getDate() + interval * 7);
+      } else {
+        next.setDate(next.getDate() + interval);
+      }
       return next.toISOString();
     }
     case 'custom': {

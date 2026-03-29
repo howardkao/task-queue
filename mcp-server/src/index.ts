@@ -10,6 +10,7 @@ import {
   updateTask,
   completeTask,
   iceboxTask,
+  reorderTasks,
 } from './tasks.js';
 import {
   listProjects,
@@ -32,7 +33,7 @@ server.tool(
   {
     title: z.string().describe('Task title'),
     notes: z.string().optional().describe('Optional notes or context'),
-    classification: z.enum(['unclassified', 'boulder', 'pebble']).optional().describe('Task type. Defaults to unclassified (inbox).'),
+    classification: z.enum(['unclassified', 'boulder', 'rock', 'pebble']).optional().describe('Task type. Defaults to unclassified (inbox).'),
     priority: z.enum(['high', 'med', 'low']).optional().describe('Priority level. Defaults to low.'),
     projectId: z.string().optional().describe('Project ID to link this task to'),
     deadline: z.string().optional().describe('Deadline as ISO date string (e.g. "2026-04-01")'),
@@ -64,10 +65,10 @@ server.tool(
 
 server.tool(
   'classify_task',
-  'Classify an inbox task as boulder or pebble. Optionally assign to a project and set a deadline.',
+  'Classify an inbox task as boulder, rock, or pebble. Optionally assign to a project and set a deadline.',
   {
     taskId: z.string().describe('ID of the task to classify'),
-    classification: z.enum(['boulder', 'pebble']).describe('Classify as boulder (deep work) or pebble (small task)'),
+    classification: z.enum(['boulder', 'rock', 'pebble']).describe('Classify as boulder (deep work), rock (medium effort), or pebble (small task)'),
     projectId: z.string().optional().describe('Project ID to link this task to'),
     deadline: z.string().optional().describe('Deadline as ISO date string'),
   },
@@ -89,7 +90,7 @@ server.tool(
   {
     query: z.string().describe('Case-insensitive text to search for in the task title'),
     status: z.enum(['active', 'completed', 'iceboxed']).optional().describe('Optional status filter'),
-    classification: z.enum(['unclassified', 'boulder', 'pebble']).optional().describe('Optional classification filter'),
+    classification: z.enum(['unclassified', 'boulder', 'rock', 'pebble']).optional().describe('Optional classification filter'),
     limit: z.number().optional().describe('Maximum number of matches to return (default: 10)'),
   },
   async ({ query, status, classification, limit }) => {
@@ -112,6 +113,7 @@ server.tool(
     const text = matches.map((task, index) => (
       `${index + 1}. "${task.title}" [id: ${task.id}]`
       + ` [${task.classification}/${task.status}]`
+      + ` [sortOrder: ${task.sortOrder}]`
       + `${task.priority !== 'low' ? ` [${task.priority}]` : ''}`
       + `${task.projectId ? ' [project-linked]' : ''}`
       + `${task.notes ? `\n   Notes: ${task.notes}` : ''}`
@@ -144,21 +146,23 @@ server.tool(
     taskId: z.string().describe('ID of the task to update'),
     title: z.string().optional().describe('Optional new task title'),
     notes: z.string().optional().describe('Optional full replacement for the task notes/description'),
-    classification: z.enum(['unclassified', 'boulder', 'pebble']).optional().describe('Optional new classification'),
+    classification: z.enum(['unclassified', 'boulder', 'rock', 'pebble']).optional().describe('Optional new classification'),
     priority: z.enum(['high', 'med', 'low']).optional().describe('Optional priority level'),
     status: z.enum(['active', 'completed', 'iceboxed']).optional().describe('Optional new status'),
     projectId: z.string().nullable().optional().describe('Optional project link; pass null to clear'),
     deadline: z.string().nullable().optional().describe('Optional ISO date string deadline; pass null to clear'),
+    sortOrder: z.number().optional().describe('Optional new sort order value'),
   },
-  async ({ taskId, title, notes, classification, priority, status, projectId, deadline }) => {
+  async ({ taskId, title, notes, classification, priority, status, projectId, deadline, sortOrder }) => {
     const updates: {
       title?: string;
       notes?: string;
-      classification?: 'unclassified' | 'boulder' | 'pebble';
+      classification?: 'unclassified' | 'boulder' | 'rock' | 'pebble';
       priority?: 'high' | 'med' | 'low';
       status?: 'active' | 'completed' | 'iceboxed';
       projectId?: string | null;
       deadline?: string | null;
+      sortOrder?: number;
     } = {};
 
     if (title !== undefined) updates.title = title;
@@ -168,6 +172,7 @@ server.tool(
     if (status !== undefined) updates.status = status;
     if (projectId !== undefined) updates.projectId = projectId;
     if (deadline !== undefined) updates.deadline = deadline;
+    if (sortOrder !== undefined) updates.sortOrder = sortOrder;
 
     if (Object.keys(updates).length === 0) {
       return {
@@ -178,6 +183,21 @@ server.tool(
     const task = await updateTask(taskId, updates);
     return {
       content: [{ type: 'text', text: JSON.stringify(task, null, 2) }],
+    };
+  }
+);
+
+server.tool(
+  'reorder_tasks',
+  'Reorder tasks in a list. Provide task IDs in the new desired order. This updates their sortOrder values globally.',
+  {
+    taskIds: z.array(z.string()).describe('List of task IDs in the new order'),
+  },
+  async ({ taskIds }) => {
+    const order = taskIds.map((id, i) => ({ id, sortOrder: (i + 1) * 1000 }));
+    await reorderTasks(order);
+    return {
+      content: [{ type: 'text', text: `Reordered ${taskIds.length} task(s).` }],
     };
   }
 );
@@ -232,19 +252,44 @@ server.tool(
     let text = `${tasks.length} active boulder(s):\n`;
 
     if (standalone.length > 0) {
-      text += `\nStandalone:\n${standalone.map(t => `  • "${t.title}"${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}`;
+      text += `\nStandalone:\n${standalone.map(t => `  • "${t.title}" [sortOrder: ${t.sortOrder}]${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}`;
     }
 
     for (const [pid, projectTasks] of byProject) {
       try {
         const project = await getProject(pid);
-        text += `\n\n${project.name}:\n${projectTasks.map(t => `  • "${t.title}"${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}`;
+        text += `\n\n${project.name}:\n${projectTasks.map(t => `  • "${t.title}" [sortOrder: ${t.sortOrder}]${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}`;
       } catch {
         text += `\n\nUnknown project (${pid}):\n${projectTasks.map(t => `  • "${t.title}" [id: ${t.id}]`).join('\n')}`;
       }
     }
 
     return { content: [{ type: 'text', text }] };
+  }
+);
+
+server.tool(
+  'list_rocks',
+  'List all active rocks (medium-sized tasks). These can also be scheduled on the Today calendar.',
+  {},
+  async () => {
+    const tasks = await listTasks({ classification: 'rock', status: 'active' });
+    if (tasks.length === 0) {
+      return { content: [{ type: 'text', text: 'No active rocks.' }] };
+    }
+
+    const text = tasks.map((t, i) => (
+      `${i + 1}. "${t.title}"`
+      + ` [sortOrder: ${t.sortOrder}]`
+      + `${t.priority !== 'low' ? ` [${t.priority}]` : ''}`
+      + `${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''}`
+      + `${t.projectId ? ' [project-linked]' : ' [standalone]'}`
+      + ` [id: ${t.id}]`
+    )).join('\n');
+
+    return {
+      content: [{ type: 'text', text: `${tasks.length} active rock(s):\n\n${text}` }],
+    };
   }
 );
 
@@ -270,7 +315,7 @@ server.tool(
 
     const text = limited.map((t, i) => {
       const age = t.createdAt ? Math.floor((Date.now() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60 * 24)) : '?';
-      return `${i + 1}. "${t.title}"${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` ⚑ due ${t.deadline.slice(0, 10)}` : ''} (${age}d old)${t.projectId ? ' [project-linked]' : ''} [id: ${t.id}]`;
+      return `${i + 1}. "${t.title}" [sortOrder: ${t.sortOrder}]${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` ⚑ due ${t.deadline.slice(0, 10)}` : ''} (${age}d old)${t.projectId ? ' [project-linked]' : ''} [id: ${t.id}]`;
     }).join('\n');
 
     return {
@@ -313,6 +358,7 @@ server.tool(
     const completedTasks = await listTasks({ projectId, status: 'completed' });
 
     const boulders = activeTasks.filter(t => t.classification === 'boulder');
+    const rocks = activeTasks.filter(t => t.classification === 'rock');
     const pebbles = activeTasks.filter(t => t.classification === 'pebble');
     const unclassified = activeTasks.filter(t => t.classification === 'unclassified');
 
@@ -323,10 +369,13 @@ server.tool(
     text += `\n---\n\n## Active Tasks\n`;
 
     if (boulders.length > 0) {
-      text += `\nBoulders (${boulders.length}):\n${boulders.map(t => `  • "${t.title}"${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}\n`;
+      text += `\nBoulders (${boulders.length}):\n${boulders.map(t => `  • "${t.title}" [sortOrder: ${t.sortOrder}]${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}\n`;
+    }
+    if (rocks.length > 0) {
+      text += `\nRocks (${rocks.length}):\n${rocks.map(t => `  • "${t.title}" [sortOrder: ${t.sortOrder}]${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}\n`;
     }
     if (pebbles.length > 0) {
-      text += `\nPebbles (${pebbles.length}):\n${pebbles.map(t => `  • "${t.title}"${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}\n`;
+      text += `\nPebbles (${pebbles.length}):\n${pebbles.map(t => `  • "${t.title}" [sortOrder: ${t.sortOrder}]${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}\n`;
     }
     if (unclassified.length > 0) {
       text += `\nUnclassified (${unclassified.length}):\n${unclassified.map(t => `  • "${t.title}" [id: ${t.id}]`).join('\n')}\n`;
@@ -387,11 +436,12 @@ server.tool(
 
 server.tool(
   'get_today',
-  'Get a snapshot of today: active boulders to choose from, top pebbles, and inbox count. Use this to help with daily planning.',
+  'Get a snapshot of today: active boulders and rocks to choose from, top pebbles, and inbox count. Use this to help with daily planning.',
   {},
   async () => {
-    const [boulders, pebbles, inbox] = await Promise.all([
+    const [boulders, rocks, pebbles, inbox] = await Promise.all([
       listTasks({ classification: 'boulder', status: 'active' }),
+      listTasks({ classification: 'rock', status: 'active' }),
       listTasks({ classification: 'pebble', status: 'active' }),
       listTasks({ classification: 'unclassified', status: 'active' }),
     ]);
@@ -409,7 +459,28 @@ server.tool(
       text += 'No active boulders. Consider decomposing a project into boulders.\n';
     } else {
       for (const t of boulders) {
-        let line = `• "${t.title}"`;
+        let line = `• "${t.title}" [sortOrder: ${t.sortOrder}]`;
+        if (t.priority !== 'low') line += ` [${t.priority}]`;
+        if (t.deadline) line += ` (due ${t.deadline.slice(0, 10)})`;
+        if (t.projectId) {
+          try {
+            const p = await getProject(t.projectId);
+            line += ` — ${p.name}`;
+          } catch { /* ignore */ }
+        } else {
+          line += ' — standalone';
+        }
+        line += ` [id: ${t.id}]`;
+        text += line + '\n';
+      }
+    }
+
+    text += `\n## Rocks (${rocks.length})\n`;
+    if (rocks.length === 0) {
+      text += 'No active rocks.\n';
+    } else {
+      for (const t of rocks) {
+        let line = `• "${t.title}" [sortOrder: ${t.sortOrder}]`;
         if (t.priority !== 'low') line += ` [${t.priority}]`;
         if (t.deadline) line += ` (due ${t.deadline.slice(0, 10)})`;
         if (t.projectId) {
@@ -432,7 +503,7 @@ server.tool(
       text += 'No active pebbles.\n';
     } else {
       topPebbles.forEach((t, i) => {
-        text += `${i + 1}. "${t.title}"${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` ⚑ ${t.deadline.slice(0, 10)}` : ''} [id: ${t.id}]\n`;
+        text += `${i + 1}. "${t.title}" [sortOrder: ${t.sortOrder}]${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` ⚑ ${t.deadline.slice(0, 10)}` : ''} [id: ${t.id}]\n`;
       });
       if (pebbles.length > 10) {
         text += `\n...and ${pebbles.length - 10} more pebbles.\n`;
@@ -445,7 +516,7 @@ server.tool(
 
 server.tool(
   'suggest_tasks_for_project',
-  'Get a project\'s full context (markdown + all tasks) formatted for you to suggest next boulders and pebbles. After reviewing, use add_task to create the tasks the user approves.',
+  'Get a project\'s full context (markdown + all tasks) formatted for you to suggest next boulders, rocks, and pebbles. After reviewing, use add_task to create the tasks the user approves.',
   {
     projectId: z.string().describe('Project ID'),
   },
@@ -462,12 +533,15 @@ server.tool(
     text += `## Current State\n\n`;
 
     const boulders = activeTasks.filter(t => t.classification === 'boulder');
+    const rocks = activeTasks.filter(t => t.classification === 'rock');
     const pebbles = activeTasks.filter(t => t.classification === 'pebble');
 
     text += `Active boulders (${boulders.length}):\n`;
-    boulders.forEach(t => { text += `  • "${t.title}"\n`; });
+    boulders.forEach(t => { text += `  • "${t.title}" [sortOrder: ${t.sortOrder}] [id: ${t.id}]\n`; });
+    text += `\nActive rocks (${rocks.length}):\n`;
+    rocks.forEach(t => { text += `  • "${t.title}" [sortOrder: ${t.sortOrder}] [id: ${t.id}]\n`; });
     text += `\nActive pebbles (${pebbles.length}):\n`;
-    pebbles.forEach(t => { text += `  • "${t.title}"\n`; });
+    pebbles.forEach(t => { text += `  • "${t.title}" [sortOrder: ${t.sortOrder}] [id: ${t.id}]\n`; });
 
     if (completedTasks.length > 0) {
       text += `\nCompleted (${completedTasks.length}):\n`;
@@ -478,7 +552,7 @@ server.tool(
       iceboxedTasks.forEach(t => { text += `  ❄ "${t.title}"\n`; });
     }
 
-    text += `\n---\n\nBased on the project document and task history above, suggest next boulders (deep work blocks) and pebbles (small tasks) that would move this project forward. Present them for the user to approve, then use add_task to create the approved ones.`;
+    text += `\n---\n\nBased on the project document and task history above, suggest next boulders (deep work blocks), rocks (medium-sized tasks), and pebbles (small tasks) that would move this project forward. Present them for the user to approve, then use add_task to create the approved ones.`;
 
     return { content: [{ type: 'text', text }] };
   }

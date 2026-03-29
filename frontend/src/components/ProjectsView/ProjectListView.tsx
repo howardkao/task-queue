@@ -1,8 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import { useProjects, useCreateProject, useToggleProjectStatus, useDeleteProject } from '../../hooks/useProjects';
 import { useTasks, useUpdateTask, useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
+import { useIsMobile } from '../../hooks/useViewport';
 import type { Project, Task } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
+import { SideDrawer } from '../shared/SideDrawer';
 
 interface ProjectListViewProps {
   onOpenProject: (id: string) => void;
@@ -11,6 +13,7 @@ interface ProjectListViewProps {
 const PROJECT_TASK_DRAG_TYPE = 'project-task-id';
 
 export function ProjectListView({ onOpenProject }: ProjectListViewProps) {
+  const isMobile = useIsMobile();
   const { data: projects = [], isLoading } = useProjects();
   const { data: activeTasks = [] } = useTasks({ status: 'active' });
   const createProject = useCreateProject();
@@ -23,6 +26,7 @@ export function ProjectListView({ onOpenProject }: ProjectListViewProps) {
   const [showInput, setShowInput] = useState(false);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [activeRailFilter, setActiveRailFilter] = useState<'all' | 'unclassified' | 'boulder' | 'rock' | 'pebble'>('all');
+  const [drawerOpen, setDrawerOpen] = useState(false);
 
   const activeProjects = projects.filter(p => p.status === 'active');
   const holdProjects = projects.filter(p => p.status === 'on_hold');
@@ -60,6 +64,57 @@ export function ProjectListView({ onOpenProject }: ProjectListViewProps) {
     }
   };
 
+  useEffect(() => {
+    if (!isMobile) setDrawerOpen(false);
+  }, [isMobile]);
+
+  const railContent = (
+    <div style={railCardStyle}>
+      <div style={railHeaderRowStyle}>
+        <div>
+          <h2 style={sectionHeaderStyle}>No Project</h2>
+          <div style={railHintStyle}>Drag a task onto a project to assign it.</div>
+        </div>
+        <span style={railCountStyle}>{displayedRailTasks.length}</span>
+      </div>
+
+      <div style={filterChipWrapStyle}>
+        {(['all', 'unclassified', 'boulder', 'rock', 'pebble'] as const).map(filter => (
+          <button
+            key={filter}
+            onClick={() => setActiveRailFilter(filter)}
+            style={{
+              ...filterChipStyle,
+              ...(activeRailFilter === filter ? activeFilterChipStyle : {}),
+            }}
+          >
+            {filter === 'all' ? 'All' : filter.charAt(0).toUpperCase() + filter.slice(1)}
+          </button>
+        ))}
+      </div>
+
+      {displayedRailTasks.length === 0 && (
+        <div style={emptyRailStyle}>
+          No matching unassociated tasks.
+        </div>
+      )}
+
+      <div style={railListStyle}>
+        {displayedRailTasks.map(task => (
+          <RailTaskCard
+            key={task.id}
+            task={task}
+            isEditing={editingTaskId === task.id}
+            onToggleEdit={() => setEditingTaskId(prev => prev === task.id ? null : task.id)}
+            onCloseEdit={() => setEditingTaskId(null)}
+            onComplete={(id) => completeTask.mutate(id)}
+            onIcebox={(id) => iceboxTask.mutate(id)}
+          />
+        ))}
+      </div>
+    </div>
+  );
+
   return (
     <div style={{ padding: '20px 24px', maxWidth: '1380px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
@@ -79,6 +134,11 @@ export function ProjectListView({ onOpenProject }: ProjectListViewProps) {
             <button onClick={handleCreate} style={btnStyle}>Create</button>
             <button onClick={() => { setShowInput(false); setNewName(''); }} style={{ ...btnStyle, borderColor: '#fca5a5', color: '#ef4444' }}>Cancel</button>
           </div>
+        )}
+        {isMobile && (
+          <button onClick={() => setDrawerOpen(true)} style={{ ...btnStyle, marginLeft: 'auto' }}>
+            No Project
+          </button>
         )}
       </div>
 
@@ -134,53 +194,18 @@ export function ProjectListView({ onOpenProject }: ProjectListViewProps) {
             </div>
           </div>
 
-          <div style={railStyle}>
-            <div style={railCardStyle}>
-              <div style={railHeaderRowStyle}>
-                <div>
-                  <h2 style={sectionHeaderStyle}>No Project</h2>
-                  <div style={railHintStyle}>Drag a task onto a project to assign it.</div>
-                </div>
-                <span style={railCountStyle}>{displayedRailTasks.length}</span>
-              </div>
-
-              <div style={filterChipWrapStyle}>
-                {(['all', 'unclassified', 'boulder', 'rock', 'pebble'] as const).map(filter => (
-                  <button
-                    key={filter}
-                    onClick={() => setActiveRailFilter(filter)}
-                    style={{
-                      ...filterChipStyle,
-                      ...(activeRailFilter === filter ? activeFilterChipStyle : {}),
-                    }}
-                  >
-                    {filter === 'all' ? 'All' : filter.charAt(0).toUpperCase() + filter.slice(1)}
-                  </button>
-                ))}
-              </div>
-
-              {displayedRailTasks.length === 0 && (
-                <div style={emptyRailStyle}>
-                  No matching unassociated tasks.
-                </div>
-              )}
-
-              <div style={railListStyle}>
-                {displayedRailTasks.map(task => (
-                  <RailTaskCard
-                    key={task.id}
-                    task={task}
-                    isEditing={editingTaskId === task.id}
-                    onToggleEdit={() => setEditingTaskId(prev => prev === task.id ? null : task.id)}
-                    onCloseEdit={() => setEditingTaskId(null)}
-                    onComplete={(id) => completeTask.mutate(id)}
-                    onIcebox={(id) => iceboxTask.mutate(id)}
-                  />
-                ))}
-              </div>
+          {!isMobile && (
+            <div style={railStyle}>
+              {railContent}
             </div>
-          </div>
+          )}
         </div>
+      )}
+
+      {isMobile && (
+        <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title="No Project">
+          {railContent}
+        </SideDrawer>
       )}
     </div>
   );
@@ -339,6 +364,7 @@ const layoutStyle: React.CSSProperties = {
   display: 'flex',
   gap: '24px',
   alignItems: 'flex-start',
+  flexWrap: 'nowrap',
 };
 
 const projectsColumnStyle: React.CSSProperties = {

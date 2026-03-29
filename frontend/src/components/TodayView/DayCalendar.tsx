@@ -23,9 +23,9 @@ interface DayCalendarProps {
   onBoulderRemove?: (boulderId: string) => void;
 }
 
-const SLOT_HEIGHT = 44; // px per half hour
+const SLOT_HEIGHT = 22; // px per half hour
 const SNAP = 0.25; // 15 minutes
-const PX_PER_HOUR = SLOT_HEIGHT * 2; // 88px per hour
+const PX_PER_HOUR = SLOT_HEIGHT * 2; // 44px per hour
 
 function snapToGrid(hour: number): number {
   return Math.round(hour / SNAP) * SNAP;

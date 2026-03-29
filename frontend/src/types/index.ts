@@ -14,7 +14,13 @@ export interface Task {
   recurrence: RecurrenceRule | null;
   projectId: string | null;
   sortOrder: number;
+  placement?: {
+    date: string;       // YYYY-MM-DD
+    startHour: number;  // e.g. 9.5
+    duration: number;   // in hours
+  } | null;
   completedAt: any;
+  lastOccurrenceCompletedAt?: any; // Completion time of previous occurrence
   createdAt: any;
   updatedAt: any;
 }
@@ -24,6 +30,7 @@ export interface RecurrenceRule {
   interval?: number;        // repeat every N (days for periodically, weeks/months for custom)
   days?: string[];          // for weekly/custom-weekly: ['mon','tue','wed','thu','fri','sat','sun']
   customUnit?: 'weekly' | 'monthly'; // for custom: which unit the interval applies to
+  periodUnit?: 'hours' | 'days' | 'weeks'; // for periodically: which unit the interval applies to
 }
 
 export interface Project {

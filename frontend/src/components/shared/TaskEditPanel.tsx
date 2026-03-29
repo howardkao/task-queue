@@ -33,13 +33,15 @@ function recurrenceToMode(rec: RecurrenceRule | null): RecurrenceMode {
   return rec.freq as RecurrenceMode;
 }
 
-function parseDeadline(deadline: string | null): string {
-  if (!deadline) return '';
+function parseDeadline(deadline: string | null): { date: string; time: string } {
+  if (!deadline) return { date: '', time: '' };
   try {
     const d = new Date(deadline);
-    return d.toISOString().slice(0, 10);
+    const date = d.toISOString().slice(0, 10);
+    const time = d.getHours() || d.getMinutes() ? d.toTimeString().slice(0, 5) : '';
+    return { date, time };
   } catch {
-    return '';
+    return { date: '', time: '' };
   }
 }
 
@@ -54,13 +56,15 @@ interface EditableTaskState {
 }
 
 function buildEditableState(task: Task): EditableTaskState {
+  const { date, time } = parseDeadline(task.deadline);
+  const deadlineStr = date ? (time ? `${date}T${time}` : date) : null;
   return {
     title: task.title,
     notes: task.notes,
     classification: task.classification,
     priority: task.priority || 'low',
     projectId: task.projectId || null,
-    deadline: parseDeadline(task.deadline) || null,
+    deadline: deadlineStr,
     recurrence: task.recurrence || null,
   };
 }
@@ -71,12 +75,15 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   const { data: projects = [] } = useProjects();
   const createProject = useCreateProject();
 
+  const initialDeadline = parseDeadline(task.deadline);
   const [title, setTitle] = useState(task.title);
   const [notes, setNotes] = useState(task.notes);
   const [classification, setClassification] = useState<Classification>(task.classification);
   const [priority, setPriority] = useState<Priority>(task.priority || 'low');
   const [projectId, setProjectId] = useState(task.projectId || '');
-  const [deadline, setDeadline] = useState(parseDeadline(task.deadline));
+  const [deadlineDate, setDeadlineDate] = useState(initialDeadline.date);
+  const [deadlineTime, setDeadlineTime] = useState(initialDeadline.time);
+  const [showTime, setShowTime] = useState(!!initialDeadline.time);
 
   // Progressive disclosure: which optional fields are shown
   const [showNotes, setShowNotes] = useState(!!task.notes);
@@ -89,8 +96,11 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   const [weeklyDays, setWeeklyDays] = useState<string[]>(
     task.recurrence?.freq === 'weekly' && task.recurrence.days ? task.recurrence.days : []
   );
-  const [periodicallyDays, setPeriodicallyDays] = useState(
+  const [periodicallyValue, setPeriodicallyValue] = useState(
     task.recurrence?.freq === 'periodically' ? (task.recurrence.interval || 7) : 7
+  );
+  const [periodicallyUnit, setPeriodicallyUnit] = useState<'hours' | 'days' | 'weeks'>(
+    task.recurrence?.freq === 'periodically' ? (task.recurrence.periodUnit || 'days') : 'days'
   );
   const [customUnit, setCustomUnit] = useState<'weekly' | 'monthly'>(
     task.recurrence?.freq === 'custom' ? (task.recurrence.customUnit || 'weekly') : 'weekly'
@@ -116,14 +126,14 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   }, []);
   useEffect(() => { autoResize(titleRef.current); }, [title, autoResize]);
 
-  const buildRecurrence = (): RecurrenceRule | null => {
+  const buildRecurrence = useCallback((): RecurrenceRule | null => {
     if (!showRecurrence) return null;
     switch (recMode) {
       case 'daily': return { freq: 'daily' };
       case 'weekly': return weeklyDays.length > 0 ? { freq: 'weekly', days: weeklyDays } : { freq: 'weekly' };
       case 'monthly': return { freq: 'monthly' };
       case 'yearly': return { freq: 'yearly' };
-      case 'periodically': return { freq: 'periodically', interval: periodicallyDays };
+      case 'periodically': return { freq: 'periodically', interval: periodicallyValue, periodUnit: periodicallyUnit };
       case 'custom': {
         const base: RecurrenceRule = { freq: 'custom', customUnit, interval: customInterval };
         if (customUnit === 'weekly' && customDays.length > 0) base.days = customDays;
@@ -131,17 +141,20 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
       }
       default: return null;
     }
-  };
+  }, [showRecurrence, recMode, weeklyDays, periodicallyValue, periodicallyUnit, customUnit, customInterval, customDays]);
 
-  const buildCurrentState = useCallback((): EditableTaskState => ({
-    title,
-    notes,
-    classification,
-    priority,
-    projectId: projectId || null,
-    deadline: (showDeadline && deadline) ? deadline : null,
-    recurrence: buildRecurrence(),
-  }), [title, notes, classification, priority, projectId, showDeadline, deadline, buildRecurrence]);
+  const buildCurrentState = useCallback((): EditableTaskState => {
+    const deadlineStr = (showDeadline && deadlineDate) ? (deadlineTime ? `${deadlineDate}T${deadlineTime}` : deadlineDate) : null;
+    return {
+      title,
+      notes,
+      classification,
+      priority,
+      projectId: projectId || null,
+      deadline: deadlineStr,
+      recurrence: buildRecurrence(),
+    };
+  }, [title, notes, classification, priority, projectId, showDeadline, deadlineDate, deadlineTime, buildRecurrence]);
 
   const buildUpdateData = useCallback((current: EditableTaskState) => {
     const data: any = {};
@@ -233,12 +246,25 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
 
   const handleRecModeChange = (mode: RecurrenceMode) => {
     setRecMode(mode);
-    if (mode === 'weekly' && weeklyDays.length === 0 && deadline) {
-      setWeeklyDays([dayOfWeekFromDate(deadline)]);
+    if (mode === 'weekly' && weeklyDays.length === 0 && deadlineDate) {
+      setWeeklyDays([dayOfWeekFromDate(deadlineDate)]);
     }
-    if (mode === 'custom' && customUnit === 'weekly' && customDays.length === 0 && deadline) {
-      setCustomDays([dayOfWeekFromDate(deadline)]);
+    if (mode === 'custom' && customUnit === 'weekly' && customDays.length === 0 && deadlineDate) {
+      setCustomDays([dayOfWeekFromDate(deadlineDate)]);
     }
+    if (mode === 'periodically') {
+      // Set defaults if not already set
+      if (periodicallyUnit === 'hours') setPeriodicallyValue(24);
+      else if (periodicallyUnit === 'weeks') setPeriodicallyValue(2);
+      else setPeriodicallyValue(3);
+    }
+  };
+
+  const handlePeriodicallyUnitChange = (unit: 'hours' | 'days' | 'weeks') => {
+    setPeriodicallyUnit(unit);
+    if (unit === 'hours') setPeriodicallyValue(24);
+    else if (unit === 'weeks') setPeriodicallyValue(2);
+    else setPeriodicallyValue(3);
   };
 
   const toggleDay = (day: string, days: string[], setDays: (d: string[]) => void) => {
@@ -260,7 +286,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   if (!showNotes) addLinks.push({ label: '+ Add notes', action: () => setShowNotes(true) });
   if (!showProject) addLinks.push({ label: '+ Add project', action: () => setShowProject(true) });
   if (!showDeadline) addLinks.push({ label: '+ Add deadline', action: () => setShowDeadline(true) });
-  if (showDeadline && !showRecurrence) addLinks.push({ label: '+ Add recurrence', action: () => { setShowRecurrence(true); if (!recMode) setRecMode('weekly'); } });
+  if (showDeadline && !showRecurrence) addLinks.push({ label: '+ Add recurrence', action: () => { setShowRecurrence(true); if (!recMode) handleRecModeChange('weekly'); } });
 
   return (
     <div
@@ -369,9 +395,14 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
 
       {/* Deadline — progressive */}
       {showDeadline && (
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px' }}>
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' }}>
           <span style={labelStyle}>Deadline:</span>
-          <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} style={selectStyle} />
+          <input type="date" value={deadlineDate} onChange={e => setDeadlineDate(e.target.value)} style={selectStyle} />
+          {showTime ? (
+            <input type="time" value={deadlineTime} onChange={e => setDeadlineTime(e.target.value)} style={selectStyle} />
+          ) : (
+            <span onClick={() => setShowTime(true)} style={addFieldStyle}>+ Add time</span>
+          )}
           <span onClick={() => removeField('deadline')} style={removeXStyle} title="Remove deadline">✕</span>
         </div>
       )}
@@ -419,11 +450,20 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
             <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
               <span style={{ fontSize: '12px', color: '#6b7280' }}>Reschedule</span>
               <input
-                type="number" min={1} max={30} value={periodicallyDays}
-                onChange={e => setPeriodicallyDays(Math.min(30, Math.max(1, parseInt(e.target.value) || 1)))}
+                type="number" min={1} value={periodicallyValue}
+                onChange={e => setPeriodicallyValue(Math.max(1, parseInt(e.target.value) || 1))}
                 style={{ ...selectStyle, width: '52px', textAlign: 'center' }}
               />
-              <span style={{ fontSize: '12px', color: '#6b7280' }}>days after completion</span>
+              <select
+                value={periodicallyUnit}
+                onChange={e => handlePeriodicallyUnitChange(e.target.value as any)}
+                style={selectStyle}
+              >
+                <option value="hours">hours</option>
+                <option value="days">days</option>
+                <option value="weeks">weeks</option>
+              </select>
+              <span style={{ fontSize: '12px', color: '#6b7280' }}>after completion</span>
             </div>
           )}
 

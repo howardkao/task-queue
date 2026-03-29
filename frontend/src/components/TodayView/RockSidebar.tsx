@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { Task } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
 import { useProjects } from '../../hooks/useProjects';
@@ -58,6 +58,19 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
     persistOrder(list);
   }, [displayRocks, persistOrder]);
 
+  const handleBumpToTop = useCallback((id: string) => {
+    const idx = displayRocks.findIndex(t => t.id === id);
+    if (idx > 0) applyReorder(idx, 0);
+  }, [applyReorder, displayRocks]);
+
+  const handleDropBy10 = useCallback((id: string) => {
+    const idx = displayRocks.findIndex(t => t.id === id);
+    if (idx >= 0) {
+      const newIdx = Math.min(idx + 10, displayRocks.length - 1);
+      if (newIdx !== idx) applyReorder(idx, newIdx);
+    }
+  }, [applyReorder, displayRocks]);
+
   const handleDragStart = (e: React.DragEvent, rock: Task, index: number) => {
     e.dataTransfer.setData('boulder-id', rock.id);
     e.dataTransfer.setData('boulder-reorder', String(index));
@@ -85,16 +98,21 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
     setDragFromIndex(null);
   }, [dragFromIndex, dropGapIndex, applyReorder]);
 
-  if (
-    localOrder
-    && dragFromIndex === null
-    && (
-      rocks.length !== localOrder.length
-      || rocks.some((task, index) => task.id !== localOrder[index]?.id)
-    )
-  ) {
-    setLocalOrder(null);
-  }
+  useEffect(() => {
+    if (!localOrder || dragFromIndex !== null) return;
+
+    if (!haveSameTaskIds(rocks, localOrder)) {
+      setLocalOrder(null);
+      return;
+    }
+
+    setLocalOrder((current) => {
+      if (!current) return current;
+      const merged = mergeTasksPreservingOrder(rocks, current);
+      const changed = merged.some((task, index) => task !== current[index]);
+      return changed ? merged : current;
+    });
+  }, [dragFromIndex, localOrder, rocks]);
 
   return (
     <div>
@@ -128,7 +146,29 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
               }}
             >
               <div style={cardInner}>
-                <span style={{ ...dragHandle, color: isPlaced ? '#d8ccb3' : '#d7b27a' }}>⠿</span>
+                <div style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  alignItems: 'center',
+                  gap: '2px',
+                  flexShrink: 0,
+                }}>
+                  <span style={{ ...dragHandle, color: isPlaced ? '#d8ccb3' : '#d7b27a' }}>⠿</span>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleBumpToTop(rock.id); }}
+                    title="Bump to top"
+                    style={reorderBtn}
+                  >
+                    ⤒
+                  </button>
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleDropBy10(rock.id); }}
+                    title="Drop 10"
+                    style={reorderBtn}
+                  >
+                    ↓
+                  </button>
+                </div>
                 <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setEditingId(isEditing ? null : rock.id)}>
                   <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1f2937' }}>
                     {isPlaced && <span style={{ fontSize: '11px', marginRight: '4px' }}>📅</span>}
@@ -140,11 +180,16 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
                     </div>
                   )}
                   {projectName && <div style={metaLine}>{projectName}</div>}
-                  {(deadlineStr || rock.recurrence) && (
+                  {(deadlineStr || rock.recurrence || rock.lastOccurrenceCompletedAt) && (
                     <div style={metaLine}>
                       {deadlineStr && <span style={{ color: '#FF6B6B' }}>⚑ {deadlineStr}</span>}
-                      {deadlineStr && rock.recurrence && <span style={{ margin: '0 4px' }}></span>}
-                      {rock.recurrence && <span>↻</span>}
+                      {deadlineStr && (rock.recurrence || rock.lastOccurrenceCompletedAt) && <span style={{ margin: '0 4px' }}></span>}
+                      {rock.recurrence && <span style={{ marginRight: '4px' }}>↻</span>}
+                      {rock.lastOccurrenceCompletedAt && (
+                        <span style={{ fontSize: '10px', color: '#9ca3af' }}>
+                          Prev: {formatLastCompleted(rock.lastOccurrenceCompletedAt)}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -220,6 +265,19 @@ const dragHandle: React.CSSProperties = {
   marginTop: '1px',
 };
 
+const reorderBtn: React.CSSProperties = {
+  padding: '0px 4px',
+  border: '1px solid #e5e7eb',
+  borderRadius: '4px',
+  background: '#f9fafb',
+  cursor: 'pointer',
+  fontSize: '10px',
+  color: '#9ca3af',
+  fontFamily: 'inherit',
+  lineHeight: '1.4',
+  display: 'block',
+};
+
 const titleStyle: React.CSSProperties = {
   fontSize: '14px',
   color: '#1f2937',
@@ -239,4 +297,25 @@ function formatDeadline(deadline: string): string {
   } catch {
     return deadline;
   }
+}
+
+function formatLastCompleted(timestamp: any): string {
+  if (!timestamp) return '';
+  try {
+    const d = timestamp.seconds ? new Date(timestamp.seconds * 1000) : new Date(timestamp);
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function haveSameTaskIds(source: Task[], ordered: Task[]): boolean {
+  if (source.length !== ordered.length) return false;
+  const sourceIds = new Set(source.map(task => task.id));
+  return ordered.every(task => sourceIds.has(task.id));
+}
+
+function mergeTasksPreservingOrder(source: Task[], ordered: Task[]): Task[] {
+  const latestById = new Map(source.map(task => [task.id, task]));
+  return ordered.map(task => latestById.get(task.id) ?? task);
 }

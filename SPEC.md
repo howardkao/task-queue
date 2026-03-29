@@ -4,7 +4,7 @@
 
 ### High-Level Overview
 
-Task Queue is a single-page React application backed by Firebase Auth + Firestore, designed for a small number of authenticated users to manage tasks using a boulders (deep work) and pebbles (small tasks) mental model. Assistant integration happens externally via an MCP server; the app itself remains a simple, durable CRUD system.
+Task Queue is a single-page React application backed by Firebase Auth + Firestore, designed for a small number of authenticated users to manage tasks using a boulders (deep work), rocks (medium-sized work), and pebbles (small tasks) mental model. Assistant integration happens externally via an MCP server; the app itself remains a simple, durable CRUD system.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -78,17 +78,19 @@ App.tsx
 │   └── AdminPanel (invite code management, admin-only)
 ├── TabBar (shared) — 3 tabs: Today, Icebox, Projects
 ├── TodayView/
-│   ├── DayCalendar (7am–10pm time grid + drag-and-drop boulder placement)
-│   ├── Inline Inbox (capture input + boulder/pebble classify buttons)
+│   ├── DayCalendar (7am–10pm time grid + drag-and-drop boulder/rock placement)
+│   ├── Inline Inbox (capture input + boulder/rock/pebble classify buttons)
 │   ├── BoulderSidebar (draggable boulder cards, visual placed/unplaced distinction)
+│   ├── RockSidebar (draggable rock cards, visual placed/unplaced distinction)
 │   └── PebbleSidebar (self-contained: full drag-reorder, bump/drop, complete/icebox)
 ├── IceboxView/
 │   └── IceboxView (grouped list of iceboxed tasks, reactivate or delete)
 ├── ProjectsView/
-│   ├── ProjectListView (project list + create)
-│   └── ProjectDetailView (markdown editor + task sidebar + activity log)
+│   ├── ProjectListView (project list + unassociated-task rail/drawer + create)
+│   └── ProjectDetailView (markdown editor + task sections + activity log)
 └── shared/
     ├── TaskEditPanel (reusable task metadata editor: title, notes, project, deadline, recurrence)
+    ├── SideDrawer (mobile right-edge overlay drawer used by Today and Projects)
     └── Toast (global error toast system)
 
 Hooks (all in src/hooks/):
@@ -114,15 +116,16 @@ All data flows follow the same pattern:
 
 ### Feature 1: Inline Inbox (Capture + Classification)
 
-**What it does:** Unclassified tasks enter via a text input at the top of the Today sidebar. Each shows the task title with two buttons: 🪨 (boulder) or Pebble. Classifying moves the task to the top of the respective list. There is no standalone Triage tab — capture and classification happen inline on the Today page.
+**What it does:** Unclassified tasks enter via a text input at the top of the Today task workspace. Each shows the task title with buttons for boulder, rock, or pebble. Classifying moves the task to the top of the respective ordered list. There is no standalone Triage tab — capture and classification happen inline on the Today page.
 
 **Location in component tree:**
 ```
-TodayView sidebar (above boulder/pebble toggle)
+TodayView task workspace (above the ordered task sections)
 ├── Text input (Enter to capture)
 └── Inbox task rows[] (one per unclassified task)
     ├── Title
     ├── 🪨 button (classify as boulder → top of boulder list)
+    ├── Rock button (classify as rock → top of rock list)
     └── Pebble button (classify as pebble → top of pebble list)
 ```
 
@@ -133,34 +136,34 @@ TodayView sidebar (above boulder/pebble toggle)
 
 **Edge cases:**
 - Empty inbox: section collapses, only input visible
-- Classifying as boulder or pebble puts the task at the **top** of the list (lowest sortOrder)
+- Classifying as boulder, rock, or pebble puts the task at the **top** of the list (lowest sortOrder)
 
 ---
 
-### Feature 2: Pebble Management (PebbleSidebar)
+### Feature 2: Ordered Task Management (Boulders, Rocks, Pebbles)
 
-**What it does:** Self-contained pebble manager embedded in the Today sidebar (toggle: Boulders ↔ Pebbles). Full drag-and-drop reorder, shortcut buttons, complete/icebox via expanded card view.
+**What it does:** The Today task workspace contains ordered lists for boulders, rocks, and pebbles. Each list supports drag-and-drop reorder, shortcut buttons, and complete/icebox via expanded card view.
 
 **Component tree:**
 ```
-PebbleSidebar (self-contained — fetches own data)
-└── Pebble card[] (one per active pebble)
+BoulderSidebar / RockSidebar / PebbleSidebar
+└── Task card[] (one per active task in that classification)
     ├── Drag handle (⠿) with ⤒/↓ stacked below
     ├── Task title (click to expand → TaskEditPanel)
     ├── Project name (if assigned)
     ├── Deadline flag (⚑) + recurrence indicator (↻)
-    └── Staleness indicator (days since creation, color escalation)
+    └── Classification-specific metadata (e.g. staleness indicator on pebbles, calendar placement state on boulders/rocks)
 ```
 
 **State management:**
-- `usePebbles()` fetches sorted pebble list
+- `useBoulders()`, `useRocks()`, and `usePebbles()` fetch sorted task lists by classification
 - Local `localOrder` state for optimistic drag reordering
 - On drag end: update local state immediately, then `reorderPebbles.mutate()` with new sort orders
 - Bump-to-top: assigns `sortOrder = firstPebble.sortOrder - 1000`
 - Drop-by-10: inserts between positions 10 and 11 using fractional indexing
 
 **Sort order strategy:**
-- Both pebbles and boulders use a numeric `sortOrder` field (fractional indexing)
+- Boulders, rocks, and pebbles use a numeric `sortOrder` field (fractional indexing)
 - **New tasks (from inbox classification) go to the top of their list** via `getTopSortOrder()` which finds the minimum sortOrder and subtracts 1000
 - Fallback for missing composite index: `-1000 + Math.random() * 100`
 - Full drag reorder: assigns fresh integer sortOrders to all items via `writeBatch`
@@ -173,38 +176,41 @@ PebbleSidebar (self-contained — fetches own data)
 
 ### Feature 3: Today View (Daily Planning)
 
-**What it does:** Day calendar (7am–10pm) showing Google Calendar events + boulder blocks. Sidebar with inline inbox, toggleable boulder/pebble sections. Boulders are dragged onto the calendar to sketch out the day's plan.
+**What it does:** Adjustable day calendar (7am–10pm) showing Google Calendar events plus boulder and rock blocks. On desktop, Today uses a split layout with a right task workspace. On mobile, Today defaults to a single-day calendar and moves the task workspace into a right-edge overlay drawer.
 
 **Component tree:**
 ```
 TodayView
+├── Header controls
+│   └── Day count selector (desktop/tablet: 1/2/3/5 days)
 ├── DayCalendar (7am–10pm time grid)
 │   ├── Half-hour slot lines
-│   ├── Drop indicator line (when dragging boulder over)
+│   ├── Drop indicator line (when dragging boulder/rock over)
 │   └── Event overlays (positioned absolutely)
 │       ├── Meeting events (blue, from iCal)
 │       ├── Personal events (green, from iCal)
-│       └── Boulder blocks (coral dashed border, draggable/resizable)
+│       ├── Boulder blocks (coral dashed border, draggable/resizable)
+│       └── Rock blocks (amber dashed border, draggable/resizable)
 │           ├── Time range + title + project name
 │           ├── → button (remove from calendar)
 │           └── Resize handle (bottom, 8px, ns-resize cursor)
-├── Sidebar (320px)
+├── Desktop task workspace (persistent right column)
 │   ├── Inline Inbox (capture + classify)
-│   ├── Toggle (Boulders ↔ Pebbles)
-│   ├── BoulderSidebar (when selected)
-│   │   └── Boulder cards with visual placed/unplaced distinction
-│   └── PebbleSidebar (when selected)
-│       └── Full pebble management (see Feature 2)
+│   ├── BoulderSidebar
+│   ├── RockSidebar
+│   └── PebbleSidebar
+└── Mobile task workspace
+    └── SideDrawer (same content as desktop, overlay instead of reflow)
 ```
 
 **Boulder placement flow:**
-1. User drags a boulder card from the sidebar onto the calendar
+1. User drags a boulder or rock card from the task workspace onto the calendar
 2. A drop indicator line shows the snap position (15-minute increments)
-3. On drop, boulder appears as a coral-dashed block (default 2 hours)
-4. **Boulder remains in the sidebar** with a visual distinction (opacity/dimmed) — it's "sketched" onto the calendar, not moved
-5. Placed boulders can be moved (mousedown drag) or resized (bottom handle drag) in 15-minute snaps
-6. → button removes boulder from calendar (returns to full opacity in sidebar)
-7. Task metadata can be edited from the sidebar's expanded card view (TaskEditPanel)
+3. On drop, the task appears as a dashed block (default 2 hours)
+4. **The task remains in the workspace list** with a visual distinction (opacity/dimmed) — it's "sketched" onto the calendar, not moved
+5. Placed tasks can be moved (mousedown drag) or resized (bottom handle drag) in 15-minute snaps
+6. → button removes the task from the calendar (returns to full opacity in the list)
+7. Task metadata can be edited from the expanded card view (TaskEditPanel)
 
 **Snap grid:**
 - `SNAP = 0.25` (15-minute increments)
@@ -217,15 +223,16 @@ TodayView
 - `icalToCalEvents()` converts CalendarEvent[] to internal CalEvent[] format
 
 **Client state (TodayView):**
-- `placedBoulders: Record<string, { startHour: number; duration: number }>` — boulder calendar placements (ephemeral, not persisted)
-- `sidebarMode: 'boulders' | 'pebbles'` — which sidebar section is active
+- `placedBoulders: Record<string, { startHour: number; duration: number }>` — boulder/rock calendar placements (ephemeral, not persisted)
+- `visibleDays` — number of days shown in the calendar on larger screens
+- `isTaskDrawerOpen` — mobile drawer visibility
 - `captureValue: string` — inline inbox input
 
 ---
 
 ### Feature 4: Icebox View
 
-**What it does:** Displays all iceboxed tasks grouped by classification (boulders, pebbles, unclassified). Each task can be reactivated as boulder or pebble, or permanently deleted.
+**What it does:** Displays all iceboxed tasks grouped by classification (boulders, rocks, pebbles, unclassified). Each task can be reactivated into an active classification or permanently deleted.
 
 **Component tree:**
 ```
@@ -252,15 +259,19 @@ IceboxView
 
 ### Feature 5: Projects
 
-**What it does:** Projects are freeform markdown documents with associated tasks. Split-pane layout: markdown editor (left) + task sidebar (right).
+**What it does:** Projects are freeform markdown documents with associated tasks. Desktop uses a project-centric two-column layout: project content on the left, and a right rail of active tasks with no project for drag assignment. On mobile, that rail becomes a right-edge overlay drawer.
 
 **Component tree:**
 ```
 ProjectListView
 ├── Create project input
-└── Project rows (grouped: active, then on hold)
-    ├── Project name (clickable)
-    └── Status toggle button
+├── Project rows (grouped: active, then on hold)
+│   ├── Project name (clickable)
+│   ├── Status toggle button
+│   └── Drop target for assigning unassociated tasks
+└── No Project rail / drawer
+    ├── Unassociated active tasks
+    └── Classification filter (all/unclassified/boulder/rock/pebble)
 
 ProjectDetailView
 ├── Breadcrumb (← Projects / Project Name)
@@ -269,9 +280,10 @@ ProjectDetailView
 │   ├── Left: Markdown textarea (auto-save, 1s debounce)
 │   │   └── Activity Log (collapsible)
 │   │       └── Log entries with timestamps
-│   └── Right: Task sidebar (320px)
-│       ├── Add task input + boulder/pebble toggle
+│   └── Right: Task sections
+│       ├── Add task input + boulder/rock/pebble toggle
 │       ├── Boulders section (click title → TaskEditPanel)
+│       ├── Rocks section (click title → TaskEditPanel)
 │       ├── Pebbles section (click title → TaskEditPanel)
 │       ├── Completed section (collapsible)
 │       └── Assistant hint text
@@ -344,12 +356,12 @@ TaskEditPanel
   ownerUid: string;                        // Firebase Auth UID for per-user data isolation
   title: string;                           // Required, trimmed on create
   notes: string;                           // Freeform text, default ''
-  classification: 'unclassified' | 'boulder' | 'pebble';
+  classification: 'unclassified' | 'boulder' | 'rock' | 'pebble';
   status: 'active' | 'completed' | 'iceboxed';
   deadline: Timestamp | null;              // Firestore Timestamp, converted to ISO string client-side
   recurrence: RecurrenceRule | null;       // See RecurrenceRule below
   projectId: string | null;               // FK to projects collection
-  sortOrder: number;                       // Fractional index for boulder AND pebble ordering
+  sortOrder: number;                       // Fractional index for boulder, rock, and pebble ordering
   completedAt: Timestamp | null;           // Set on completion via serverTimestamp()
   createdAt: Timestamp;                    // serverTimestamp()
   updatedAt: Timestamp;                    // serverTimestamp(), updated on every write
@@ -456,6 +468,7 @@ Required composite index (defined in `firestore.indexes.json`):
 | `['tasks', filters]` | `useTasks(filters)` | 30s (global default) |
 | `['tasks', 'inbox']` | `useInboxTasks()` | 30s |
 | `['tasks', 'boulders']` | `useBoulders()` | 30s |
+| `['tasks', 'rocks']` | `useRocks()` | 30s |
 | `['tasks', 'pebbles']` | `usePebbles()` | 30s |
 | `['tasks', 'iceboxed']` | `useIceboxedTasks()` | 30s |
 | `['projects']` | `useProjects()` | 30s |
@@ -463,7 +476,7 @@ Required composite index (defined in `firestore.indexes.json`):
 | `['activityLog', projectId]` | `useProjectActivityLog(id)` | 30s |
 
 **Invalidation strategy:**
-- All task mutations invalidate `['tasks']` (broad — catches inbox, boulders, pebbles, iceboxed, and filtered queries)
+- All task mutations invalidate `['tasks']` (broad — catches inbox, boulders, rocks, pebbles, iceboxed, and filtered queries)
 - Pebble reorder specifically invalidates `['tasks', 'pebbles']`
 - Project mutations invalidate `['projects']`
 - Project status toggle also invalidates `['tasks']` (boulder visibility changes)
@@ -475,11 +488,12 @@ Required composite index (defined in `firestore.indexes.json`):
 | `activeTab` | App.tsx `useState` | Current view tab (today/icebox/projects) |
 | `openProjectId` | App.tsx `useState` | Project detail navigation |
 | `showAdmin` | App.tsx `useState` | Admin panel modal visibility |
-| `placedBoulders` | TodayView `useState` | Boulder → { startHour, duration } calendar placements (ephemeral) |
-| `sidebarMode` | TodayView `useState` | Toggle: 'boulders' or 'pebbles' |
+| `placedBoulders` | TodayView `useState` | Boulder/rock → { startHour, duration } calendar placements (ephemeral) |
+| `visibleDays` | TodayView `useState` | Number of calendar days shown on larger screens |
+| `isTaskDrawerOpen` | TodayView / ProjectListView `useState` | Mobile right-drawer visibility |
 | `captureValue` | TodayView `useState` | Inline inbox text input |
 | `markdown` | ProjectDetailView `useState` | Local editor state (debounced to server) |
-| `localOrder` | PebbleSidebar `useState` | Optimistic drag reorder |
+| `localOrder` | Today sidebars `useState` | Optimistic drag reorder for ordered task lists |
 | `showCompleted` | ProjectDetailView `useState` | Toggle completed tasks visibility |
 | `showLog` | ProjectDetailView `useState` | Toggle activity log visibility |
 | `newTaskTitle/Type` | ProjectDetailView `useState` | Task creation form |
@@ -535,7 +549,7 @@ Required composite index (defined in `firestore.indexes.json`):
 
 ### ADR-004: Fractional Indexing for Task Sort Order
 
-**Decision:** Both boulder and pebble ordering use numeric `sortOrder` values with fractional midpoints for insertions.
+**Decision:** Boulder, rock, and pebble ordering use numeric `sortOrder` values with fractional midpoints for insertions.
 
 **Context:** Options considered: array-based ordering (requires rewriting all positions on every move), linked list (complex queries), or fractional indexing (simple math, occasional rebalancing). Fractional indexing gives O(1) inserts between any two items.
 
@@ -584,13 +598,13 @@ Required composite index (defined in `firestore.indexes.json`):
 
 ### ADR-007: Boulder Calendar Placement as Ephemeral Sketch
 
-**Decision:** When a boulder is dragged onto the day calendar, it remains in the sidebar list with a visual distinction (dimmed). Placement data is ephemeral client state — not persisted to Firestore.
+**Decision:** When a boulder or rock is dragged onto the day calendar, it remains in the task list with a visual distinction (dimmed). Placement data is ephemeral client state — not persisted to Firestore.
 
-**Context:** The calendar view is for daily planning ("sketching out when I plan to work on this boulder"), not for fundamentally moving tasks. Boulders are still todo items that live in the sidebar; the calendar placement is a transient visual aid.
+**Context:** The calendar view is for daily planning ("sketching out when I plan to work on this task"), not for fundamentally moving tasks. Boulders and rocks still live in the task workspace; the calendar placement is a transient visual aid.
 
 **Consequences:**
-- (+) Boulder list always reflects the full todo set, maintaining sort order
-- (+) Task metadata (edit, complete, icebox) accessible from sidebar even when boulder is on calendar
+- (+) Ordered task lists always reflect the full todo set, maintaining sort order
+- (+) Task metadata (edit, complete, icebox) accessible from the list even when a task is on calendar
 - (+) No Firestore writes for calendar placement — keeps the interaction lightweight
 - (-) Calendar placements lost on page refresh (acceptable for daily planning)
 - (-) No historical record of time-blocking patterns
@@ -601,7 +615,7 @@ Required composite index (defined in `firestore.indexes.json`):
 
 **Decision:** Eliminated the standalone Triage tab. Capture and classification happen inline at the top of the Today sidebar.
 
-**Context:** The Triage tab was a separate view with project/deadline/recurrence assignment during classification. In practice, most inbox items just need a quick boulder/pebble decision. Metadata can be edited later via TaskEditPanel from any view. Reducing tabs from 4→3 simplifies navigation.
+**Context:** The Triage tab was a separate view with project/deadline/recurrence assignment during classification. In practice, most inbox items just need a quick boulder/rock/pebble decision. Metadata can be edited later via TaskEditPanel from any view. Reducing tabs from 4→3 simplifies navigation.
 
 **Consequences:**
 - (+) Fewer tabs, faster workflow — capture and classify without leaving the planning view
@@ -647,21 +661,25 @@ Required composite index (defined in `firestore.indexes.json`):
 
 **Connection:** Uses the Firebase Web SDK (same client SDK as the frontend) with hardcoded project config. No service account needed — runs locally with the same Firestore access as the browser.
 
-**13 tools implemented:**
+**17 tools implemented:**
 | Tool | Description |
 |------|-------------|
 | `add_task` | Create task (inbox by default, or specify classification) |
 | `list_inbox` | List unclassified tasks for triage |
-| `classify_task` | Classify as boulder/pebble, optionally assign project + deadline |
+| `classify_task` | Classify as boulder/rock/pebble, optionally assign project + deadline |
+| `search_tasks` | Search tasks by title with optional status/classification filters |
+| `get_task` | Fetch a task's full details |
+| `update_task` | Update task metadata, status, or classification |
 | `complete_task` | Complete a task (handles recurrence auto-generation) |
 | `icebox_task` | Icebox a task |
 | `list_boulders` | List active boulders, grouped by project |
+| `list_rocks` | List active rocks |
 | `list_pebbles` | List pebbles in priority order, optional stale filter |
 | `list_projects` | List all projects with status |
 | `get_project` | Full project context: markdown + all tasks (active, completed) |
 | `create_project` | Create new project |
 | `update_project` | Update project markdown, name, or status |
-| `get_today` | Daily planning snapshot: boulders, top pebbles, inbox count |
+| `get_today` | Daily planning snapshot: boulders, rocks, top pebbles, inbox count |
 | `suggest_tasks_for_project` | Full project context formatted for an assistant to suggest next tasks |
 
 **Setup:** `cd mcp-server && npm install && npm run build`, then configure it in your MCP-compatible client:

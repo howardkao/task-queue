@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import type { Task, Priority } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
 import { useProjects } from '../../hooks/useProjects';
@@ -100,16 +100,21 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
     setDropGapIndex(null);
   }, []);
 
-  if (
-    localOrder
-    && dragFromIndex === null
-    && (
-      pebbles.length !== localOrder.length
-      || pebbles.some((task, index) => task.id !== localOrder[index]?.id)
-    )
-  ) {
-    setLocalOrder(null);
-  }
+  useEffect(() => {
+    if (!localOrder || dragFromIndex !== null) return;
+
+    if (!haveSameTaskIds(pebbles, localOrder)) {
+      setLocalOrder(null);
+      return;
+    }
+
+    setLocalOrder((current) => {
+      if (!current) return current;
+      const merged = mergeTasksPreservingOrder(pebbles, current);
+      const changed = merged.some((task, index) => task !== current[index]);
+      return changed ? merged : current;
+    });
+  }, [dragFromIndex, localOrder, pebbles]);
 
   return (
     <div>
@@ -193,11 +198,16 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
                   {projectName && (
                     <div style={metaLine}>{projectName}</div>
                   )}
-                  {(deadlineStr || task.recurrence) && (
+                  {(deadlineStr || task.recurrence || task.lastOccurrenceCompletedAt) && (
                     <div style={metaLine}>
                       {deadlineStr && <span style={{ color: '#FF6B6B' }}>⚑ {deadlineStr}</span>}
-                      {deadlineStr && task.recurrence && <span style={{ margin: '0 4px' }}></span>}
-                      {task.recurrence && <span>↻</span>}
+                      {deadlineStr && (task.recurrence || task.lastOccurrenceCompletedAt) && <span style={{ margin: '0 4px' }}></span>}
+                      {task.recurrence && <span style={{ marginRight: '4px' }}>↻</span>}
+                      {task.lastOccurrenceCompletedAt && (
+                        <span style={{ fontSize: '10px', color: '#9ca3af' }}>
+                          Prev: {formatLastCompleted(task.lastOccurrenceCompletedAt)}
+                        </span>
+                      )}
                     </div>
                   )}
                 </div>
@@ -314,4 +324,25 @@ function formatDeadline(deadline: string): string {
   } catch {
     return deadline;
   }
+}
+
+function formatLastCompleted(timestamp: any): string {
+  if (!timestamp) return '';
+  try {
+    const d = timestamp.seconds ? new Date(timestamp.seconds * 1000) : new Date(timestamp);
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase();
+  } catch {
+    return '';
+  }
+}
+
+function haveSameTaskIds(source: Task[], ordered: Task[]): boolean {
+  if (source.length !== ordered.length) return false;
+  const sourceIds = new Set(source.map(task => task.id));
+  return ordered.every(task => sourceIds.has(task.id));
+}
+
+function mergeTasksPreservingOrder(source: Task[], ordered: Task[]): Task[] {
+  const latestById = new Map(source.map(task => [task.id, task]));
+  return ordered.map(task => latestById.get(task.id) ?? task);
 }
