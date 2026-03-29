@@ -7,6 +7,7 @@ import type { Task, Classification } from '../types';
 import { addLogEntry } from './activityLog';
 
 const tasksRef = collection(db, 'tasks');
+const ORDERED_CLASSIFICATIONS = new Set<Classification>(['boulder', 'rock', 'pebble']);
 
 function requireUser() {
   const user = auth.currentUser;
@@ -23,6 +24,7 @@ function toTask(id: string, data: any): Task {
     notes: data.notes || '',
     classification: data.classification || 'unclassified',
     status: data.status || 'active',
+    priority: data.priority || 'low',
     deadline: data.deadline ? (data.deadline.toDate ? data.deadline.toDate().toISOString() : data.deadline) : null,
     recurrence: data.recurrence || null,
     projectId: data.projectId || null,
@@ -43,7 +45,7 @@ export async function createTask(data: {
 }): Promise<Task> {
   const user = requireUser();
   let sortOrder = 0;
-  if (data.classification === 'pebble' || data.classification === 'boulder') {
+  if (data.classification && ORDERED_CLASSIFICATIONS.has(data.classification)) {
     sortOrder = await getTopSortOrder(data.classification);
   }
 
@@ -52,6 +54,7 @@ export async function createTask(data: {
     notes: data.notes || '',
     classification: data.classification || 'unclassified',
     status: 'active',
+    priority: data.priority || 'low',
     deadline: data.deadline ? Timestamp.fromDate(new Date(data.deadline)) : null,
     recurrence: data.recurrence || null,
     projectId: data.projectId || null,
@@ -104,9 +107,9 @@ export async function listTasks(filters?: {
     tasks = tasks.filter(t => t.projectId === filters.projectId);
   }
 
-  // Sort boulders and pebbles by sortOrder, fallback to createdAt
+  // Sort ordered task classes by sortOrder, fallback to createdAt
   tasks.sort((a, b) => {
-    if (a.classification === b.classification && (a.classification === 'pebble' || a.classification === 'boulder')) {
+    if (a.classification === b.classification && ORDERED_CLASSIFICATIONS.has(a.classification)) {
       return (a.sortOrder || 0) - (b.sortOrder || 0);
     }
     const aTime = a.createdAt?.seconds || 0;
@@ -132,12 +135,13 @@ export async function updateTask(id: string, data: Partial<Task>): Promise<Task>
   if (data.notes !== undefined) updates.notes = data.notes;
   if (data.classification !== undefined) {
     updates.classification = data.classification;
-    // When classifying (boulder or pebble), put at top of list if no explicit sortOrder
-    if ((data.classification === 'pebble' || data.classification === 'boulder') && data.sortOrder === undefined) {
+    // When classifying into an ordered class, put at top of that list if no explicit sortOrder
+    if (ORDERED_CLASSIFICATIONS.has(data.classification) && data.sortOrder === undefined) {
       updates.sortOrder = await getTopSortOrder(data.classification);
     }
   }
   if (data.status !== undefined) updates.status = data.status;
+  if (data.priority !== undefined) updates.priority = data.priority;
   if (data.deadline !== undefined) {
     updates.deadline = data.deadline ? Timestamp.fromDate(new Date(data.deadline)) : null;
   }

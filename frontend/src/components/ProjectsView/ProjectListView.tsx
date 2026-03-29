@@ -1,20 +1,50 @@
-import { useState } from 'react';
-import { useProjects, useCreateProject, useToggleProjectStatus } from '../../hooks/useProjects';
-import type { Project } from '../../types';
+import { useMemo, useState } from 'react';
+import { useProjects, useCreateProject, useToggleProjectStatus, useDeleteProject } from '../../hooks/useProjects';
+import { useTasks, useUpdateTask, useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
+import type { Project, Task } from '../../types';
+import { TaskEditPanel } from '../shared/TaskEditPanel';
 
 interface ProjectListViewProps {
   onOpenProject: (id: string) => void;
 }
 
+const PROJECT_TASK_DRAG_TYPE = 'project-task-id';
+
 export function ProjectListView({ onOpenProject }: ProjectListViewProps) {
   const { data: projects = [], isLoading } = useProjects();
+  const { data: activeTasks = [] } = useTasks({ status: 'active' });
   const createProject = useCreateProject();
   const toggleStatus = useToggleProjectStatus();
+  const deleteProject = useDeleteProject();
+  const updateTask = useUpdateTask();
+  const completeTask = useCompleteTask();
+  const iceboxTask = useIceboxTask();
   const [newName, setNewName] = useState('');
   const [showInput, setShowInput] = useState(false);
+  const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [activeRailFilter, setActiveRailFilter] = useState<'all' | 'unclassified' | 'boulder' | 'rock' | 'pebble'>('all');
 
   const activeProjects = projects.filter(p => p.status === 'active');
   const holdProjects = projects.filter(p => p.status === 'on_hold');
+
+  const unassociatedTasks = useMemo(
+    () => activeTasks.filter(task => !task.projectId),
+    [activeTasks],
+  );
+
+  const displayedRailTasks = useMemo(() => {
+    if (activeRailFilter === 'all') return unassociatedTasks;
+    return unassociatedTasks.filter(task => task.classification === activeRailFilter);
+  }, [activeRailFilter, unassociatedTasks]);
+
+  const taskCountsByProject = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const task of activeTasks) {
+      if (!task.projectId) continue;
+      counts.set(task.projectId, (counts.get(task.projectId) || 0) + 1);
+    }
+    return counts;
+  }, [activeTasks]);
 
   const handleCreate = () => {
     if (!newName.trim()) return;
@@ -23,11 +53,15 @@ export function ProjectListView({ onOpenProject }: ProjectListViewProps) {
     setShowInput(false);
   };
 
-  // Count tasks per project — we'll need this from task data
-  // For now just show the project list without counts
+  const handleAssignTask = (taskId: string, projectId: string) => {
+    updateTask.mutate({ id: taskId, data: { projectId } });
+    if (editingTaskId === taskId) {
+      setEditingTaskId(null);
+    }
+  };
 
   return (
-    <div style={{ padding: '20px 24px', maxWidth: '800px', margin: '0 auto' }}>
+    <div style={{ padding: '20px 24px', maxWidth: '1380px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
         {!showInput ? (
           <button onClick={() => setShowInput(true)} style={btnStyle}>+ New Project</button>
@@ -40,16 +74,7 @@ export function ProjectListView({ onOpenProject }: ProjectListViewProps) {
               onKeyDown={e => e.key === 'Enter' && handleCreate()}
               placeholder="Project name..."
               autoFocus
-              style={{
-                flex: 1,
-                padding: '8px 12px',
-                border: '2px solid #e5e7eb',
-                borderRadius: '12px',
-                fontSize: '14px',
-                fontFamily: 'inherit',
-                outline: 'none',
-                color: '#1f2937',
-              }}
+              style={newProjectInputStyle}
             />
             <button onClick={handleCreate} style={btnStyle}>Create</button>
             <button onClick={() => { setShowInput(false); setNewName(''); }} style={{ ...btnStyle, borderColor: '#fca5a5', color: '#ef4444' }}>Cancel</button>
@@ -57,92 +82,414 @@ export function ProjectListView({ onOpenProject }: ProjectListViewProps) {
         )}
       </div>
 
-      <div style={{
-        fontSize: '14px',
-        color: '#6b7280',
-        marginBottom: '16px',
-        fontStyle: 'italic',
-      }}>
+      <div style={summaryStyle}>
         {activeProjects.length} active project{activeProjects.length !== 1 ? 's' : ''}
         {' · '}
         {holdProjects.length} on hold
+        {' · '}
+        {unassociatedTasks.length} task{unassociatedTasks.length !== 1 ? 's' : ''} without a project
       </div>
 
       {isLoading && (
         <div style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>Loading...</div>
       )}
 
-      {/* Active Projects */}
-      <h2 style={sectionHeaderStyle}>Active Projects</h2>
-      {activeProjects.length === 0 && !isLoading && (
-        <div style={emptyStyle}>No active projects</div>
-      )}
-      {activeProjects.map(p => (
-        <ProjectRow
-          key={p.id}
-          project={p}
-          onOpen={() => onOpenProject(p.id)}
-          onToggle={() => toggleStatus.mutate(p.id)}
-        />
-      ))}
+      {!isLoading && (
+        <div style={layoutStyle}>
+          <div style={projectsColumnStyle}>
+            <div style={projectsPanelStyle}>
+              <h2 style={sectionHeaderStyle}>Active Projects</h2>
+              {activeProjects.length === 0 && (
+                <div style={emptyStyle}>No active projects</div>
+              )}
+              {activeProjects.map(project => (
+                <ProjectRow
+                  key={project.id}
+                  project={project}
+                  taskCount={taskCountsByProject.get(project.id) || 0}
+                  onOpen={() => onOpenProject(project.id)}
+                  onToggle={() => toggleStatus.mutate(project.id)}
+                  onDelete={() => deleteProject.mutate(project.id)}
+                  onAssignTask={handleAssignTask}
+                />
+              ))}
+            </div>
 
-      {/* On Hold */}
-      <h2 style={{ ...sectionHeaderStyle, marginTop: '24px' }}>On Hold</h2>
-      {holdProjects.length === 0 && !isLoading && (
-        <div style={emptyStyle}>No projects on hold</div>
+            <div style={{ ...projectsPanelStyle, marginTop: '20px' }}>
+              <h2 style={sectionHeaderStyle}>On Hold</h2>
+              {holdProjects.length === 0 && (
+                <div style={emptyStyle}>No projects on hold</div>
+              )}
+              {holdProjects.map(project => (
+                <ProjectRow
+                  key={project.id}
+                  project={project}
+                  taskCount={taskCountsByProject.get(project.id) || 0}
+                  onOpen={() => onOpenProject(project.id)}
+                  onToggle={() => toggleStatus.mutate(project.id)}
+                  onDelete={() => deleteProject.mutate(project.id)}
+                  onAssignTask={handleAssignTask}
+                />
+              ))}
+            </div>
+          </div>
+
+          <div style={railStyle}>
+            <div style={railCardStyle}>
+              <div style={railHeaderRowStyle}>
+                <div>
+                  <h2 style={sectionHeaderStyle}>No Project</h2>
+                  <div style={railHintStyle}>Drag a task onto a project to assign it.</div>
+                </div>
+                <span style={railCountStyle}>{displayedRailTasks.length}</span>
+              </div>
+
+              <div style={filterChipWrapStyle}>
+                {(['all', 'unclassified', 'boulder', 'rock', 'pebble'] as const).map(filter => (
+                  <button
+                    key={filter}
+                    onClick={() => setActiveRailFilter(filter)}
+                    style={{
+                      ...filterChipStyle,
+                      ...(activeRailFilter === filter ? activeFilterChipStyle : {}),
+                    }}
+                  >
+                    {filter === 'all' ? 'All' : filter.charAt(0).toUpperCase() + filter.slice(1)}
+                  </button>
+                ))}
+              </div>
+
+              {displayedRailTasks.length === 0 && (
+                <div style={emptyRailStyle}>
+                  No matching unassociated tasks.
+                </div>
+              )}
+
+              <div style={railListStyle}>
+                {displayedRailTasks.map(task => (
+                  <RailTaskCard
+                    key={task.id}
+                    task={task}
+                    isEditing={editingTaskId === task.id}
+                    onToggleEdit={() => setEditingTaskId(prev => prev === task.id ? null : task.id)}
+                    onCloseEdit={() => setEditingTaskId(null)}
+                    onComplete={(id) => completeTask.mutate(id)}
+                    onIcebox={(id) => iceboxTask.mutate(id)}
+                  />
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       )}
-      {holdProjects.map(p => (
-        <ProjectRow
-          key={p.id}
-          project={p}
-          onOpen={() => onOpenProject(p.id)}
-          onToggle={() => toggleStatus.mutate(p.id)}
-        />
-      ))}
     </div>
   );
 }
 
 function ProjectRow({
-  project, onOpen, onToggle,
+  project,
+  taskCount,
+  onOpen,
+  onToggle,
+  onDelete,
+  onAssignTask,
 }: {
   project: Project;
+  taskCount: number;
   onOpen: () => void;
   onToggle: () => void;
+  onDelete: () => void;
+  onAssignTask: (taskId: string, projectId: string) => void;
 }) {
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes(PROJECT_TASK_DRAG_TYPE)) return;
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    setIsDragOver(true);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    const taskId = e.dataTransfer.getData(PROJECT_TASK_DRAG_TYPE);
+    if (!taskId) return;
+    e.preventDefault();
+    setIsDragOver(false);
+    onAssignTask(taskId, project.id);
+  };
+
   return (
-    <div style={{
-      display: 'flex',
-      alignItems: 'center',
-      padding: '12px 14px',
-      background: '#fff',
-      border: '1px solid #e5e7eb',
-      borderRadius: '16px',
-      marginBottom: '6px',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-    }}>
-      <span
-        onClick={onOpen}
-        style={{
-          fontSize: '15px',
-          fontWeight: 700,
-          color: '#FF7A7A',
-          cursor: 'pointer',
-          flex: 1,
-          textDecoration: 'none',
-        }}
-      >
-        {project.name}
-      </span>
+    <div
+      onDragOver={handleDragOver}
+      onDragLeave={() => setIsDragOver(false)}
+      onDrop={handleDrop}
+      style={{
+        ...projectRowStyle,
+        ...(isDragOver ? projectRowDragOverStyle : {}),
+      }}
+    >
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div
+          onClick={onOpen}
+          style={projectNameStyle}
+        >
+          {project.name}
+        </div>
+        <div style={projectMetaStyle}>
+          <span>{taskCount} active task{taskCount !== 1 ? 's' : ''}</span>
+          {isDragOver && <span style={{ color: '#FF7A7A' }}>Drop to assign</span>}
+        </div>
+      </div>
       <button
         onClick={onToggle}
         style={{ ...btnStyle, fontSize: '12px', padding: '4px 10px' }}
       >
         {project.status === 'active' ? 'Put on Hold' : 'Reactivate'}
       </button>
+      {!confirmingDelete ? (
+        <button
+          onClick={() => setConfirmingDelete(true)}
+          style={{ ...btnStyle, fontSize: '12px', padding: '4px 10px', color: '#ef4444', borderColor: '#fca5a5' }}
+        >
+          Delete
+        </button>
+      ) : (
+        <button
+          onClick={onDelete}
+          style={{ ...btnStyle, fontSize: '12px', padding: '4px 10px', background: '#ef4444', color: '#fff', borderColor: '#ef4444' }}
+        >
+          Confirm Delete
+        </button>
+      )}
     </div>
   );
 }
+
+function RailTaskCard({
+  task,
+  isEditing,
+  onToggleEdit,
+  onCloseEdit,
+  onComplete,
+  onIcebox,
+}: {
+  task: Task;
+  isEditing: boolean;
+  onToggleEdit: () => void;
+  onCloseEdit: () => void;
+  onComplete: (id: string) => void;
+  onIcebox: (id: string) => void;
+}) {
+  const handleDragStart = (e: React.DragEvent) => {
+    e.dataTransfer.setData(PROJECT_TASK_DRAG_TYPE, task.id);
+    e.dataTransfer.effectAllowed = 'move';
+  };
+
+  return (
+    <div style={railTaskCardStyle}>
+      <div
+        draggable
+        onDragStart={handleDragStart}
+        style={railTaskInnerStyle}
+      >
+        <div style={dragHandleStyle}>⠿</div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div onClick={onToggleEdit} style={railTaskTitleStyle}>
+            {task.title}
+          </div>
+          <div style={railTaskMetaStyle}>
+            <span>{formatClassification(task.classification)}</span>
+            {task.deadline && <span style={{ color: '#FF6B6B' }}>⚑ {formatDeadline(task.deadline)}</span>}
+          </div>
+        </div>
+      </div>
+
+      {isEditing && (
+        <TaskEditPanel
+          task={task}
+          onClose={onCloseEdit}
+          onComplete={onComplete}
+          onIcebox={onIcebox}
+        />
+      )}
+    </div>
+  );
+}
+
+function formatClassification(value: Task['classification']) {
+  switch (value) {
+    case 'boulder': return 'Boulder';
+    case 'rock': return 'Rock';
+    case 'pebble': return 'Pebble';
+    default: return 'Unclassified';
+  }
+}
+
+function formatDeadline(deadline: string) {
+  try {
+    const d = new Date(deadline);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch {
+    return deadline;
+  }
+}
+
+const layoutStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '24px',
+  alignItems: 'flex-start',
+};
+
+const projectsColumnStyle: React.CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+};
+
+const railStyle: React.CSSProperties = {
+  width: '400px',
+  flexShrink: 0,
+};
+
+const projectsPanelStyle: React.CSSProperties = {
+  background: '#fcfcfb',
+  border: '1px solid #ece9e1',
+  borderRadius: '22px',
+  padding: '18px',
+};
+
+const railCardStyle: React.CSSProperties = {
+  background: '#fffaf3',
+  border: '1px solid #f0dfc5',
+  borderRadius: '22px',
+  padding: '18px',
+  boxShadow: '0 10px 30px rgba(80, 56, 28, 0.08)',
+};
+
+const projectRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '10px',
+  padding: '14px 16px',
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: '16px',
+  marginBottom: '8px',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+  transition: 'all 0.15s ease',
+};
+
+const projectRowDragOverStyle: React.CSSProperties = {
+  borderColor: '#FF7A7A',
+  boxShadow: '0 0 0 3px rgba(255, 122, 122, 0.15)',
+  transform: 'translateY(-1px)',
+};
+
+const projectNameStyle: React.CSSProperties = {
+  fontSize: '15px',
+  fontWeight: 700,
+  color: '#FF7A7A',
+  cursor: 'pointer',
+  textDecoration: 'none',
+  marginBottom: '4px',
+};
+
+const projectMetaStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '10px',
+  flexWrap: 'wrap',
+  fontSize: '12px',
+  color: '#9ca3af',
+};
+
+const railHeaderRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: '12px',
+  marginBottom: '12px',
+};
+
+const railHintStyle: React.CSSProperties = {
+  fontSize: '13px',
+  color: '#8b7355',
+  lineHeight: '1.4',
+};
+
+const railCountStyle: React.CSSProperties = {
+  minWidth: '32px',
+  height: '32px',
+  borderRadius: '999px',
+  background: '#fff',
+  border: '1px solid #ead9ba',
+  color: '#8b7355',
+  fontSize: '13px',
+  fontWeight: 700,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+};
+
+const railListStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: '8px',
+};
+
+const railTaskCardStyle: React.CSSProperties = {
+  border: '1px solid #ead9ba',
+  borderRadius: '16px',
+  background: '#fff',
+};
+
+const railTaskInnerStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  gap: '10px',
+  padding: '12px 14px',
+  cursor: 'grab',
+};
+
+const dragHandleStyle: React.CSSProperties = {
+  color: '#d1b892',
+  fontSize: '16px',
+  userSelect: 'none',
+  marginTop: '1px',
+};
+
+const railTaskTitleStyle: React.CSSProperties = {
+  fontSize: '14px',
+  fontWeight: 600,
+  color: '#1f2937',
+  cursor: 'pointer',
+  marginBottom: '4px',
+};
+
+const railTaskMetaStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: '8px',
+  flexWrap: 'wrap',
+  fontSize: '12px',
+  color: '#9ca3af',
+};
+
+const summaryStyle: React.CSSProperties = {
+  fontSize: '14px',
+  color: '#6b7280',
+  marginBottom: '16px',
+  fontStyle: 'italic',
+};
+
+const newProjectInputStyle: React.CSSProperties = {
+  flex: 1,
+  padding: '8px 12px',
+  border: '2px solid #e5e7eb',
+  borderRadius: '12px',
+  fontSize: '14px',
+  fontFamily: 'inherit',
+  outline: 'none',
+  color: '#1f2937',
+};
 
 const btnStyle: React.CSSProperties = {
   display: 'inline-block',
@@ -172,4 +519,36 @@ const emptyStyle: React.CSSProperties = {
   color: '#9ca3af',
   fontStyle: 'italic',
   fontSize: '14px',
+};
+
+const emptyRailStyle: React.CSSProperties = {
+  padding: '20px 8px',
+  color: '#9ca3af',
+  fontStyle: 'italic',
+  fontSize: '14px',
+  textAlign: 'center',
+};
+
+const filterChipWrapStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '6px',
+  marginBottom: '14px',
+};
+
+const filterChipStyle: React.CSSProperties = {
+  padding: '6px 10px',
+  border: '1px solid #ead9ba',
+  borderRadius: '999px',
+  fontSize: '12px',
+  background: '#fff',
+  color: '#8b7355',
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+};
+
+const activeFilterChipStyle: React.CSSProperties = {
+  background: '#FF7A7A',
+  borderColor: '#FF7A7A',
+  color: '#fff',
 };

@@ -9,6 +9,7 @@ export interface Task {
   notes: string;
   classification: 'unclassified' | 'boulder' | 'pebble';
   status: 'active' | 'completed' | 'iceboxed';
+  priority: 'high' | 'med' | 'low';
   deadline: string | null;
   recurrence: { freq: string; interval?: number; day?: string } | null;
   projectId: string | null;
@@ -33,6 +34,7 @@ function toTask(id: string, data: any): Task {
     notes: data.notes || '',
     classification: data.classification || 'unclassified',
     status: data.status || 'active',
+    priority: data.priority || 'low',
     deadline: data.deadline ? (data.deadline.toDate ? data.deadline.toDate().toISOString() : data.deadline) : null,
     recurrence: data.recurrence || null,
     projectId: data.projectId || null,
@@ -128,6 +130,7 @@ export async function createTask(data: {
   title: string;
   notes?: string;
   classification?: string;
+  priority?: string;
   deadline?: string;
   projectId?: string;
   recurrence?: any;
@@ -142,6 +145,7 @@ export async function createTask(data: {
     notes: data.notes || '',
     classification: data.classification || 'unclassified',
     status: 'active',
+    priority: data.priority || 'low',
     deadline: data.deadline ? Timestamp.fromDate(new Date(data.deadline)) : null,
     recurrence: data.recurrence || null,
     projectId: data.projectId || null,
@@ -169,6 +173,7 @@ export async function updateTask(id: string, data: {
   title?: string;
   notes?: string;
   classification?: string;
+  priority?: string;
   status?: string;
   deadline?: string | null;
   projectId?: string | null;
@@ -184,6 +189,7 @@ export async function updateTask(id: string, data: {
       updates.sortOrder = await getNewPebbleSortOrder();
     }
   }
+  if (data.priority !== undefined) updates.priority = data.priority;
   if (data.status !== undefined) updates.status = data.status;
   if (data.deadline !== undefined) {
     updates.deadline = data.deadline ? Timestamp.fromDate(new Date(data.deadline)) : null;

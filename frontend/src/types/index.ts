@@ -1,5 +1,6 @@
-export type Classification = 'unclassified' | 'boulder' | 'pebble';
+export type Classification = 'unclassified' | 'boulder' | 'rock' | 'pebble';
 export type TaskStatus = 'active' | 'completed' | 'iceboxed';
+export type Priority = 'high' | 'med' | 'low';
 export type ProjectStatus = 'active' | 'on_hold';
 
 export interface Task {
@@ -8,6 +9,7 @@ export interface Task {
   notes: string;
   classification: Classification;
   status: TaskStatus;
+  priority: Priority;
   deadline: string | null; // ISO string or Firestore timestamp
   recurrence: RecurrenceRule | null;
   projectId: string | null;

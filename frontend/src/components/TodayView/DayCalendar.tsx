@@ -5,7 +5,7 @@ export interface CalEvent {
   title: string;
   startHour: number;  // e.g. 9.5 = 9:30am
   duration: number;    // in hours, e.g. 1.5
-  type: 'meeting' | 'personal' | 'boulder';
+  type: 'meeting' | 'personal' | 'boulder' | 'rock';
   busy?: boolean;
   projectName?: string;
 }
@@ -159,12 +159,12 @@ export function DayCalendar({
       userSelect: 'none',
     };
 
-    if (event.type === 'boulder') {
+    if (event.type === 'boulder' || event.type === 'rock') {
       return {
         ...baseStyle,
-        border: '2px dashed #FF7A7A',
-        background: '#fff5f5',
-        borderLeft: '4px solid #FF7A7A',
+        border: event.type === 'rock' ? '2px dashed #c08457' : '2px dashed #FF7A7A',
+        background: event.type === 'rock' ? '#fff7ed' : '#fff5f5',
+        borderLeft: event.type === 'rock' ? '4px solid #c08457' : '4px solid #FF7A7A',
         padding: '8px',
         cursor: 'grab',
       };
@@ -280,14 +280,14 @@ export function DayCalendar({
           <div
             key={event.id}
             style={getEventStyle(event)}
-            onMouseDown={event.type === 'boulder' ? (e) => handleMouseDown(e, event.id, 'move') : undefined}
+            onMouseDown={(event.type === 'boulder' || event.type === 'rock') ? (e) => handleMouseDown(e, event.id, 'move') : undefined}
           >
-            {event.type === 'boulder' ? (
+            {(event.type === 'boulder' || event.type === 'rock') ? (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <div style={{ fontSize: '11px', color: '#FF6B6B', fontWeight: 700 }}>
-                      🪨 {formatHourMinute(event.startHour)}–{formatHourMinute(event.startHour + event.duration)}
+                    <div style={{ fontSize: '11px', color: event.type === 'rock' ? '#c08457' : '#FF6B6B', fontWeight: 700 }}>
+                      {event.type === 'rock' ? '🪨 Rock' : '🪨'} {formatHourMinute(event.startHour)}–{formatHourMinute(event.startHour + event.duration)}
                     </div>
                     <div style={{ fontWeight: 700, fontSize: '14px', color: '#1f2937' }}>{event.title}</div>
                     {event.projectName && (
@@ -306,7 +306,7 @@ export function DayCalendar({
                         background: '#fff',
                         cursor: 'grab',
                         fontSize: '12px',
-                        color: '#FF6B6B',
+                        color: event.type === 'rock' ? '#c08457' : '#FF6B6B',
                         lineHeight: '1',
                         flexShrink: 0,
                       }}
@@ -356,7 +356,7 @@ export function DayCalendar({
                     width: '30px',
                     height: '3px',
                     borderRadius: '2px',
-                    background: '#FFB3B3',
+                    background: event.type === 'rock' ? '#d6a46c' : '#FFB3B3',
                   }} />
                 </div>
               </>
@@ -380,7 +380,7 @@ export function DayCalendar({
  * Find the first free slot of given duration in hours.
  */
 export function findFreeSlot(events: CalEvent[], durationHours: number = 2, startHour: number = 7, endHour: number = 22): number {
-  const busyEvents = events.filter(e => e.busy !== false && e.type !== 'boulder');
+  const busyEvents = events.filter(e => e.busy !== false && e.type !== 'boulder' && e.type !== 'rock');
   const busy = new Set<number>();
   for (const ev of busyEvents) {
     for (let t = ev.startHour; t < ev.startHour + ev.duration; t += 0.25) {

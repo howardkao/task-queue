@@ -11,6 +11,7 @@ export function IceboxView() {
   const projectMap = new Map(projects.map(p => [p.id, p.name]));
 
   const boulders = tasks.filter(t => t.classification === 'boulder');
+  const rocks = tasks.filter(t => t.classification === 'rock');
   const pebbles = tasks.filter(t => t.classification === 'pebble');
   const unclassified = tasks.filter(t => t.classification === 'unclassified');
 
@@ -37,6 +38,15 @@ export function IceboxView() {
         <>
           <h3 style={groupHeader}>Boulders</h3>
           {boulders.map(t => (
+            <IceboxCard key={t.id} task={t} projectMap={projectMap} onReactivate={reactivateTask} onDelete={deleteTask} />
+          ))}
+        </>
+      )}
+
+      {rocks.length > 0 && (
+        <>
+          <h3 style={groupHeader}>Rocks</h3>
+          {rocks.map(t => (
             <IceboxCard key={t.id} task={t} projectMap={projectMap} onReactivate={reactivateTask} onDelete={deleteTask} />
           ))}
         </>
@@ -90,6 +100,13 @@ function IceboxCard({ task, projectMap, onReactivate, onDelete }: {
           title="Reactivate as boulder"
         >
           🪨
+        </button>
+        <button
+          onClick={() => onReactivate.mutate({ id: task.id, classification: 'rock' })}
+          style={actionBtn}
+          title="Reactivate as rock"
+        >
+          Rock
         </button>
         <button
           onClick={() => onReactivate.mutate({ id: task.id, classification: 'pebble' })}

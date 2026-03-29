@@ -8,12 +8,15 @@ import {
   query,
   where,
   serverTimestamp,
+  writeBatch,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import type { Project, ProjectStatus } from '../types';
 import { addLogEntry } from './activityLog';
 
 const projectsRef = collection(db, 'projects');
+const tasksRef = collection(db, 'tasks');
+const activityLogRef = collection(db, 'activityLog');
 
 function requireUser() {
   const user = auth.currentUser;
@@ -113,4 +116,28 @@ export async function toggleProjectStatus(id: string): Promise<Project> {
   }).catch(() => {});
 
   return result;
+}
+
+export async function deleteProject(id: string): Promise<void> {
+  const user = requireUser();
+  const batch = writeBatch(db);
+
+  const [taskSnapshot, logSnapshot] = await Promise.all([
+    getDocs(query(
+      tasksRef,
+      where('ownerUid', '==', user.uid),
+      where('projectId', '==', id),
+    )),
+    getDocs(query(
+      activityLogRef,
+      where('ownerUid', '==', user.uid),
+      where('projectId', '==', id),
+    )),
+  ]);
+
+  batch.delete(doc(projectsRef, id));
+  taskSnapshot.docs.forEach(taskDoc => batch.delete(taskDoc.ref));
+  logSnapshot.docs.forEach(logDoc => batch.delete(logDoc.ref));
+
+  await batch.commit();
 }

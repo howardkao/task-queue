@@ -5,6 +5,7 @@ import {
   createProject,
   updateProject,
   toggleProjectStatus,
+  deleteProject,
 } from '../api/projects';
 import type { Project, ProjectStatus } from '../types';
 
@@ -54,6 +55,18 @@ export function useToggleProjectStatus() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: PROJECTS_KEY });
       queryClient.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
+}
+
+export function useDeleteProject() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: deleteProject,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: PROJECTS_KEY });
+      queryClient.invalidateQueries({ queryKey: ['tasks'] });
+      queryClient.invalidateQueries({ queryKey: ['activityLog'] });
     },
   });
 }

@@ -123,7 +123,14 @@ export function BoulderSidebar({
   }, []);
 
   // Sync localOrder when boulders list changes externally
-  if (localOrder && boulders.length !== localOrder.length && dragFromIndex === null) {
+  if (
+    localOrder
+    && dragFromIndex === null
+    && (
+      boulders.length !== localOrder.length
+      || boulders.some((task, index) => task.id !== localOrder[index]?.id)
+    )
+  ) {
     setLocalOrder(null);
   }
 

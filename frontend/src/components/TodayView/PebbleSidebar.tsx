@@ -1,12 +1,21 @@
 import { useState, useCallback } from 'react';
-import type { Task } from '../../types';
+import type { Task, Priority } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
 import { useProjects } from '../../hooks/useProjects';
-import { usePebbles, useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
+import { useTodayPebbles, useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
 import { reorderPebbles as reorderPebblesApi } from '../../api/tasks';
+import type { TodayProjectFilter } from '../../hooks/useTasks';
 
-export function PebbleSidebar() {
-  const { data: pebbles = [] } = usePebbles();
+interface PebbleSidebarProps {
+  projectFilter?: TodayProjectFilter;
+  priorityFilter?: Priority[];
+}
+
+export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: PebbleSidebarProps) {
+  const { data: allPebbles = [] } = useTodayPebbles(projectFilter);
+  const pebbles = priorityFilter.length === 0
+    ? allPebbles
+    : allPebbles.filter(t => priorityFilter.includes(t.priority || 'low'));
   const { data: projects = [] } = useProjects('active');
   const completeTask = useCompleteTask();
   const iceboxTask = useIceboxTask();
@@ -91,7 +100,14 @@ export function PebbleSidebar() {
     setDropGapIndex(null);
   }, []);
 
-  if (localOrder && pebbles.length !== localOrder.length && dragFromIndex === null) {
+  if (
+    localOrder
+    && dragFromIndex === null
+    && (
+      pebbles.length !== localOrder.length
+      || pebbles.some((task, index) => task.id !== localOrder[index]?.id)
+    )
+  ) {
     setLocalOrder(null);
   }
 

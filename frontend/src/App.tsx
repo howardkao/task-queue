@@ -1,16 +1,17 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, lazy, Suspense } from 'react';
 import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
 import { TabBar } from './components/shared/TabBar';
 import type { TabId } from './components/shared/TabBar';
-import { TodayView } from './components/TodayView/TodayView';
-import { IceboxView } from './components/IceboxView/IceboxView';
-import { ProjectListView } from './components/ProjectsView/ProjectListView';
-import { ProjectDetailView } from './components/ProjectsView/ProjectDetailView';
-import { Login } from './components/Auth/Login';
-import { AdminPanel } from './components/Auth/AdminPanel';
 import { useIceboxedTasks } from './hooks/useTasks';
 import { useAuth } from './hooks/useAuth';
 import { ToastProvider, useToast } from './components/shared/Toast';
+
+const TodayView = lazy(() => import('./components/TodayView/TodayView').then(module => ({ default: module.TodayView })));
+const IceboxView = lazy(() => import('./components/IceboxView/IceboxView').then(module => ({ default: module.IceboxView })));
+const ProjectListView = lazy(() => import('./components/ProjectsView/ProjectListView').then(module => ({ default: module.ProjectListView })));
+const ProjectDetailView = lazy(() => import('./components/ProjectsView/ProjectDetailView').then(module => ({ default: module.ProjectDetailView })));
+const Login = lazy(() => import('./components/Auth/Login').then(module => ({ default: module.Login })));
+const AdminPanel = lazy(() => import('./components/Auth/AdminPanel').then(module => ({ default: module.AdminPanel })));
 
 // Global error handler ref — set by AppContent once toast is available
 let globalErrorHandler: ((error: Error) => void) | null = null;
@@ -81,7 +82,11 @@ function AppContent() {
 
   // Not logged in
   if (!user) {
-    return <Login />;
+    return (
+      <Suspense fallback={<FullPageLoading />}>
+        <Login />
+      </Suspense>
+    );
   }
 
   return (
@@ -111,26 +116,62 @@ function AppContent() {
         </div>
       </div>
 
-      {activeTab === 'today' && (
-        <TodayView />
-      )}
+      <Suspense fallback={<SectionLoading />}>
+        {activeTab === 'today' && (
+          <TodayView />
+        )}
 
-      {activeTab === 'icebox' && (
-        <IceboxView />
-      )}
+        {activeTab === 'icebox' && (
+          <IceboxView />
+        )}
 
-      {activeTab === 'projects' && !openProjectId && (
-        <ProjectListView onOpenProject={setOpenProjectId} />
-      )}
+        {activeTab === 'projects' && !openProjectId && (
+          <ProjectListView onOpenProject={setOpenProjectId} />
+        )}
 
-      {activeTab === 'projects' && openProjectId && (
-        <ProjectDetailView
-          projectId={openProjectId}
-          onBack={() => setOpenProjectId(null)}
-        />
-      )}
+        {activeTab === 'projects' && openProjectId && (
+          <ProjectDetailView
+            projectId={openProjectId}
+            onBack={() => setOpenProjectId(null)}
+          />
+        )}
+      </Suspense>
 
-      {showAdmin && <AdminPanel onClose={() => setShowAdmin(false)} />}
+      {showAdmin && (
+        <Suspense fallback={null}>
+          <AdminPanel onClose={() => setShowAdmin(false)} />
+        </Suspense>
+      )}
+    </div>
+  );
+}
+
+function FullPageLoading() {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      justifyContent: 'center',
+      minHeight: '100vh',
+      background: '#F7F7F7',
+      fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      color: '#9ca3af',
+      fontSize: '15px',
+    }}>
+      Loading...
+    </div>
+  );
+}
+
+function SectionLoading() {
+  return (
+    <div style={{
+      padding: '24px 16px',
+      color: '#9ca3af',
+      fontSize: '14px',
+      textAlign: 'center',
+    }}>
+      Loading...
     </div>
   );
 }

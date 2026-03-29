@@ -1,11 +1,15 @@
 import { useState, useMemo, useCallback } from 'react';
 import { DayCalendar } from './DayCalendar';
 import { BoulderSidebar } from './BoulderSidebar';
+import { RockSidebar } from './RockSidebar';
 import { PebbleSidebar } from './PebbleSidebar';
-import { useBoulders, useInboxTasks, useCreateTask, useClassifyTask } from '../../hooks/useTasks';
+import { useTodayBoulders, useTodayRocks, useTodayInboxTasks, useCreateTask, useClassifyTask } from '../../hooks/useTasks';
+import { useProjects } from '../../hooks/useProjects';
 import { useEventsForDates } from '../../hooks/useCalendar';
 import type { CalEvent } from './DayCalendar';
-import type { CalendarEvent, Classification } from '../../types';
+import type { CalendarEvent, Classification, Priority } from '../../types';
+import { STANDALONE_PROJECT_FILTER } from '../../hooks/useTasks';
+import type { TodayProjectFilter } from '../../hooks/useTasks';
 
 // Fallback mock events when no iCal feeds configured
 const MOCK_CAL_EVENTS: CalEvent[] = [
@@ -38,7 +42,7 @@ interface PlacedBoulder {
   date: string; // YYYY-MM-DD
 }
 
-type SidebarMode = 'boulders' | 'pebbles';
+type SidebarMode = 'boulders' | 'rocks' | 'pebbles';
 
 const DAYS_VISIBLE = 3;
 
@@ -65,11 +69,15 @@ function formatDateHeader(d: Date, isToday: boolean): string {
 }
 
 export function TodayView() {
-  const { data: boulders = [] } = useBoulders();
-  const { data: inboxTasks = [] } = useInboxTasks();
+  const { data: projects = [] } = useProjects('active');
+  const [projectFilter, setProjectFilter] = useState<TodayProjectFilter>([]);
+  const { data: boulders = [] } = useTodayBoulders(projectFilter);
+  const { data: rocks = [] } = useTodayRocks(projectFilter);
+  const { data: inboxTasks = [] } = useTodayInboxTasks(projectFilter);
   const createTask = useCreateTask();
   const classifyTask = useClassifyTask();
 
+  const [priorityFilter, setPriorityFilter] = useState<Priority[]>([]);
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>('boulders');
   const [placedBoulders, setPlacedBoulders] = useState<Record<string, PlacedBoulder>>({});
   const [captureValue, setCaptureValue] = useState('');
@@ -91,6 +99,24 @@ export function TodayView() {
   const calendarQueries = useEventsForDates(dateKeys);
   const apiConfigured = calendarQueries.some(q => q.data !== null && q.data !== undefined);
 
+  // Priority filtering
+  const togglePriorityFilter = useCallback((value: Priority) => {
+    setPriorityFilter(prev => (
+      prev.includes(value)
+        ? prev.filter(item => item !== value)
+        : [...prev, value]
+    ));
+  }, []);
+
+  const filterByPriority = useCallback(<T extends { priority?: Priority }>(tasks: T[]): T[] => {
+    if (priorityFilter.length === 0) return tasks;
+    return tasks.filter(t => priorityFilter.includes(t.priority || 'low'));
+  }, [priorityFilter]);
+
+  const filteredBoulders = useMemo(() => filterByPriority(boulders), [filterByPriority, boulders]);
+  const filteredRocks = useMemo(() => filterByPriority(rocks), [filterByPriority, rocks]);
+  const filteredInboxTasks = useMemo(() => filterByPriority(inboxTasks), [filterByPriority, inboxTasks]);
+
   // Build calendar events per day
   const eventsPerDay = useMemo(() => {
     return dateKeys.map((dateKey, i) => {
@@ -101,24 +127,25 @@ export function TodayView() {
 
       const events: CalEvent[] = [...baseEvents];
 
-      // Add placed boulders for this day
+      const schedulableTasks = [...filteredBoulders, ...filteredRocks];
+      // Add placed schedulable tasks for this day
       for (const [boulderId, placement] of Object.entries(placedBoulders)) {
         if (placement.date !== dateKey) continue;
-        const boulder = boulders.find(b => b.id === boulderId);
+        const boulder = schedulableTasks.find(b => b.id === boulderId);
         if (!boulder) continue;
         events.push({
           id: `boulder-${boulderId}`,
           title: boulder.title,
           startHour: placement.startHour,
           duration: placement.duration,
-          type: 'boulder',
+          type: boulder.classification === 'rock' ? 'rock' : 'boulder',
           projectName: boulder.projectId ? 'Project' : undefined,
         });
       }
 
       return events;
     });
-  }, [dateKeys, calendarQueries, placedBoulders, boulders, todayKey]);
+  }, [dateKeys, calendarQueries, placedBoulders, filteredBoulders, filteredRocks, todayKey]);
 
   const handleBoulderDrop = useCallback((boulderId: string, startHour: number, dateKey: string) => {
     setPlacedBoulders(prev => {
@@ -176,12 +203,20 @@ export function TodayView() {
 
   const isShowingToday = dateKeys.includes(todayKey);
 
-  const standaloneCount = boulders.filter(b => !b.projectId).length;
-  const projectBoulderIds = new Set(boulders.filter(b => b.projectId).map(b => b.projectId));
+  const standaloneCount = filteredBoulders.filter(b => !b.projectId).length;
+  const projectBoulderIds = new Set(filteredBoulders.filter(b => b.projectId).map(b => b.projectId));
   const activeProjectCount = projectBoulderIds.size;
 
+  const toggleProjectFilter = useCallback((value: string) => {
+    setProjectFilter(prev => (
+      prev.includes(value)
+        ? prev.filter(item => item !== value)
+        : [...prev, value]
+    ));
+  }, []);
+
   return (
-    <div style={{ padding: '12px 16px', maxWidth: '1400px', margin: '0 auto' }}>
+    <div style={{ padding: '12px 16px', maxWidth: '1700px', margin: '0 auto' }}>
       {/* Navigation bar */}
       <div style={{
         display: 'flex',
@@ -223,7 +258,7 @@ export function TodayView() {
         </div>
 
         {/* Sidebar */}
-        <div style={{ width: '300px', flexShrink: 0 }}>
+        <div style={{ width: '600px', flexShrink: 0 }}>
           {/* Capture + Inbox */}
           <div style={{ marginBottom: '16px' }}>
             <input
@@ -249,9 +284,9 @@ export function TodayView() {
               onBlur={e => { e.currentTarget.style.borderColor = '#e5e7eb'; }}
             />
 
-            {inboxTasks.length > 0 && (
+            {filteredInboxTasks.length > 0 && (
               <div style={{ marginTop: '8px' }}>
-                {inboxTasks.map(task => (
+                {filteredInboxTasks.map(task => (
                   <div
                     key={task.id}
                     style={{
@@ -275,6 +310,12 @@ export function TodayView() {
                       🪨
                     </button>
                     <button
+                      onClick={() => handleClassify(task.id, 'rock')}
+                      style={classifyBtnStyle}
+                    >
+                      Rock
+                    </button>
+                    <button
                       onClick={() => handleClassify(task.id, 'pebble')}
                       style={classifyBtnStyle}
                     >
@@ -286,7 +327,79 @@ export function TodayView() {
             )}
           </div>
 
-          {/* Toggle */}
+          {/* Filters */}
+          <div style={{ marginBottom: '12px' }}>
+            <div style={filterHeaderStyle}>Filter priority</div>
+            <div style={filterChipWrapStyle}>
+              <button
+                onClick={() => setPriorityFilter([])}
+                style={{
+                  ...filterChipStyle,
+                  ...(priorityFilter.length === 0 ? activeFilterChipStyle : {}),
+                }}
+              >
+                All
+              </button>
+              {(['high', 'med', 'low'] as const).map(p => {
+                const colors: Record<Priority, { bg: string; border: string }> = {
+                  high: { bg: '#ef4444', border: '#ef4444' },
+                  med: { bg: '#f59e0b', border: '#f59e0b' },
+                  low: { bg: '#9ca3af', border: '#9ca3af' },
+                };
+                const active = priorityFilter.includes(p);
+                return (
+                  <button
+                    key={p}
+                    onClick={() => togglePriorityFilter(p)}
+                    style={{
+                      ...filterChipStyle,
+                      ...(active ? { background: colors[p].bg, borderColor: colors[p].border, color: '#fff' } : {}),
+                      textTransform: 'capitalize',
+                    }}
+                  >
+                    {p}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div style={{ marginBottom: '12px' }}>
+            <div style={filterHeaderStyle}>Filter projects</div>
+            <div style={filterChipWrapStyle}>
+              <button
+                onClick={() => setProjectFilter([])}
+                style={{
+                  ...filterChipStyle,
+                  ...(projectFilter.length === 0 ? activeFilterChipStyle : {}),
+                }}
+              >
+                All
+              </button>
+              <button
+                onClick={() => toggleProjectFilter(STANDALONE_PROJECT_FILTER)}
+                style={{
+                  ...filterChipStyle,
+                  ...(projectFilter.includes(STANDALONE_PROJECT_FILTER) ? activeFilterChipStyle : {}),
+                }}
+              >
+                No project
+              </button>
+              {projects.map(project => (
+                <button
+                  key={project.id}
+                  onClick={() => toggleProjectFilter(project.id)}
+                  style={{
+                    ...filterChipStyle,
+                    ...(projectFilter.includes(project.id) ? activeFilterChipStyle : {}),
+                  }}
+                >
+                  {project.name}
+                </button>
+              ))}
+            </div>
+          </div>
+
           <div style={{
             display: 'flex',
             border: '1px solid #e5e7eb',
@@ -295,7 +408,7 @@ export function TodayView() {
             marginBottom: '16px',
             background: '#f9fafb',
           }}>
-            {(['boulders', 'pebbles'] as const).map(mode => (
+            {(['boulders', 'rocks', 'pebbles'] as const).map(mode => (
               <div
                 key={mode}
                 onClick={() => setSidebarMode(mode)}
@@ -322,14 +435,20 @@ export function TodayView() {
           {/* Content */}
           {sidebarMode === 'boulders' && (
             <BoulderSidebar
-              boulders={boulders}
+              boulders={filteredBoulders}
               placedBoulders={placedBoulders}
               activeProjectCount={activeProjectCount}
               standaloneCount={standaloneCount}
             />
           )}
+          {sidebarMode === 'rocks' && (
+            <RockSidebar
+              rocks={filteredRocks}
+              placedBoulders={placedBoulders}
+            />
+          )}
           {sidebarMode === 'pebbles' && (
-            <PebbleSidebar />
+            <PebbleSidebar projectFilter={projectFilter} priorityFilter={priorityFilter} />
           )}
         </div>
       </div>
@@ -371,4 +490,36 @@ const classifyBtnStyle: React.CSSProperties = {
   fontFamily: 'inherit',
   transition: 'all 0.15s ease',
   flexShrink: 0,
+};
+
+const filterHeaderStyle: React.CSSProperties = {
+  fontSize: '12px',
+  color: '#6b7280',
+  fontWeight: 600,
+  marginBottom: '8px',
+  textTransform: 'uppercase',
+  letterSpacing: '0.04em',
+};
+
+const filterChipWrapStyle: React.CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: '6px',
+};
+
+const filterChipStyle: React.CSSProperties = {
+  padding: '6px 10px',
+  border: '1px solid #e5e7eb',
+  borderRadius: '999px',
+  fontSize: '12px',
+  background: '#fff',
+  color: '#4b5563',
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+};
+
+const activeFilterChipStyle: React.CSSProperties = {
+  background: '#FF7A7A',
+  borderColor: '#FF7A7A',
+  color: '#fff',
 };

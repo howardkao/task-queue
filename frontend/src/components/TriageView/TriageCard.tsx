@@ -29,10 +29,15 @@ function dayOfWeekFromDate(dateStr: string): string {
 export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
   const { data: projects = [] } = useProjects();
   const createProject = useCreateProject();
-  const [showNotes, setShowNotes] = useState(!!task.notes);
   const [projectId, setProjectId] = useState<string>('');
   const [deadline, setDeadline] = useState<string>('');
   const [removing, setRemoving] = useState(false);
+
+  // Progressive disclosure
+  const [showNotes, setShowNotes] = useState(!!task.notes);
+  const [showProject, setShowProject] = useState(false);
+  const [showDeadline, setShowDeadline] = useState(false);
+  const [showRecurrence, setShowRecurrence] = useState(false);
 
   // Recurrence state
   const [recMode, setRecMode] = useState<RecurrenceMode>('');
@@ -53,6 +58,7 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
   };
 
   const buildRecurrence = (): RecurrenceRule | null => {
+    if (!showRecurrence) return null;
     switch (recMode) {
       case 'daily':
         return { freq: 'daily' };
@@ -86,7 +92,7 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
           task.id,
           classification,
           projectId || null,
-          deadline || null,
+          (showDeadline && deadline) ? deadline : null,
           buildRecurrence(),
         );
       }
@@ -94,9 +100,25 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
   };
 
   const toggleDay = (day: string, days: string[], setDays: (d: string[]) => void) => {
-    if (days.includes(day) && days.length <= 1) return; // prevent empty
+    if (days.includes(day) && days.length <= 1) return;
     setDays(days.includes(day) ? days.filter(d => d !== day) : [...days, day]);
   };
+
+  const removeField = (field: 'notes' | 'project' | 'deadline' | 'recurrence') => {
+    switch (field) {
+      case 'notes': setShowNotes(false); break;
+      case 'project': setShowProject(false); setProjectId(''); break;
+      case 'deadline': setShowDeadline(false); setDeadline(''); setShowRecurrence(false); setRecMode(''); break;
+      case 'recurrence': setShowRecurrence(false); setRecMode(''); break;
+    }
+  };
+
+  // Collect add-field links
+  const addLinks: { label: string; action: () => void }[] = [];
+  if (!showNotes) addLinks.push({ label: '+ Add notes', action: () => setShowNotes(true) });
+  if (!showProject) addLinks.push({ label: '+ Add project', action: () => setShowProject(true) });
+  if (!showDeadline) addLinks.push({ label: '+ Add deadline', action: () => setShowDeadline(true) });
+  if (showDeadline && !showRecurrence) addLinks.push({ label: '+ Add recurrence', action: () => { setShowRecurrence(true); if (!recMode) setRecMode('weekly'); } });
 
   return (
     <div
@@ -114,42 +136,17 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
       }}
     >
-      <div style={{ fontSize: '15px', fontWeight: 700, color: '#1f2937', marginBottom: '6px' }}>
+      <div style={{ fontSize: '15px', fontWeight: 700, color: '#1f2937', marginBottom: '8px' }}>
         {task.title}
       </div>
 
-      <div
-        style={{ fontSize: '12px', color: '#9ca3af', cursor: 'pointer', marginBottom: '8px' }}
-        onClick={() => setShowNotes(!showNotes)}
-      >
-        {showNotes ? '▲' : '▼'} Notes
-      </div>
-
-      {showNotes && (
-        <div style={{ marginBottom: '10px' }}>
-          <textarea
-            defaultValue={task.notes}
-            placeholder="Add notes..."
-            style={{
-              width: '100%',
-              border: '2px solid #e5e7eb',
-              borderRadius: '12px',
-              padding: '8px 12px',
-              fontSize: '13px',
-              resize: 'vertical',
-              minHeight: '50px',
-              fontFamily: 'inherit',
-              color: '#4b5563',
-              outline: 'none',
-              boxSizing: 'border-box',
-            }}
-          />
-        </div>
-      )}
-
-      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
+      {/* Classify + Delete — always visible */}
+      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
         <button onClick={() => handleAction('boulder')} style={btnStyle}>
           🪨 Boulder
+        </button>
+        <button onClick={() => handleAction('rock')} style={btnStyle}>
+          Rock
         </button>
         <button onClick={() => handleAction('pebble')} style={btnStyle}>
           Pebble
@@ -159,24 +156,59 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
         </button>
       </div>
 
-      {/* Metadata row */}
-      <div style={{ display: 'flex', gap: '12px', marginTop: '8px', alignItems: 'center', flexWrap: 'wrap' }}>
-        <label style={labelStyle}>
-          Project:
-        </label>
-        <ProjectPicker
-          projects={projects}
-          value={projectId}
-          onChange={setProjectId}
-          onCreateProject={(name) => createProject.mutateAsync({ name })}
-        />
-        <label style={labelStyle}>
-          Deadline:{' '}
+      {/* Notes — progressive */}
+      {showNotes && (
+        <div style={{ position: 'relative', marginBottom: '10px' }}>
+          <textarea
+            defaultValue={task.notes}
+            placeholder="Add notes..."
+            style={{
+              width: '100%',
+              border: '1px solid #e5e7eb',
+              borderRadius: '10px',
+              padding: '8px 12px',
+              fontSize: '13px',
+              resize: 'vertical',
+              minHeight: '50px',
+              fontFamily: 'inherit',
+              color: '#4b5563',
+              outline: 'none',
+              boxSizing: 'border-box',
+              background: '#fafafa',
+            }}
+          />
+          <span onClick={() => removeField('notes')} style={removeXStyle} title="Remove notes">✕</span>
+        </div>
+      )}
+
+      {/* Project — progressive */}
+      {showProject && (
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px' }}>
+          <span style={labelStyle}>Project:</span>
+          <ProjectPicker
+            projects={projects}
+            value={projectId}
+            onChange={setProjectId}
+            onCreateProject={(name) => createProject.mutateAsync({ name })}
+          />
+          <span onClick={() => removeField('project')} style={removeXStyle} title="Remove project">✕</span>
+        </div>
+      )}
+
+      {/* Deadline — progressive */}
+      {showDeadline && (
+        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px' }}>
+          <span style={labelStyle}>Deadline:</span>
           <input type="date" value={deadline} onChange={e => setDeadline(e.target.value)} style={selectStyle} />
-        </label>
-        {deadline && (
-          <label style={labelStyle}>
-            Repeats:{' '}
+          <span onClick={() => removeField('deadline')} style={removeXStyle} title="Remove deadline">✕</span>
+        </div>
+      )}
+
+      {/* Recurrence — progressive */}
+      {showRecurrence && showDeadline && (
+        <div style={{ marginBottom: '8px' }}>
+          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px' }}>
+            <span style={labelStyle}>Repeats:</span>
             <select
               value={recMode}
               onChange={e => handleRecModeChange(e.target.value as RecurrenceMode)}
@@ -190,81 +222,22 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
               <option value="periodically">Periodically</option>
               <option value="custom">Custom</option>
             </select>
-          </label>
-        )}
-      </div>
-
-      {/* Weekly: day-of-week picker */}
-      {recMode === 'weekly' && (
-        <div style={{ marginTop: '8px', display: 'flex', gap: '4px', alignItems: 'center' }}>
-          <span style={{ fontSize: '12px', color: '#6b7280', marginRight: '4px' }}>On:</span>
-          {ALL_DAYS.map(day => (
-            <button
-              key={day}
-              onClick={() => toggleDay(day, weeklyDays, setWeeklyDays)}
-              style={{
-                ...dayBtnStyle,
-                background: weeklyDays.includes(day) ? '#FF7A7A' : '#f9fafb',
-                color: weeklyDays.includes(day) ? '#fff' : '#4b5563',
-                borderColor: weeklyDays.includes(day) ? '#FF7A7A' : '#e5e7eb',
-              }}
-            >
-              {DAY_LABELS[day]}
-            </button>
-          ))}
-        </div>
-      )}
-
-      {/* Periodically: days-after-completion picker */}
-      {recMode === 'periodically' && (
-        <div style={{ marginTop: '8px', display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <span style={{ fontSize: '12px', color: '#6b7280' }}>Reschedule</span>
-          <input
-            type="number"
-            min={1}
-            max={30}
-            value={periodicallyDays}
-            onChange={e => setPeriodicallyDays(Math.min(30, Math.max(1, parseInt(e.target.value) || 1)))}
-            style={{ ...selectStyle, width: '52px', textAlign: 'center' }}
-          />
-          <span style={{ fontSize: '12px', color: '#6b7280' }}>days after completion</span>
-        </div>
-      )}
-
-      {/* Custom: unit toggle + interval + optional day picker */}
-      {recMode === 'custom' && (
-        <div style={{ marginTop: '8px' }}>
-          <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-            <span style={{ fontSize: '12px', color: '#6b7280' }}>Every</span>
-            <input
-              type="number"
-              min={1}
-              max={26}
-              value={customInterval}
-              onChange={e => setCustomInterval(Math.min(26, Math.max(1, parseInt(e.target.value) || 1)))}
-              style={{ ...selectStyle, width: '52px', textAlign: 'center' }}
-            />
-            <select
-              value={customUnit}
-              onChange={e => setCustomUnit(e.target.value as 'weekly' | 'monthly')}
-              style={selectStyle}
-            >
-              <option value="weekly">{customInterval === 1 ? 'week' : 'weeks'}</option>
-              <option value="monthly">{customInterval === 1 ? 'month' : 'months'}</option>
-            </select>
+            <span onClick={() => removeField('recurrence')} style={removeXStyle} title="Remove recurrence">✕</span>
           </div>
-          {customUnit === 'weekly' && (
-            <div style={{ marginTop: '6px', display: 'flex', gap: '4px', alignItems: 'center' }}>
+
+          {/* Weekly: day-of-week picker */}
+          {recMode === 'weekly' && (
+            <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginBottom: '4px' }}>
               <span style={{ fontSize: '12px', color: '#6b7280', marginRight: '4px' }}>On:</span>
               {ALL_DAYS.map(day => (
                 <button
                   key={day}
-                  onClick={() => toggleDay(day, customDays, setCustomDays)}
+                  onClick={() => toggleDay(day, weeklyDays, setWeeklyDays)}
                   style={{
                     ...dayBtnStyle,
-                    background: customDays.includes(day) ? '#FF7A7A' : '#f9fafb',
-                    color: customDays.includes(day) ? '#fff' : '#4b5563',
-                    borderColor: customDays.includes(day) ? '#FF7A7A' : '#e5e7eb',
+                    background: weeklyDays.includes(day) ? '#FF7A7A' : '#f9fafb',
+                    color: weeklyDays.includes(day) ? '#fff' : '#4b5563',
+                    borderColor: weeklyDays.includes(day) ? '#FF7A7A' : '#e5e7eb',
                   }}
                 >
                   {DAY_LABELS[day]}
@@ -272,6 +245,81 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
               ))}
             </div>
           )}
+
+          {/* Periodically: days-after-completion picker */}
+          {recMode === 'periodically' && (
+            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+              <span style={{ fontSize: '12px', color: '#6b7280' }}>Reschedule</span>
+              <input
+                type="number"
+                min={1}
+                max={30}
+                value={periodicallyDays}
+                onChange={e => setPeriodicallyDays(Math.min(30, Math.max(1, parseInt(e.target.value) || 1)))}
+                style={{ ...selectStyle, width: '52px', textAlign: 'center' }}
+              />
+              <span style={{ fontSize: '12px', color: '#6b7280' }}>days after completion</span>
+            </div>
+          )}
+
+          {/* Custom: unit toggle + interval + optional day picker */}
+          {recMode === 'custom' && (
+            <div>
+              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                <span style={{ fontSize: '12px', color: '#6b7280' }}>Every</span>
+                <input
+                  type="number"
+                  min={1}
+                  max={26}
+                  value={customInterval}
+                  onChange={e => setCustomInterval(Math.min(26, Math.max(1, parseInt(e.target.value) || 1)))}
+                  style={{ ...selectStyle, width: '52px', textAlign: 'center' }}
+                />
+                <select
+                  value={customUnit}
+                  onChange={e => setCustomUnit(e.target.value as 'weekly' | 'monthly')}
+                  style={selectStyle}
+                >
+                  <option value="weekly">{customInterval === 1 ? 'week' : 'weeks'}</option>
+                  <option value="monthly">{customInterval === 1 ? 'month' : 'months'}</option>
+                </select>
+              </div>
+              {customUnit === 'weekly' && (
+                <div style={{ marginTop: '6px', display: 'flex', gap: '4px', alignItems: 'center' }}>
+                  <span style={{ fontSize: '12px', color: '#6b7280', marginRight: '4px' }}>On:</span>
+                  {ALL_DAYS.map(day => (
+                    <button
+                      key={day}
+                      onClick={() => toggleDay(day, customDays, setCustomDays)}
+                      style={{
+                        ...dayBtnStyle,
+                        background: customDays.includes(day) ? '#FF7A7A' : '#f9fafb',
+                        color: customDays.includes(day) ? '#fff' : '#4b5563',
+                        borderColor: customDays.includes(day) ? '#FF7A7A' : '#e5e7eb',
+                      }}
+                    >
+                      {DAY_LABELS[day]}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Add-field links */}
+      {addLinks.length > 0 && (
+        <div style={{ display: 'flex', gap: '12px', marginBottom: '8px', flexWrap: 'wrap' }}>
+          {addLinks.map(link => (
+            <span
+              key={link.label}
+              onClick={link.action}
+              style={addFieldStyle}
+            >
+              {link.label}
+            </span>
+          ))}
         </div>
       )}
     </div>
@@ -321,4 +369,22 @@ const dayBtnStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'center',
   transition: 'all 0.15s ease',
+};
+
+const removeXStyle: React.CSSProperties = {
+  fontSize: '12px',
+  color: '#d1d5db',
+  cursor: 'pointer',
+  transition: 'color 0.15s',
+  userSelect: 'none',
+  padding: '0 2px',
+};
+
+const addFieldStyle: React.CSSProperties = {
+  fontSize: '12px',
+  color: '#9ca3af',
+  cursor: 'pointer',
+  padding: '3px 0',
+  transition: 'color 0.15s',
+  userSelect: 'none',
 };
