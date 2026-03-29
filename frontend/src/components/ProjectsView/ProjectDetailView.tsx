@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useProject, useUpdateProject, useToggleProjectStatus, useDeleteProject } from '../../hooks/useProjects';
-import { useTasks, useCompleteTask, useCreateTask, useUpdateTask } from '../../hooks/useTasks';
+import { useTasks, useCompleteTask, useCreateTask } from '../../hooks/useTasks';
 import { useProjectActivityLog } from '../../hooks/useActivityLog';
+import { useIsMobile } from '../../hooks/useViewport';
 import type { Task, Classification } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
 
@@ -13,9 +14,9 @@ interface ProjectDetailViewProps {
 const PROJECT_DETAIL_TASK_DRAG_TYPE = 'project-detail-task';
 
 export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps) {
+  const isMobile = useIsMobile();
   const { data: project, isLoading } = useProject(projectId);
   const updateProject = useUpdateProject();
-  const updateTask = useUpdateTask();
   const toggleStatus = useToggleProjectStatus();
   const deleteProject = useDeleteProject();
   const completeTask = useCompleteTask();
@@ -30,7 +31,6 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
   const [showCompleted, setShowCompleted] = useState(false);
   const [showLog, setShowLog] = useState(false);
   const [confirmingDelete, setConfirmingDelete] = useState(false);
-  const [dragTarget, setDragTarget] = useState<Classification | null>(null);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskType, setNewTaskType] = useState<Classification>('pebble');
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -71,22 +71,6 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
     }, 500);
   }, [project?.name, projectId, updateProject]);
 
-  const handleTaskDrop = useCallback((e: React.DragEvent, targetClassification: Classification) => {
-    const taskId = e.dataTransfer.getData(PROJECT_DETAIL_TASK_DRAG_TYPE);
-    const currentClassification = e.dataTransfer.getData(`${PROJECT_DETAIL_TASK_DRAG_TYPE}-classification`) as Classification;
-    e.preventDefault();
-    setDragTarget(null);
-    if (!taskId || !currentClassification || currentClassification === targetClassification) return;
-    updateTask.mutate({ id: taskId, data: { classification: targetClassification } });
-  }, [updateTask]);
-
-  const handleTaskDragOver = useCallback((e: React.DragEvent, targetClassification: Classification) => {
-    if (!e.dataTransfer.types.includes(PROJECT_DETAIL_TASK_DRAG_TYPE)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'move';
-    setDragTarget(targetClassification);
-  }, []);
-
   if (isLoading || !project) {
     return (
       <div style={{ padding: '20px 24px', maxWidth: '1100px', margin: '0 auto' }}>
@@ -98,6 +82,171 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
   const boulders = projectTasks.filter(t => t.classification === 'boulder');
   const rocks = projectTasks.filter(t => t.classification === 'rock');
   const pebbles = projectTasks.filter(t => t.classification === 'pebble');
+  const unclassified = projectTasks.filter(t => !t.classification || t.classification === 'unclassified');
+
+  const activityLogSection = (
+    <div style={{ marginTop: '16px' }}>
+      <div
+        onClick={() => setShowLog(!showLog)}
+        style={{
+          cursor: 'pointer', color: '#6b7280', fontSize: '14px',
+          userSelect: 'none', fontWeight: 600,
+        }}
+      >
+        Activity Log ({activityLog.length}) {showLog ? '▲' : '▼'}
+      </div>
+      {showLog && (
+        <div style={{
+          marginTop: '8px', background: '#fff', border: '1px solid #e5e7eb',
+          borderRadius: '16px', padding: '8px 0', maxHeight: '300px', overflow: 'auto',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
+        }}>
+          {activityLog.length === 0 && (
+            <div style={{ padding: '12px 16px', color: '#9ca3af', fontStyle: 'italic', fontSize: '13px' }}>
+              No activity yet
+            </div>
+          )}
+          {activityLog.map(entry => (
+            <div key={entry.id} style={{
+              padding: '6px 16px', borderBottom: '1px solid #f3f4f6',
+              display: 'flex', gap: '8px', alignItems: 'baseline',
+            }}>
+              <span style={{ fontSize: '11px', color: '#9ca3af', whiteSpace: 'nowrap', minWidth: '70px' }}>
+                {formatTimestamp(entry.timestamp)}
+              </span>
+              <span style={{ fontSize: '13px', color: '#4b5563' }}>
+                {entry.description}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+
+  const rightRail = (
+    <div style={{ width: isMobile ? '100%' : '320px', flexShrink: 0 }}>
+      {/* Add task */}
+      <div style={{ marginBottom: '16px' }}>
+        <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
+          <input
+            type="text"
+            value={newTaskTitle}
+            onChange={e => setNewTaskTitle(e.target.value)}
+            onKeyDown={e => e.key === 'Enter' && handleAddTask()}
+            placeholder="Add a task..."
+            style={{
+              flex: 1, padding: '6px 10px', border: '2px solid #e5e7eb',
+              borderRadius: '12px', fontSize: '13px', fontFamily: 'inherit', outline: 'none',
+              color: '#1f2937',
+            }}
+          />
+          <button onClick={handleAddTask} style={btnSmStyle}>Add</button>
+        </div>
+        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
+          {(['boulder', 'rock', 'pebble'] as const).map(type => (
+            <button
+              key={type}
+              onClick={() => setNewTaskType(type)}
+              style={{
+                ...btnSmStyle,
+                background: newTaskType === type ? '#FF7A7A' : '#f9fafb',
+                color: newTaskType === type ? '#fff' : '#4b5563',
+                borderColor: newTaskType === type ? '#FF7A7A' : '#e5e7eb',
+                textTransform: 'capitalize',
+                fontWeight: 700,
+              }}
+            >
+              {type === 'boulder' ? '🪨 Boulder' : type === 'rock' ? 'Rock' : 'Pebble'}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Boulders */}
+      <div style={{ marginBottom: '16px' }}>
+        <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Boulders</h2>
+        {boulders.length === 0 && <div style={emptyTaskStyle}>No boulders yet</div>}
+        {boulders.map(t => (
+          <TaskRow key={t.id} task={t} onComplete={() => completeTask.mutate(t.id)} />
+        ))}
+      </div>
+
+      {/* Rocks */}
+      <div style={{ marginBottom: '16px' }}>
+        <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Rocks</h2>
+        {rocks.length === 0 && <div style={emptyTaskStyle}>No rocks yet</div>}
+        {rocks.map(t => (
+          <TaskRow key={t.id} task={t} onComplete={() => completeTask.mutate(t.id)} />
+        ))}
+      </div>
+
+      {/* Pebbles */}
+      <div style={{ marginBottom: '16px' }}>
+        <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Pebbles</h2>
+        {pebbles.length === 0 && <div style={emptyTaskStyle}>No pebbles yet</div>}
+        {pebbles.map(t => (
+          <TaskRow key={t.id} task={t} onComplete={() => completeTask.mutate(t.id)} />
+        ))}
+      </div>
+
+      {/* Unclassified */}
+      <div style={{ marginBottom: '16px' }}>
+        <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Unclassified</h2>
+        {unclassified.length === 0 && <div style={emptyTaskStyle}>No unclassified tasks</div>}
+        {unclassified.map(t => (
+          <TaskRow key={t.id} task={t} onComplete={() => completeTask.mutate(t.id)} />
+        ))}
+      </div>
+
+      {/* Completed */}
+      <div style={{ marginBottom: '16px' }}>
+        <div
+          onClick={() => setShowCompleted(!showCompleted)}
+          style={{ cursor: 'pointer', color: '#6b7280', fontSize: '14px', userSelect: 'none' }}
+        >
+          Completed ({completedTasks.length}) {showCompleted ? '▲' : '▼'}
+        </div>
+        {showCompleted && (
+          <div style={{ marginTop: '8px' }}>
+            {completedTasks.length === 0 && (
+              <div style={emptyTaskStyle}>No completed tasks</div>
+            )}
+            {completedTasks.map(t => (
+              <div key={t.id} style={completedTaskStyle}>
+                <div style={{
+                  width: '16px', height: '16px',
+                  background: '#FF7A7A', border: '2px solid #FF7A7A',
+                  borderRadius: '6px', flexShrink: 0,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  fontSize: '11px', color: '#fff',
+                }}>✓</div>
+                <div style={{ flex: 1 }}>
+                  <span style={{ fontSize: '14px', textDecoration: 'line-through', color: '#9ca3af' }}>
+                    {t.title}
+                  </span>
+                  {t.completedAt && (
+                    <div style={{ fontSize: '11px', color: '#d1d5db' }}>
+                      {formatTimestamp(t.completedAt)}
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Hint */}
+      <div style={{
+        marginTop: '12px', fontSize: '12px', color: '#9ca3af',
+        fontStyle: 'italic', lineHeight: '1.5',
+      }}>
+        Tasks can be generated via assistant workflows.<br />
+        "What should I work on next for this project?"
+      </div>
+    </div>
+  );
 
   return (
     <div style={{ padding: '20px 24px', maxWidth: '1100px', margin: '0 auto' }}>
@@ -115,7 +264,7 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
 
       {/* Header */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: '16px', marginBottom: '16px',
+        display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap',
       }}>
         <input
           type="text"
@@ -148,203 +297,21 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
       </div>
 
       {/* Split layout */}
-      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start' }}>
+      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexDirection: isMobile ? 'column' : 'row' }}>
         {/* Markdown editor */}
-        <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
           <textarea
             value={markdown}
             onChange={e => handleMarkdownChange(e.target.value)}
             placeholder="Write your project notes here... plans, goals, context, links, anything."
             style={editorStyle}
           />
-
-          {/* Activity Log */}
-          <div style={{ marginTop: '16px' }}>
-            <div
-              onClick={() => setShowLog(!showLog)}
-              style={{
-                cursor: 'pointer', color: '#6b7280', fontSize: '14px',
-                userSelect: 'none', fontWeight: 600,
-              }}
-            >
-              Activity Log ({activityLog.length}) {showLog ? '▲' : '▼'}
-            </div>
-            {showLog && (
-              <div style={{
-                marginTop: '8px', background: '#fff', border: '1px solid #e5e7eb',
-                borderRadius: '16px', padding: '8px 0', maxHeight: '300px', overflow: 'auto',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-              }}>
-                {activityLog.length === 0 && (
-                  <div style={{ padding: '12px 16px', color: '#9ca3af', fontStyle: 'italic', fontSize: '13px' }}>
-                    No activity yet
-                  </div>
-                )}
-                {activityLog.map(entry => (
-                  <div key={entry.id} style={{
-                    padding: '6px 16px', borderBottom: '1px solid #f3f4f6',
-                    display: 'flex', gap: '8px', alignItems: 'baseline',
-                  }}>
-                    <span style={{ fontSize: '11px', color: '#9ca3af', whiteSpace: 'nowrap', minWidth: '70px' }}>
-                      {formatTimestamp(entry.timestamp)}
-                    </span>
-                    <span style={{ fontSize: '13px', color: '#4b5563' }}>
-                      {entry.description}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
         </div>
 
-        {/* Tasks sidebar */}
-        <div style={{ width: '320px', flexShrink: 0 }}>
-          {/* Add task */}
-          <div style={{ marginBottom: '16px' }}>
-            <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-              <input
-                type="text"
-                value={newTaskTitle}
-                onChange={e => setNewTaskTitle(e.target.value)}
-                onKeyDown={e => e.key === 'Enter' && handleAddTask()}
-                placeholder="Add a task..."
-                style={{
-                  flex: 1, padding: '6px 10px', border: '2px solid #e5e7eb',
-                  borderRadius: '12px', fontSize: '13px', fontFamily: 'inherit', outline: 'none',
-                  color: '#1f2937',
-                }}
-              />
-              <button onClick={handleAddTask} style={btnSmStyle}>Add</button>
-            </div>
-            <div style={{ display: 'flex', gap: '4px' }}>
-              {(['boulder', 'rock', 'pebble'] as const).map(type => (
-                <button
-                  key={type}
-                  onClick={() => setNewTaskType(type)}
-                  style={{
-                    ...btnSmStyle,
-                    background: newTaskType === type ? '#FF7A7A' : '#f9fafb',
-                    color: newTaskType === type ? '#fff' : '#4b5563',
-                    borderColor: newTaskType === type ? '#FF7A7A' : '#e5e7eb',
-                    textTransform: 'capitalize',
-                    fontWeight: 700,
-                  }}
-                >
-                  {type === 'boulder' ? '🪨 Boulder' : type === 'rock' ? 'Rock' : 'Pebble'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Boulders */}
-          <div style={{ marginBottom: '16px' }}>
-            <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Boulders</h2>
-            <div
-              style={{
-                ...cardStyle,
-                ...(dragTarget === 'boulder' ? dropZoneActiveStyle : {}),
-              }}
-              onDragOver={(e) => handleTaskDragOver(e, 'boulder')}
-              onDragLeave={() => setDragTarget(null)}
-              onDrop={(e) => handleTaskDrop(e, 'boulder')}
-            >
-              {boulders.length === 0 && <div style={emptyTaskStyle}>No boulders yet</div>}
-              {boulders.map(t => (
-                <TaskRow key={t.id} task={t} onComplete={() => completeTask.mutate(t.id)} />
-              ))}
-            </div>
-          </div>
-
-          {/* Rocks */}
-          <div style={{ marginBottom: '16px' }}>
-            <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Rocks</h2>
-            <div
-              style={{
-                ...cardStyle,
-                ...(dragTarget === 'rock' ? dropZoneActiveStyle : {}),
-              }}
-              onDragOver={(e) => handleTaskDragOver(e, 'rock')}
-              onDragLeave={() => setDragTarget(null)}
-              onDrop={(e) => handleTaskDrop(e, 'rock')}
-            >
-              {rocks.length === 0 && <div style={emptyTaskStyle}>No rocks yet</div>}
-              {rocks.map(t => (
-                <TaskRow key={t.id} task={t} onComplete={() => completeTask.mutate(t.id)} />
-              ))}
-            </div>
-          </div>
-
-          {/* Pebbles */}
-          <div style={{ marginBottom: '16px' }}>
-            <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Pebbles</h2>
-            <div
-              style={{
-                ...cardStyle,
-                ...(dragTarget === 'pebble' ? dropZoneActiveStyle : {}),
-              }}
-              onDragOver={(e) => handleTaskDragOver(e, 'pebble')}
-              onDragLeave={() => setDragTarget(null)}
-              onDrop={(e) => handleTaskDrop(e, 'pebble')}
-            >
-              {pebbles.length === 0 && <div style={emptyTaskStyle}>No pebbles yet</div>}
-              {pebbles.map(t => (
-                <TaskRow key={t.id} task={t} onComplete={() => completeTask.mutate(t.id)} />
-              ))}
-            </div>
-          </div>
-
-          {/* Completed */}
-          <div style={{ marginBottom: '16px' }}>
-            <div
-              onClick={() => setShowCompleted(!showCompleted)}
-              style={{ cursor: 'pointer', color: '#6b7280', fontSize: '14px', userSelect: 'none' }}
-            >
-              Completed ({completedTasks.length}) {showCompleted ? '▲' : '▼'}
-            </div>
-            {showCompleted && (
-              <div style={{ ...cardStyle, marginTop: '8px' }}>
-                {completedTasks.length === 0 && (
-                  <div style={emptyTaskStyle}>No completed tasks</div>
-                )}
-                {completedTasks.map(t => (
-                  <div key={t.id} style={{
-                    display: 'flex', alignItems: 'center', gap: '8px',
-                    padding: '8px 10px', borderBottom: '1px solid #f3f4f6',
-                  }}>
-                    <div style={{
-                      width: '16px', height: '16px',
-                      background: '#FF7A7A', border: '2px solid #FF7A7A',
-                      borderRadius: '6px', flexShrink: 0,
-                      display: 'flex', alignItems: 'center', justifyContent: 'center',
-                      fontSize: '11px', color: '#fff',
-                    }}>✓</div>
-                    <div style={{ flex: 1 }}>
-                      <span style={{ fontSize: '14px', textDecoration: 'line-through', color: '#9ca3af' }}>
-                        {t.title}
-                      </span>
-                      {t.completedAt && (
-                        <div style={{ fontSize: '11px', color: '#d1d5db' }}>
-                          {formatTimestamp(t.completedAt)}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-
-          {/* Hint */}
-          <div style={{
-            marginTop: '12px', fontSize: '12px', color: '#9ca3af',
-            fontStyle: 'italic', lineHeight: '1.5',
-          }}>
-            Tasks can be generated via assistant workflows.<br />
-            "What should I work on next for this project?"
-          </div>
-        </div>
+        {rightRail}
       </div>
+
+      {activityLogSection}
     </div>
   );
 }
@@ -352,6 +319,7 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
 function TaskRow({ task, onComplete }: { task: Task; onComplete: () => void }) {
   const [editing, setEditing] = useState(false);
   const deadlineStr = task.deadline ? formatDeadline(task.deadline) : null;
+  const typeStyles = getTaskTypeStyles(task.classification);
 
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData(PROJECT_DETAIL_TASK_DRAG_TYPE, task.id);
@@ -360,17 +328,20 @@ function TaskRow({ task, onComplete }: { task: Task; onComplete: () => void }) {
   };
 
   return (
-    <div style={{ borderBottom: '1px solid #f3f4f6' }}>
+    <div style={{ marginBottom: '6px' }}>
       <div
         draggable
         onDragStart={handleDragStart}
         style={{
+          ...taskRowCardStyle,
+          borderColor: typeStyles.border,
+          background: typeStyles.bg,
           display: 'flex', alignItems: 'center', gap: '8px',
-          padding: '8px 10px',
+          padding: '10px 12px',
           cursor: 'grab',
         }}
       >
-        <span style={taskDragHandleStyle}>⠿</span>
+        <span style={{ ...taskDragHandleStyle, color: typeStyles.handle }}>⠿</span>
         <div
           onClick={onComplete}
           style={{
@@ -444,25 +415,33 @@ const sectionHeaderStyle: React.CSSProperties = {
   color: '#6b7280', marginBottom: '8px', fontWeight: 600,
 };
 
-const cardStyle: React.CSSProperties = {
-  background: '#fff', border: '1px solid #e5e7eb', borderRadius: '16px', padding: '4px 0',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-};
-
-const dropZoneActiveStyle: React.CSSProperties = {
-  borderColor: '#FF7A7A',
-  boxShadow: '0 0 0 3px rgba(255,122,122,0.15)',
-};
-
 const emptyTaskStyle: React.CSSProperties = {
-  padding: '8px 10px', color: '#9ca3af', fontStyle: 'italic', fontSize: '13px',
+  padding: '8px 4px', color: '#9ca3af', fontStyle: 'italic', fontSize: '13px',
 };
 
 const taskDragHandleStyle: React.CSSProperties = {
-  color: '#d1d5db',
   fontSize: '15px',
   userSelect: 'none',
   flexShrink: 0,
+};
+
+const taskRowCardStyle: React.CSSProperties = {
+  border: '2px dashed #e5e7eb',
+  borderRadius: '12px',
+  background: '#fff',
+  boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+};
+
+const completedTaskStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: '8px',
+  padding: '8px 10px',
+  borderBottom: '1px solid #f3f4f6',
+  background: '#fff',
+  border: '1px solid #e5e7eb',
+  borderRadius: '10px',
+  marginBottom: '6px',
 };
 
 const editorStyle: React.CSSProperties = {
@@ -473,3 +452,13 @@ const editorStyle: React.CSSProperties = {
   resize: 'vertical', outline: 'none', boxSizing: 'border-box',
   boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
 };
+
+function getTaskTypeStyles(classification: Task['classification']) {
+  if (classification === 'boulder') {
+    return { border: '#FFB3B3', bg: '#fff', handle: '#FFB3B3' };
+  }
+  if (classification === 'rock') {
+    return { border: '#d7b27a', bg: '#fff', handle: '#d7b27a' };
+  }
+  return { border: '#e5e7eb', bg: '#fff', handle: '#d1d5db' };
+}
