@@ -139,15 +139,6 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
   );
 }
 
-const sectionHeader: React.CSSProperties = {
-  fontSize: '12px',
-  color: '#6b7280',
-  fontWeight: 600,
-  marginBottom: '8px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.04em',
-};
-
 const emptyStyle: React.CSSProperties = {
   padding: '12px',
   color: '#9ca3af',
