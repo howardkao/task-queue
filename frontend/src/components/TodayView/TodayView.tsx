@@ -136,13 +136,13 @@ export function TodayView() {
   // Derived map for easy lookup
   const placedTasksMap = useMemo(() => {
     const map: Record<string, { date: string; startHour: number; duration: number }> = {};
-    [...allBoulders, ...allRocks].forEach(t => {
+    [...allBoulders, ...allRocks, ...dueSoonTasks].forEach(t => {
       if (t.placement) {
         map[t.id] = t.placement;
       }
     });
     return map;
-  }, [allBoulders, allRocks]);
+  }, [allBoulders, allRocks, dueSoonTasks]);
 
   // Fetch calendar events for all visible dates
   const calendarQueries = useEventsForDates(dateKeys);
@@ -176,7 +176,7 @@ export function TodayView() {
 
       const events: CalEvent[] = [...baseEvents];
 
-      const schedulableTasks = [...allBoulders, ...allRocks];
+      const schedulableTasks = [...allBoulders, ...allRocks, ...dueSoonTasks.filter(t => t.classification === 'boulder' || t.classification === 'rock')];
       // Add placed schedulable tasks for this day
       for (const task of schedulableTasks) {
         if (task.placement && task.placement.date === dateKey) {
@@ -193,7 +193,7 @@ export function TodayView() {
 
       return events;
     });
-  }, [dateKeys, calendarQueries, allBoulders, allRocks, todayKey]);
+  }, [dateKeys, calendarQueries, allBoulders, allRocks, dueSoonTasks, todayKey]);
 
   const handleBoulderDrop = useCallback((boulderId: string, startHour: number, dateKey: string) => {
     const task = [...allBoulders, ...allRocks, ...dueSoonTasks].find(t => t.id === boulderId);
