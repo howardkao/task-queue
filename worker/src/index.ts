@@ -66,8 +66,9 @@ let cachedSigningKeys: CachedSigningKeys | null = null;
 function corsHeaders(env: Env): Record<string, string> {
   return {
     'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*',
-    'Access-Control-Allow-Methods': 'GET, OPTIONS',
+    'Access-Control-Allow-Methods': 'GET, OPTIONS, PUT',
     'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    'Access-Control-Max-Age': '86400',
   };
 }
 
@@ -214,17 +215,28 @@ async function authenticateRequest(request: Request, env: Env): Promise<Firebase
  * returns the UTC Date that corresponds to midnight PT on March 25.
  */
 function getTimezoneDate(dateStr: string, timeStr: string, tz: string): Date {
-  // Start with a guess: parse as UTC
-  const guess = new Date(`${dateStr}T${timeStr}Z`);
+  const [y, m, d] = dateStr.split('-').map(Number);
+  const [hh, mm, ss] = timeStr.split(':').map(Number);
+  const utcDate = new Date(Date.UTC(y, m - 1, d, hh, mm, ss));
 
-  // Format that UTC instant in the target timezone
-  const inTz = new Date(guess.toLocaleString('en-US', { timeZone: tz }));
-
-  // The difference tells us the offset
-  const offsetMs = inTz.getTime() - guess.getTime();
-
-  // Subtract the offset to get the actual UTC time for midnight in that tz
-  return new Date(guess.getTime() - offsetMs);
+  const dtf = new Intl.DateTimeFormat('en-US', {
+    timeZone: tz,
+    year: 'numeric', month: 'numeric', day: 'numeric',
+    hour: 'numeric', minute: 'numeric', second: 'numeric',
+    hour12: false
+  });
+  
+  const parts = dtf.formatToParts(utcDate);
+  const p: any = {};
+  for (const part of parts) {
+    if (part.type !== 'literal') p[part.type] = part.value;
+  }
+  
+  // Construct a date as if the target timezone's components were UTC
+  const localAsUtc = new Date(`${p.year}-${p.month.padStart(2, '0')}-${p.day.padStart(2, '0')}T${p.hour.padStart(2, '0')}:${p.minute.padStart(2, '0')}:${p.second.padStart(2, '0')}Z`);
+  const offset = localAsUtc.getTime() - utcDate.getTime();
+  
+  return new Date(utcDate.getTime() - offset);
 }
 
 async function handleTodayEvents(request: Request, env: Env): Promise<Response> {
@@ -241,7 +253,6 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
   }
 
   // Client sends ?tz=America/Los_Angeles so we know what "today" means locally.
-  // Cloudflare Workers support Intl.DateTimeFormat with timeZone.
   const url = new URL(request.url);
   const tz = url.searchParams.get('tz') || 'America/Los_Angeles';
   const now = new Date();
@@ -250,7 +261,6 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
   const todayStr = url.searchParams.get('date') || now.toLocaleDateString('en-CA', { timeZone: tz }); // en-CA gives YYYY-MM-DD
 
   // Build midnight-to-midnight in the user's timezone as UTC instants
-  // by using a known reference point approach
   const todayStart = getTimezoneDate(todayStr, '00:00:00', tz);
   const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
 
@@ -262,6 +272,7 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
       try {
         const res = await fetch(feed.url, {
           headers: { 'User-Agent': 'TaskQueue-Calendar/1.0' },
+          // Add a timeout if possible, but Workers fetch doesn't support signal easily here without more boilerplate
         });
         if (!res.ok) {
           console.error(`Feed "${feed.name}" returned ${res.status}`);
@@ -269,11 +280,9 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
         }
 
         const text = await res.text();
-        // parseICal expands recurring events within the date range
         const events = parseICal(text, todayStart, todayEnd);
 
         return events.map(event => {
-          // Clamp to today's bounds for display
           const displayStart = event.start < todayStart ? todayStart : event.start;
           const displayEnd = event.end > todayEnd ? todayEnd : event.end;
 
@@ -287,7 +296,7 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
           };
         });
       } catch (err) {
-        console.error(`Failed to fetch feed "${feed.name}":`, err);
+        console.error(`Failed to fetch/parse feed "${feed.name}":`, err);
         return [];
       }
     })
@@ -320,36 +329,45 @@ async function handleFeeds(env: Env): Promise<Response> {
 
 export default {
   async fetch(request: Request, env: Env): Promise<Response> {
-    const url = new URL(request.url);
+    try {
+      const url = new URL(request.url);
 
-    // Handle CORS preflight
-    if (request.method === 'OPTIONS') {
-      return new Response(null, { status: 204, headers: corsHeaders(env) });
-    }
-
-    if (url.pathname === '/calendar/today' || url.pathname === '/calendar/feeds') {
-      try {
-        await authenticateRequest(request, env);
-      } catch (error) {
-        console.error('Calendar auth failed:', error);
-        return jsonResponse({ error: 'Unauthorized' }, env, 401);
+      // Handle CORS preflight
+      if (request.method === 'OPTIONS') {
+        return new Response(null, { status: 204, headers: corsHeaders(env) });
       }
-    }
 
-    // Route
-    if (url.pathname === '/calendar/today' && request.method === 'GET') {
-      return handleTodayEvents(request, env);
-    }
+      if (url.pathname === '/calendar/today' || url.pathname === '/calendar/feeds') {
+        try {
+          await authenticateRequest(request, env);
+        } catch (error) {
+          console.error('Calendar auth failed:', error);
+          return jsonResponse({ error: 'Unauthorized', message: (error as Error).message }, env, 401);
+        }
+      }
 
-    if (url.pathname === '/calendar/feeds' && request.method === 'GET') {
-      return handleFeeds(env);
-    }
+      // Route
+      if (url.pathname === '/calendar/today' && request.method === 'GET') {
+        return await handleTodayEvents(request, env);
+      }
 
-    // Health check
-    if (url.pathname === '/' || url.pathname === '/health') {
-      return jsonResponse({ status: 'ok', service: 'task-queue-calendar' }, env);
-    }
+      if (url.pathname === '/calendar/feeds' && request.method === 'GET') {
+        return await handleFeeds(env);
+      }
 
-    return jsonResponse({ error: 'Not found' }, env, 404);
+      // Health check
+      if (url.pathname === '/' || url.pathname === '/health') {
+        return jsonResponse({ status: 'ok', service: 'task-queue-calendar' }, env);
+      }
+
+      return jsonResponse({ error: 'Not found' }, env, 404);
+    } catch (err: any) {
+      console.error('Worker global error:', err);
+      return jsonResponse({ 
+        error: 'Internal Server Error', 
+        message: err.message,
+        stack: err.stack 
+      }, env, 500);
+    }
   },
 };

@@ -34,11 +34,8 @@ router.post("/", async (req: Request, res: Response) => {
       return;
     }
 
-    // For new pebbles, calculate sortOrder (position 4, or end if fewer than 4 exist)
-    let sortOrder = 0;
-    if (classification === "pebble") {
-      sortOrder = await getNewPebbleSortOrder();
-    }
+    // Assign sortOrder to the top of its classification list
+    const sortOrder = await getNewTaskSortOrder(classification);
 
     const now = admin.firestore.Timestamp.now();
     const taskData = {
@@ -91,11 +88,11 @@ router.get("/", async (req: Request, res: Response) => {
       ...doc.data(),
     }));
 
-    // Sort pebbles by sortOrder, others by createdAt
+    // Sort by sortOrder, with fallback to createdAt
     tasks.sort((a: any, b: any) => {
-      if (a.classification === "pebble" && b.classification === "pebble") {
-        return (a.sortOrder || 0) - (b.sortOrder || 0);
-      }
+      const aOrder = a.sortOrder || 0;
+      const bOrder = b.sortOrder || 0;
+      if (aOrder !== bOrder) return aOrder - bOrder;
       return (a.createdAt?.seconds || 0) - (b.createdAt?.seconds || 0);
     });
 
@@ -130,6 +127,7 @@ router.patch("/:id", async (req: Request, res: Response) => {
       return;
     }
 
+    const currentData = doc.data()!;
     const allowedFields = [
       "title", "notes", "classification", "status",
       "deadline", "recurrence", "projectId", "sortOrder",
@@ -146,12 +144,9 @@ router.patch("/:id", async (req: Request, res: Response) => {
       }
     }
 
-    // When classifying as pebble, assign sort order if not already set
-    if (updates.classification === "pebble" && !updates.sortOrder) {
-      const currentData = doc.data();
-      if (currentData?.classification !== "pebble") {
-        updates.sortOrder = await getNewPebbleSortOrder();
-      }
+    // When reclassifying, move to the top of the new section
+    if (updates.classification && updates.classification !== currentData.classification) {
+      updates.sortOrder = await getNewTaskSortOrder(updates.classification);
     }
 
     updates.updatedAt = admin.firestore.Timestamp.now();
@@ -184,7 +179,8 @@ router.post("/:id/complete", async (req: Request, res: Response) => {
     let nextTask = null;
     if (taskData.recurrence) {
       const nextDeadline = calculateNextOccurrence(taskData.recurrence, taskData.deadline);
-      const newSortOrder = await getNewPebbleSortOrder();
+      // New occurrence also goes to the top of its section
+      const sortOrder = await getNewTaskSortOrder(taskData.classification);
       const now = admin.firestore.Timestamp.now();
       const newTaskData = {
         title: taskData.title,
@@ -194,7 +190,7 @@ router.post("/:id/complete", async (req: Request, res: Response) => {
         deadline: nextDeadline,
         recurrence: taskData.recurrence,
         projectId: taskData.projectId,
-        sortOrder: taskData.classification === "pebble" ? newSortOrder : 0,
+        sortOrder,
         createdAt: now,
         updatedAt: now,
       };
@@ -258,27 +254,19 @@ router.delete("/:id", async (req: Request, res: Response) => {
   }
 });
 
-// Helper: calculate sort order for new pebble (position 4, or end if < 4 exist)
-async function getNewPebbleSortOrder(): Promise<number> {
-  const pebbles = await tasksCollection
-    .where("classification", "==", "pebble")
+// Helper: calculate sort order for a new task to put it at the top of its section
+async function getNewTaskSortOrder(classification: string): Promise<number> {
+  const snapshot = await tasksCollection
+    .where("classification", "==", classification)
     .where("status", "==", "active")
     .orderBy("sortOrder", "asc")
+    .limit(1)
     .get();
 
-  if (pebbles.empty) return 1000;
+  if (snapshot.empty) return 1000000;
 
-  const orders = pebbles.docs.map((d) => d.data().sortOrder as number);
-
-  if (orders.length < 4) {
-    // Fewer than 4 pebbles, add at end
-    return orders[orders.length - 1] + 1000;
-  }
-
-  // Insert at position 4 (between index 2 and 3)
-  const before = orders[2];
-  const after = orders[3];
-  return before + (after - before) / 2;
+  const minOrder = snapshot.docs[0].data().sortOrder as number;
+  return minOrder - 1000;
 }
 
 // Helper: calculate next occurrence for recurring tasks

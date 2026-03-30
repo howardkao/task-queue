@@ -149,27 +149,30 @@ function filterOutOnHoldProjectTasks(tasks: Task[], activeProjectIds: Set<string
   return tasks.filter(task => !task.projectId || activeProjectIds.has(task.projectId));
 }
 
-function getDuePriority(deadline: string | null): number {
-  if (!deadline) return 1;
-  const due = new Date(deadline);
-  if (Number.isNaN(due.getTime())) return 1;
-
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-
-  const threshold = new Date(today);
-  threshold.setDate(threshold.getDate() + 3);
-  threshold.setHours(23, 59, 59, 999);
-
-  return due.getTime() <= threshold.getTime() ? 0 : 1;
-}
-
-function getCreatedAtTimestamp(value: any): number {
+function getTimestamp(value: any): number {
   if (!value) return 0;
-  if (value.seconds) return value.seconds * 1000;
-  if (value.toDate) return value.toDate().getTime();
+  if (typeof value === 'object' && value.seconds) return value.seconds * 1000;
+  if (typeof value === 'object' && typeof value.toDate === 'function') return value.toDate().getTime();
   const parsed = new Date(value).getTime();
   return Number.isNaN(parsed) ? 0 : parsed;
+}
+
+function isDueSoon(deadline: any): boolean {
+  const ts = getTimestamp(deadline);
+  if (ts === 0) return false;
+  const now = Date.now();
+  const diff = ts - now;
+  // Due within 48 hours and not already passed (or slightly passed)
+  return diff <= 48 * 60 * 60 * 1000;
+}
+
+function isFutureRecurring(task: Task): boolean {
+  if (!task.recurrence) return false;
+  const ts = getTimestamp(task.deadline);
+  if (ts === 0) return false;
+  const now = Date.now();
+  const diff = ts - now;
+  return diff > 7 * 24 * 60 * 60 * 1000;
 }
 
 function filterByTodayProject(tasks: Task[], projectFilter: TodayProjectFilter) {
@@ -186,28 +189,46 @@ function filterByTodayProject(tasks: Task[], projectFilter: TodayProjectFilter) 
 
 function sortTodayTasks(tasks: Task[]) {
   return [...tasks].sort((a, b) => {
-    const priorityDiff = getDuePriority(a.deadline) - getDuePriority(b.deadline);
-    if (priorityDiff !== 0) return priorityDiff;
+    // Future recurring tasks go to the bottom
+    const aFuture = isFutureRecurring(a);
+    const bFuture = isFutureRecurring(b);
+    if (aFuture !== bFuture) return aFuture ? 1 : -1;
 
+    // Primary: Manual sort order
     const aOrder = a.sortOrder || 0;
     const bOrder = b.sortOrder || 0;
     if (aOrder !== bOrder) return aOrder - bOrder;
 
-    return getCreatedAtTimestamp(a.createdAt) - getCreatedAtTimestamp(b.createdAt);
+    // Secondary: Created time (newest first for same sort order)
+    return getTimestamp(b.createdAt) - getTimestamp(a.createdAt);
   });
 }
 
-function useTodayTaskList(tasks: Task[], projectFilter: TodayProjectFilter = []) {
+function useTodayTaskList(tasks: Task[], projectFilter: TodayProjectFilter = [], excludeDueSoon = true) {
   const { data: activeProjects = [] } = useProjects('active');
 
   const data = useMemo(() => {
     const activeProjectIds = new Set(activeProjects.map(project => project.id));
-    const visibleTasks = filterOutOnHoldProjectTasks(tasks, activeProjectIds);
+    let visibleTasks = filterOutOnHoldProjectTasks(tasks, activeProjectIds);
+    
+    if (excludeDueSoon) {
+      visibleTasks = visibleTasks.filter(t => !isDueSoon(t.deadline));
+    }
+
     const projectFilteredTasks = filterByTodayProject(visibleTasks, projectFilter);
     return sortTodayTasks(projectFilteredTasks);
-  }, [tasks, activeProjects, projectFilter]);
+  }, [tasks, activeProjects, projectFilter, excludeDueSoon]);
 
   return data;
+}
+
+export function useDueSoonTasks() {
+  const { data: allTasks = [] } = useTasks({ status: 'active' });
+  
+  return useMemo(() => {
+    const dueSoon = allTasks.filter(t => isDueSoon(t.deadline));
+    return dueSoon.sort((a, b) => getTimestamp(a.deadline) - getTimestamp(b.deadline));
+  }, [allTasks]);
 }
 
 export function useTodayInboxTasks(projectFilter: TodayProjectFilter = []) {

@@ -1,5 +1,5 @@
 import { useState, useEffect, lazy, Suspense } from 'react';
-import { QueryClient, QueryClientProvider, MutationCache } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, MutationCache, QueryCache } from '@tanstack/react-query';
 import { TabBar } from './components/shared/TabBar';
 import type { TabId } from './components/shared/TabBar';
 import { SideDrawer } from './components/shared/SideDrawer';
@@ -25,6 +25,12 @@ const queryClient = new QueryClient({
       retry: 1,
     },
   },
+  queryCache: new QueryCache({
+    onError: (error) => {
+      // Only show error for critical queries if needed, but let's show all for now
+      globalErrorHandler?.(error as Error);
+    },
+  }),
   mutationCache: new MutationCache({
     onError: (error) => {
       globalErrorHandler?.(error as Error);

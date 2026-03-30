@@ -7,7 +7,7 @@ import type { Task, Classification } from '../types';
 import { addLogEntry } from './activityLog';
 
 const tasksRef = collection(db, 'tasks');
-const ORDERED_CLASSIFICATIONS = new Set<Classification>(['boulder', 'rock', 'pebble']);
+const ORDERED_CLASSIFICATIONS = new Set<Classification>(['boulder', 'rock', 'pebble', 'unclassified']);
 
 function requireUser() {
   const user = auth.currentUser;
@@ -48,15 +48,13 @@ export async function createTask(data: {
   lastOccurrenceCompletedAt?: any;
 }): Promise<Task> {
   const user = requireUser();
-  let sortOrder = 0;
-  if (data.classification && ORDERED_CLASSIFICATIONS.has(data.classification)) {
-    sortOrder = await getTopSortOrder(data.classification);
-  }
+  const classification = data.classification || 'unclassified';
+  const sortOrder = await getTopSortOrder(classification);
 
   const taskData = {
     title: data.title.trim(),
     notes: data.notes || '',
-    classification: data.classification || 'unclassified',
+    classification,
     status: 'active',
     priority: data.priority || 'low',
     deadline: data.deadline ? Timestamp.fromDate(new Date(data.deadline)) : null,

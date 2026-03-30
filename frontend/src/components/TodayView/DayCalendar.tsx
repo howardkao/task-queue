@@ -17,6 +17,8 @@ interface DayCalendarProps {
   startHour?: number;
   endHour?: number;
   compact?: boolean; // narrower layout for multi-day view
+  showLabels?: boolean; // show hour labels on the left
+  isToday?: boolean; // show current time indicator
   onBoulderDrop?: (boulderId: string, startHour: number, dateKey: string) => void;
   onBoulderMove?: (boulderId: string, startHour: number) => void;
   onBoulderResize?: (boulderId: string, duration: number) => void;
@@ -33,10 +35,24 @@ function snapToGrid(hour: number): number {
 
 export function DayCalendar({
   date, dateKey, events, startHour = 7, endHour = 22, compact = false,
+  showLabels = true, isToday = false,
   onBoulderDrop, onBoulderMove, onBoulderResize, onBoulderRemove,
 }: DayCalendarProps) {
   const gridRef = useRef<HTMLDivElement>(null);
   const [dragOverHour, setDragOverHour] = useState<number | null>(null);
+  const [now, setNow] = useState(new Date());
+
+  // Update current time every minute if it's today
+  useMemo(() => {
+    if (!isToday) return;
+    const timer = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(timer);
+  }, [isToday]);
+
+  const currentHour = useMemo(() => {
+    return now.getHours() + now.getMinutes() / 60;
+  }, [now]);
+
   const [interacting, setInteracting] = useState<{
     type: 'move' | 'resize';
     eventId: string;
@@ -138,7 +154,7 @@ export function DayCalendar({
     window.addEventListener('mouseup', handleMouseUp);
   }, [events, startHour, endHour, onBoulderMove, onBoulderResize]);
 
-  const timeColWidth = compact ? 40 : 60;
+  const timeColWidth = showLabels ? (compact ? 40 : 60) : 0;
 
   const getEventStyle = (event: CalEvent): React.CSSProperties => {
     const top = (event.startHour - startHour) * PX_PER_HOUR;
@@ -221,6 +237,7 @@ export function DayCalendar({
           borderRadius: '0 0 16px 16px',
           background: '#fff',
           position: 'relative',
+          borderLeft: showLabels ? '1px solid #e5e7eb' : 'none',
         }}
       >
         {/* Time grid */}
@@ -230,19 +247,45 @@ export function DayCalendar({
             minHeight: `${SLOT_HEIGHT}px`,
             borderBottom: '1px dashed #f3f4f6',
           }}>
-            <div style={{
-              width: compact ? '40px' : '60px',
-              padding: compact ? '4px 4px' : '4px 8px',
-              fontSize: compact ? '10px' : '12px',
-              color: '#9ca3af',
-              textAlign: 'right',
-              flexShrink: 0,
-              borderRight: '1px solid #f3f4f6',
-            }}>
-              {formatTime(time)}
-            </div>
+            {showLabels && (
+              <div style={{
+                width: compact ? '40px' : '60px',
+                padding: compact ? '4px 4px' : '4px 8px',
+                fontSize: compact ? '10px' : '12px',
+                color: '#9ca3af',
+                textAlign: 'right',
+                flexShrink: 0,
+                borderRight: '1px solid #f3f4f6',
+              }}>
+                {formatTime(time)}
+              </div>
+            )}
           </div>
         ))}
+
+        {/* Current time indicator */}
+        {isToday && currentHour >= startHour && currentHour <= endHour && (
+          <div style={{
+            position: 'absolute',
+            top: `${(currentHour - startHour) * PX_PER_HOUR}px`,
+            left: `${timeColWidth}px`,
+            right: '0',
+            height: '2px',
+            background: '#ef4444',
+            zIndex: 15,
+            pointerEvents: 'none',
+          }}>
+            <div style={{
+              position: 'absolute',
+              left: '-4px',
+              top: '-3px',
+              width: '8px',
+              height: '8px',
+              borderRadius: '50%',
+              background: '#ef4444',
+            }} />
+          </div>
+        )}
 
         {/* Drop indicator line */}
         {dragOverHour !== null && (

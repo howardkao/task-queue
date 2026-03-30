@@ -3,7 +3,7 @@ import { DayCalendar } from './DayCalendar';
 import { BoulderSidebar } from './BoulderSidebar';
 import { RockSidebar } from './RockSidebar';
 import { PebbleSidebar } from './PebbleSidebar';
-import { useTodayBoulders, useTodayRocks, useTodayInboxTasks, useCreateTask, useClassifyTask, useUpdateTask } from '../../hooks/useTasks';
+import { useTodayBoulders, useTodayRocks, useTodayInboxTasks, useCreateTask, useClassifyTask, useUpdateTask, useDueSoonTasks } from '../../hooks/useTasks';
 import { useProjects } from '../../hooks/useProjects';
 import { useIsMobile } from '../../hooks/useViewport';
 import { useEventsForDates } from '../../hooks/useCalendar';
@@ -12,6 +12,7 @@ import type { CalendarEvent, Classification, Priority } from '../../types';
 import { STANDALONE_PROJECT_FILTER } from '../../hooks/useTasks';
 import type { TodayProjectFilter } from '../../hooks/useTasks';
 import { SideDrawer } from '../shared/SideDrawer';
+import { DueSoonSidebar } from './DueSoonSidebar';
 
 // Fallback mock events when no iCal feeds configured
 const MOCK_CAL_EVENTS: CalEvent[] = [
@@ -77,6 +78,7 @@ export function TodayView() {
   const { data: inboxTasks = [] } = useTodayInboxTasks(projectFilter);
   const createTask = useCreateTask();
   const classifyTask = useClassifyTask();
+  const dueSoonTasks = useDueSoonTasks();
 
   const [priorityFilter, setPriorityFilter] = useState<Priority[]>(() => {
     const saved = localStorage.getItem('today_priorityFilter');
@@ -90,7 +92,16 @@ export function TodayView() {
     const saved = localStorage.getItem('today_dayCount');
     return saved ? parseInt(saved, 10) : 3;
   });
+  const [wakeUpHour, setWakeUpHour] = useState(() => {
+    const saved = localStorage.getItem('today_wakeUpHour');
+    return saved ? parseInt(saved, 10) : 8;
+  });
+  const [bedTimeHour, setBedTimeHour] = useState(() => {
+    const saved = localStorage.getItem('today_bedTimeHour');
+    return saved ? parseInt(saved, 10) : 22;
+  });
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [captureValue, setCaptureValue] = useState('');
   const [startDate, setStartDate] = useState<Date>(() => {
     const d = new Date();
@@ -103,6 +114,8 @@ export function TodayView() {
   useEffect(() => { localStorage.setItem('today_priorityFilter', JSON.stringify(priorityFilter)); }, [priorityFilter]);
   useEffect(() => { localStorage.setItem('today_sidebarMode', sidebarMode); }, [sidebarMode]);
   useEffect(() => { localStorage.setItem('today_dayCount', dayCount.toString()); }, [dayCount]);
+  useEffect(() => { localStorage.setItem('today_wakeUpHour', wakeUpHour.toString()); }, [wakeUpHour]);
+  useEffect(() => { localStorage.setItem('today_bedTimeHour', bedTimeHour.toString()); }, [bedTimeHour]);
 
   const visibleDayCount = isMobile ? 1 : dayCount;
 
@@ -183,7 +196,7 @@ export function TodayView() {
   }, [dateKeys, calendarQueries, allBoulders, allRocks, todayKey]);
 
   const handleBoulderDrop = useCallback((boulderId: string, startHour: number, dateKey: string) => {
-    const task = [...allBoulders, ...allRocks].find(t => t.id === boulderId);
+    const task = [...allBoulders, ...allRocks, ...dueSoonTasks].find(t => t.id === boulderId);
     if (!task) return;
     updateTask.mutate({
       id: boulderId,
@@ -195,10 +208,10 @@ export function TodayView() {
         },
       },
     });
-  }, [allBoulders, allRocks, updateTask]);
+  }, [allBoulders, allRocks, dueSoonTasks, updateTask]);
 
   const handleBoulderMove = useCallback((boulderId: string, startHour: number) => {
-    const task = [...allBoulders, ...allRocks].find(t => t.id === boulderId);
+    const task = [...allBoulders, ...allRocks, ...dueSoonTasks].find(t => t.id === boulderId);
     if (!task || !task.placement) return;
     updateTask.mutate({
       id: boulderId,
@@ -206,10 +219,10 @@ export function TodayView() {
         placement: { ...task.placement, startHour },
       },
     });
-  }, [allBoulders, allRocks, updateTask]);
+  }, [allBoulders, allRocks, dueSoonTasks, updateTask]);
 
   const handleBoulderResize = useCallback((boulderId: string, duration: number) => {
-    const task = [...allBoulders, ...allRocks].find(t => t.id === boulderId);
+    const task = [...allBoulders, ...allRocks, ...dueSoonTasks].find(t => t.id === boulderId);
     if (!task || !task.placement) return;
     updateTask.mutate({
       id: boulderId,
@@ -217,7 +230,7 @@ export function TodayView() {
         placement: { ...task.placement, duration },
       },
     });
-  }, [allBoulders, allRocks, updateTask]);
+  }, [allBoulders, allRocks, dueSoonTasks, updateTask]);
 
   const handleBoulderRemove = useCallback((boulderId: string) => {
     updateTask.mutate({
@@ -244,8 +257,6 @@ export function TodayView() {
     setStartDate(d);
   };
 
-  const isShowingToday = dateKeys.includes(todayKey);
-
   const standaloneCount = filteredBoulders.filter(b => !b.projectId).length;
   const projectBoulderIds = new Set(filteredBoulders.filter(b => b.projectId).map(b => b.projectId));
   const activeProjectCount = projectBoulderIds.size;
@@ -261,7 +272,7 @@ export function TodayView() {
   const sidebarContent = (
     <>
       {/* Capture + Inbox */}
-      <div style={{ marginBottom: '16px' }}>
+      <div style={{ marginBottom: '12px' }}>
         <input
           type="text"
           value={captureValue}
@@ -311,63 +322,69 @@ export function TodayView() {
         )}
       </div>
 
-      <div style={{ marginBottom: '12px' }}>
-        <div style={filterHeaderStyle}>Filter priority</div>
-        <div style={filterChipWrapStyle}>
-          <button
-            onClick={() => setPriorityFilter([])}
-            style={{ ...filterChipStyle, ...(priorityFilter.length === 0 ? activeFilterChipStyle : {}) }}
-          >
-            All
-          </button>
-          {(['high', 'med', 'low'] as const).map(p => {
-            const colors: Record<Priority, { bg: string; border: string }> = {
-              high: { bg: '#ef4444', border: '#ef4444' },
-              med: { bg: '#f59e0b', border: '#f59e0b' },
-              low: { bg: '#9ca3af', border: '#9ca3af' },
-            };
-            const active = priorityFilter.includes(p);
-            return (
-              <button
-                key={p}
-                onClick={() => togglePriorityFilter(p)}
-                style={{
-                  ...filterChipStyle,
-                  ...(active ? { background: colors[p].bg, borderColor: colors[p].border, color: '#fff' } : {}),
-                  textTransform: 'capitalize',
-                }}
-              >
-                {p}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {dueSoonTasks.length > 0 && (
+        <DueSoonSidebar tasks={dueSoonTasks} placedTasks={placedTasksMap} />
+      )}
 
-      <div style={{ marginBottom: '12px' }}>
-        <div style={filterHeaderStyle}>Filter projects</div>
-        <div style={filterChipWrapStyle}>
-          <button
-            onClick={() => setProjectFilter([])}
-            style={{ ...filterChipStyle, ...(projectFilter.length === 0 ? activeFilterChipStyle : {}) }}
-          >
-            All
-          </button>
-          <button
-            onClick={() => toggleProjectFilter(STANDALONE_PROJECT_FILTER)}
-            style={{ ...filterChipStyle, ...(projectFilter.includes(STANDALONE_PROJECT_FILTER) ? activeFilterChipStyle : {}) }}
-          >
-            No project
-          </button>
-          {projects.map(project => (
+      <div style={{ display: 'flex', gap: '24px', marginBottom: '16px', background: '#fcfcfd', padding: '10px', borderRadius: '12px', border: '1px solid #f3f4f6' }}>
+        <div style={{ flex: 1 }}>
+          <div style={filterHeaderStyle}>Priority</div>
+          <div style={filterChipWrapStyle}>
             <button
-              key={project.id}
-              onClick={() => toggleProjectFilter(project.id)}
-              style={{ ...filterChipStyle, ...(projectFilter.includes(project.id) ? activeFilterChipStyle : {}) }}
+              onClick={() => setPriorityFilter([])}
+              style={{ ...filterChipStyle, ...(priorityFilter.length === 0 ? activeFilterChipStyle : {}) }}
             >
-              {project.name}
+              All
             </button>
-          ))}
+            {(['high', 'med', 'low'] as const).map(p => {
+              const colors: Record<Priority, { bg: string; border: string }> = {
+                high: { bg: '#ef4444', border: '#ef4444' },
+                med: { bg: '#f59e0b', border: '#f59e0b' },
+                low: { bg: '#9ca3af', border: '#9ca3af' },
+              };
+              const active = priorityFilter.includes(p);
+              return (
+                <button
+                  key={p}
+                  onClick={() => togglePriorityFilter(p)}
+                  style={{
+                    ...filterChipStyle,
+                    ...(active ? { background: colors[p].bg, borderColor: colors[p].border, color: '#fff' } : {}),
+                    textTransform: 'capitalize',
+                  }}
+                >
+                  {p}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
+        <div style={{ flex: 2 }}>
+          <div style={filterHeaderStyle}>Projects</div>
+          <div style={filterChipWrapStyle}>
+            <button
+              onClick={() => setProjectFilter([])}
+              style={{ ...filterChipStyle, ...(projectFilter.length === 0 ? activeFilterChipStyle : {}) }}
+            >
+              All
+            </button>
+            <button
+              onClick={() => toggleProjectFilter(STANDALONE_PROJECT_FILTER)}
+              style={{ ...filterChipStyle, ...(projectFilter.includes(STANDALONE_PROJECT_FILTER) ? activeFilterChipStyle : {}) }}
+            >
+              None
+            </button>
+            {projects.map(project => (
+              <button
+                key={project.id}
+                onClick={() => toggleProjectFilter(project.id)}
+                style={{ ...filterChipStyle, ...(projectFilter.includes(project.id) ? activeFilterChipStyle : {}) }}
+              >
+                {project.name}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -376,7 +393,7 @@ export function TodayView() {
         border: '1px solid #e5e7eb',
         borderRadius: '12px',
         overflow: 'hidden',
-        marginBottom: '16px',
+        marginBottom: '12px',
         background: '#f9fafb',
       }}>
         {(['boulders', 'rocks', 'pebbles'] as const).map(mode => (
@@ -422,70 +439,90 @@ export function TodayView() {
 
   return (
     <div style={{ padding: '12px 16px', maxWidth: '1700px', margin: '0 auto' }}>
-      {/* Navigation bar */}
-      <div style={{
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        marginBottom: '12px',
-      }}>
-        <button onClick={navigateBack} style={navBtn} title="Previous day">
-          ←
-        </button>
-        {!isShowingToday && (
-          <button onClick={goToToday} style={{ ...navBtn, fontSize: '12px', padding: '4px 12px' }}>
-            Today
-          </button>
-        )}
-        <button onClick={navigateForward} style={navBtn} title="Next day">
-          →
-        </button>
-        {!isMobile && (
-          <div style={dayCountWrapStyle}>
-            {[1, 2, 3, 5].map(count => (
-              <button
-                key={count}
-                onClick={() => setDayCount(count)}
-                style={{
-                  ...dayCountBtnStyle,
-                  ...(dayCount === count ? activeDayCountBtnStyle : {}),
-                }}
-              >
-                {count}d
-              </button>
-            ))}
-          </div>
-        )}
-        {isMobile && (
-          <button onClick={() => setDrawerOpen(true)} style={{ ...navBtn, marginLeft: 'auto' }}>
-            Tasks
-          </button>
-        )}
-      </div>
-
       <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
         {/* Day Calendars */}
-        <div style={{ flex: 1, minWidth: 0, display: 'flex', gap: '8px' }}>
-          {visibleDates.map((date, i) => (
-            <DayCalendar
-              key={dateKeys[i]}
-              date={formatDateHeader(date, dateKeys[i] === todayKey)}
-              dateKey={dateKeys[i]}
-              events={eventsPerDay[i]}
-              startHour={8}
-              endHour={22}
-              compact
-              onBoulderDrop={handleBoulderDrop}
-              onBoulderMove={handleBoulderMove}
-              onBoulderResize={handleBoulderResize}
-              onBoulderRemove={handleBoulderRemove}
-            />
-          ))}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {/* Navigation bar moved inside here */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            marginBottom: '12px',
+          }}>
+            <button onClick={goToToday} style={{ ...navBtn, fontSize: '12px', padding: '4px 12px' }}>
+              Today
+            </button>
+            <button onClick={navigateBack} style={navBtn} title="Previous day">
+              ←
+            </button>
+            <button onClick={navigateForward} style={navBtn} title="Next day">
+              →
+            </button>
+            
+            <div style={{ flex: 1 }} />
+
+            {!isMobile && (
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <select
+                  value={dayCount}
+                  onChange={(e) => setDayCount(parseInt(e.target.value, 10))}
+                  style={{
+                    padding: '4px 8px',
+                    border: '1px solid #e5e7eb',
+                    borderRadius: '8px',
+                    background: '#fff',
+                    fontSize: '12px',
+                    color: '#4b5563',
+                    fontFamily: 'inherit',
+                    cursor: 'pointer',
+                    outline: 'none',
+                  }}
+                >
+                  {[1, 2, 3, 5].map(count => (
+                    <option key={count} value={count}>{count} Days</option>
+                  ))}
+                </select>
+                
+                <button 
+                  onClick={() => setIsSettingsOpen(true)}
+                  style={{ ...navBtn, padding: '4px 8px', fontSize: '14px' }}
+                  title="Calendar Settings"
+                >
+                  ⚙️
+                </button>
+              </div>
+            )}
+            {isMobile && (
+              <button onClick={() => setDrawerOpen(true)} style={{ ...navBtn }}>
+                Tasks
+              </button>
+            )}
+          </div>
+
+          <div style={{ display: 'flex', gap: '0px' }}>
+            {visibleDates.map((date, i) => (
+              <DayCalendar
+                key={dateKeys[i]}
+                date={formatDateHeader(date, dateKeys[i] === todayKey)}
+                dateKey={dateKeys[i]}
+                events={eventsPerDay[i]}
+                startHour={wakeUpHour}
+                endHour={bedTimeHour}
+                compact
+                showLabels={i === 0}
+                isToday={dateKeys[i] === todayKey}
+                onBoulderDrop={handleBoulderDrop}
+                onBoulderMove={handleBoulderMove}
+                onBoulderResize={handleBoulderResize}
+                onBoulderRemove={handleBoulderRemove}
+              />
+            ))}
+          </div>
         </div>
 
         {/* Sidebar */}
         {!isMobile && (
-          <div style={{ width: '600px', flexShrink: 0 }}>
+          <div style={{ width: '600px', flexShrink: 0, marginTop: '46px' }}>
             {sidebarContent}
           </div>
         )}
@@ -496,6 +533,36 @@ export function TodayView() {
           {sidebarContent}
         </SideDrawer>
       )}
+
+      <SideDrawer open={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} title="Calendar Settings">
+        <div style={{ display: 'grid', gap: '20px', padding: '16px' }}>
+          <div>
+            <label style={settingLabelStyle}>Wake Up (Hour 0-23)</label>
+            <input 
+              type="number" 
+              min="0" 
+              max="23" 
+              value={wakeUpHour} 
+              onChange={e => setWakeUpHour(parseInt(e.target.value, 10) || 0)}
+              style={settingInputStyle}
+            />
+          </div>
+          <div>
+            <label style={settingLabelStyle}>Go to Bed (Hour 0-23)</label>
+            <input 
+              type="number" 
+              min="0" 
+              max="23" 
+              value={bedTimeHour} 
+              onChange={e => setBedTimeHour(parseInt(e.target.value, 10) || 0)}
+              style={settingInputStyle}
+            />
+          </div>
+          <div style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.5 }}>
+            Adjusting these will change the visible range of your daily calendar.
+          </div>
+        </div>
+      </SideDrawer>
 
       {!apiConfigured && (
         <div style={{
@@ -568,25 +635,20 @@ const activeFilterChipStyle: React.CSSProperties = {
   color: '#fff',
 };
 
-const dayCountWrapStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: '6px',
-  marginLeft: '8px',
+const settingLabelStyle: React.CSSProperties = {
+  display: 'block',
+  fontSize: '14px',
+  fontWeight: 600,
+  color: '#374151',
+  marginBottom: '6px',
 };
 
-const dayCountBtnStyle: React.CSSProperties = {
-  padding: '4px 10px',
+const settingInputStyle: React.CSSProperties = {
+  width: '100%',
+  padding: '10px 12px',
   border: '1px solid #e5e7eb',
-  borderRadius: '8px',
-  background: '#fff',
-  cursor: 'pointer',
-  fontSize: '12px',
-  color: '#4b5563',
+  borderRadius: '10px',
+  fontSize: '14px',
   fontFamily: 'inherit',
-};
-
-const activeDayCountBtnStyle: React.CSSProperties = {
-  background: '#FF7A7A',
-  borderColor: '#FF7A7A',
-  color: '#fff',
+  boxSizing: 'border-box',
 };
