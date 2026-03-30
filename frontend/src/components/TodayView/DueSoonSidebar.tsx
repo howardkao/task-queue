@@ -49,7 +49,6 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
 
   return (
     <div style={{ marginBottom: '12px' }}>
-      <h2 style={sectionHeader}>Due Soon</h2>
       {tasks.length === 0 && (
         <div style={emptyStyle}>No tasks due soon.</div>
       )}

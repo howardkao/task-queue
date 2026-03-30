@@ -27,7 +27,7 @@ function icalToCalEvents(events: CalendarEvent[]): CalEvent[] {
     const start = new Date(e.start);
     const end = new Date(e.end);
     const startHour = start.getHours() + start.getMinutes() / 60;
-    const duration = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+    const duration = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
     return {
       id: `ical-${i}`,
       title: e.title,
@@ -271,6 +271,10 @@ export function TodayView() {
 
   const sidebarContent = (
     <>
+      {dueSoonTasks.length > 0 && (
+        <DueSoonSidebar tasks={dueSoonTasks} placedTasks={placedTasksMap} />
+      )}
+
       {/* Capture + Inbox */}
       <div style={{ marginBottom: '12px' }}>
         <input
@@ -321,10 +325,6 @@ export function TodayView() {
           </div>
         )}
       </div>
-
-      {dueSoonTasks.length > 0 && (
-        <DueSoonSidebar tasks={dueSoonTasks} placedTasks={placedTasksMap} />
-      )}
 
       <div style={{ display: 'flex', gap: '24px', marginBottom: '16px', background: '#fcfcfd', padding: '10px', borderRadius: '12px', border: '1px solid #f3f4f6' }}>
         <div style={{ flex: 1 }}>
@@ -522,7 +522,7 @@ export function TodayView() {
 
         {/* Sidebar */}
         {!isMobile && (
-          <div style={{ width: '600px', flexShrink: 0, marginTop: '46px' }}>
+          <div style={{ width: '600px', flexShrink: 0 }}>
             {sidebarContent}
           </div>
         )}
