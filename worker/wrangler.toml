@@ -5,3 +5,7 @@ compatibility_date = "2024-12-01"
 [vars]
 ALLOWED_ORIGIN = "https://hkao-task-queue.web.app"
 FIREBASE_PROJECT_ID = "hkao-task-queue"
+
+[[kv_namespaces]]
+binding = "CALENDAR_KV"
+id = "589dc9d1e4b64e1f93d029dc7a63b0a8"

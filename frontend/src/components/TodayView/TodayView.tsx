@@ -13,6 +13,7 @@ import { STANDALONE_PROJECT_FILTER } from '../../hooks/useTasks';
 import type { TodayProjectFilter } from '../../hooks/useTasks';
 import { SideDrawer } from '../shared/SideDrawer';
 import { DueSoonSidebar } from './DueSoonSidebar';
+import { CalendarFeedSettings } from './CalendarFeedSettings';
 
 // Fallback mock events when no iCal feeds configured
 const MOCK_CAL_EVENTS: CalEvent[] = [
@@ -560,6 +561,9 @@ export function TodayView() {
           </div>
           <div style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.5 }}>
             Adjusting these will change the visible range of your daily calendar.
+          </div>
+          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
+            <CalendarFeedSettings />
           </div>
         </div>
       </SideDrawer>

@@ -62,7 +62,14 @@ export interface CalendarEvent {
 }
 
 export interface CalendarFeed {
-  url: string;
+  id: string;
   name: string;
   color: string;
+  enabled: boolean;
+}
+
+export interface CalendarFeedInput {
+  name: string;
+  color: string;
+  url: string;
 }

@@ -1,7 +1,6 @@
-import type { CalendarEvent, CalendarFeed } from '../types';
+import type { CalendarEvent, CalendarFeed, CalendarFeedInput } from '../types';
 import { auth } from '../firebase';
 
-// Cloud Functions base URL — update after deploying
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
 async function getAuthHeaders(contentType?: string): Promise<Record<string, string>> {
@@ -27,50 +26,81 @@ export async function fetchTodayEvents(): Promise<CalendarEvent[] | null> {
 
 /** Fetch calendar events for a specific date (YYYY-MM-DD). Omit date for today. */
 export async function fetchEventsForDate(date?: string): Promise<CalendarEvent[] | null> {
-  if (!API_BASE) {
-    return null;
-  }
+  if (!API_BASE) return null;
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   let url = `${API_BASE}/calendar/today?tz=${encodeURIComponent(tz)}`;
   if (date) {
     url += `&date=${encodeURIComponent(date)}`;
   }
-  const res = await fetch(url, {
-    headers: await getAuthHeaders(),
-  });
-  if (res.status === 401 || res.status === 403) {
-    return null;
-  }
+  const res = await fetch(url, { headers: await getAuthHeaders() });
+  if (res.status === 401 || res.status === 403) return null;
   if (!res.ok) throw new Error('Failed to fetch calendar events');
   const data = await res.json();
   return data.events || [];
 }
 
-export async function getCalendarFeeds(): Promise<Array<{ name: string; color: string; hasUrl: boolean }>> {
+// ── Feed CRUD ────────────────────────────────────────────────────────────────
+
+export async function getCalendarFeeds(): Promise<CalendarFeed[]> {
   if (!API_BASE) return [];
 
   const res = await fetch(`${API_BASE}/calendar/feeds`, {
     headers: await getAuthHeaders(),
   });
-  if (res.status === 401 || res.status === 403) {
-    return [];
-  }
+  if (res.status === 401 || res.status === 403) return [];
   if (!res.ok) throw new Error('Failed to fetch feeds');
   const data = await res.json();
   return data.feeds || [];
 }
 
-export async function updateCalendarFeeds(feeds: CalendarFeed[]): Promise<void> {
+export async function createCalendarFeed(input: CalendarFeedInput): Promise<CalendarFeed> {
   if (!API_BASE) throw new Error('API not configured');
 
   const res = await fetch(`${API_BASE}/calendar/feeds`, {
+    method: 'POST',
+    headers: await getAuthHeaders('application/json'),
+    body: JSON.stringify(input),
+  });
+  if (res.status === 403) throw new Error('Admin access required');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to create feed');
+  }
+  const data = await res.json();
+  return data.feed;
+}
+
+export async function updateCalendarFeed(
+  id: string,
+  updates: Partial<CalendarFeedInput & { enabled: boolean }>,
+): Promise<CalendarFeed> {
+  if (!API_BASE) throw new Error('API not configured');
+
+  const res = await fetch(`${API_BASE}/calendar/feeds/${encodeURIComponent(id)}`, {
     method: 'PUT',
     headers: await getAuthHeaders('application/json'),
-    body: JSON.stringify({ feeds }),
+    body: JSON.stringify(updates),
   });
-  if (res.status === 401 || res.status === 403) {
-    throw new Error('Admin access required');
+  if (res.status === 403) throw new Error('Admin access required');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to update feed');
   }
-  if (!res.ok) throw new Error('Failed to update feeds');
+  const data = await res.json();
+  return data.feed;
+}
+
+export async function deleteCalendarFeed(id: string): Promise<void> {
+  if (!API_BASE) throw new Error('API not configured');
+
+  const res = await fetch(`${API_BASE}/calendar/feeds/${encodeURIComponent(id)}`, {
+    method: 'DELETE',
+    headers: await getAuthHeaders(),
+  });
+  if (res.status === 403) throw new Error('Admin access required');
+  if (!res.ok) {
+    const data = await res.json().catch(() => ({}));
+    throw new Error(data.error || 'Failed to delete feed');
+  }
 }
