@@ -15,7 +15,3 @@ Set the Firebase config values from `mcp-server/.env.example` in the environment
 ### Cloudflare Worker
 
 Update `worker/wrangler.toml` with your Firebase project ID and allowed frontend origin, then set your calendar feed secret with Wrangler.
-
-### Firebase Functions
-
-Set `ALLOWED_ORIGINS` to a comma-separated list of permitted frontend origins in the deployment environment.
