@@ -228,12 +228,12 @@ export function ProjectPicker({ projects, value, onChange, onCreateProject }: Pr
 const pickerInputStyle: React.CSSProperties = {
   width: '100%',
   padding: '4px 8px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '8px',
   fontSize: '12px',
   background: '#fff',
   fontFamily: 'inherit',
-  color: '#4b5563',
+  color: '#1D212B',
   boxSizing: 'border-box',
 };
 
@@ -245,7 +245,7 @@ const menuStyle: React.CSSProperties = {
   zIndex: 30,
   maxHeight: '240px',
   overflowY: 'auto',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '12px',
   background: '#fff',
   boxShadow: '0 10px 24px rgba(15, 23, 42, 0.12)',
@@ -258,7 +258,7 @@ const sectionLabelStyle: React.CSSProperties = {
   letterSpacing: '0.06em',
   color: '#9ca3af',
   padding: '8px 8px 4px',
-  fontWeight: 700,
+  fontWeight: 500,
 };
 
 const menuItemStyle: React.CSSProperties = {
@@ -270,7 +270,7 @@ const menuItemStyle: React.CSSProperties = {
   textAlign: 'left',
   cursor: 'pointer',
   fontSize: '12px',
-  color: '#374151',
+  color: '#1D212B',
   fontFamily: 'inherit',
   display: 'flex',
   alignItems: 'center',
@@ -279,20 +279,20 @@ const menuItemStyle: React.CSSProperties = {
 };
 
 const selectedMenuItemStyle: React.CSSProperties = {
-  background: '#fff1f1',
-  color: '#b91c1c',
+  background: '#FCEDED',
+  color: '#EA6657',
 };
 
 const createItemStyle: React.CSSProperties = {
   ...menuItemStyle,
   fontWeight: 600,
-  color: '#b91c1c',
+  color: '#EA6657',
 };
 
 const statusPillStyle: React.CSSProperties = {
   fontSize: '10px',
   color: '#6b7280',
-  background: '#f3f4f6',
+  background: '#EFEDEB',
   borderRadius: '999px',
   padding: '2px 6px',
   flexShrink: 0,

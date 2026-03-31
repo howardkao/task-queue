@@ -124,7 +124,7 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
     <div
       style={{
         background: '#fff',
-        border: '1px solid #e5e7eb',
+        border: '1px solid #E7E3DF',
         borderRadius: '16px',
         padding: removing ? '0 16px' : '16px',
         marginBottom: removing ? '0' : '10px',
@@ -136,7 +136,7 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
       }}
     >
-      <div style={{ fontSize: '15px', fontWeight: 700, color: '#1f2937', marginBottom: '8px' }}>
+      <div style={{ fontSize: '14px', fontWeight: 500, color: '#1D212B', marginBottom: '8px' }}>
         {task.title}
       </div>
 
@@ -151,7 +151,7 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
         <button onClick={() => handleAction('pebble')} style={btnStyle}>
           Pebble
         </button>
-        <button onClick={() => handleAction('delete')} style={{ ...btnStyle, borderColor: '#fca5a5', color: '#ef4444' }}>
+        <button onClick={() => handleAction('delete')} style={{ ...btnStyle, borderColor: '#FCEDED', color: '#DC2828' }}>
           Delete
         </button>
       </div>
@@ -164,14 +164,14 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
             placeholder="Add notes..."
             style={{
               width: '100%',
-              border: '1px solid #e5e7eb',
+              border: '1px solid #E7E3DF',
               borderRadius: '10px',
               padding: '8px 12px',
               fontSize: '13px',
               resize: 'vertical',
               minHeight: '50px',
               fontFamily: 'inherit',
-              color: '#4b5563',
+              color: '#1D212B',
               outline: 'none',
               boxSizing: 'border-box',
               background: '#fafafa',
@@ -235,9 +235,9 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
                   onClick={() => toggleDay(day, weeklyDays, setWeeklyDays)}
                   style={{
                     ...dayBtnStyle,
-                    background: weeklyDays.includes(day) ? '#FF7A7A' : '#f9fafb',
-                    color: weeklyDays.includes(day) ? '#fff' : '#4b5563',
-                    borderColor: weeklyDays.includes(day) ? '#FF7A7A' : '#e5e7eb',
+                    background: weeklyDays.includes(day) ? '#EA6657' : '#F2F0ED',
+                    color: weeklyDays.includes(day) ? '#fff' : '#1D212B',
+                    borderColor: weeklyDays.includes(day) ? '#EA6657' : '#E7E3DF',
                   }}
                 >
                   {DAY_LABELS[day]}
@@ -293,9 +293,9 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
                       onClick={() => toggleDay(day, customDays, setCustomDays)}
                       style={{
                         ...dayBtnStyle,
-                        background: customDays.includes(day) ? '#FF7A7A' : '#f9fafb',
-                        color: customDays.includes(day) ? '#fff' : '#4b5563',
-                        borderColor: customDays.includes(day) ? '#FF7A7A' : '#e5e7eb',
+                        background: customDays.includes(day) ? '#EA6657' : '#F2F0ED',
+                        color: customDays.includes(day) ? '#fff' : '#1D212B',
+                        borderColor: customDays.includes(day) ? '#EA6657' : '#E7E3DF',
                       }}
                     >
                       {DAY_LABELS[day]}
@@ -329,25 +329,25 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
 const btnStyle: React.CSSProperties = {
   display: 'inline-block',
   padding: '6px 14px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '12px',
-  background: '#f9fafb',
+  background: '#F2F0ED',
   cursor: 'pointer',
   fontSize: '13px',
   fontWeight: 600,
-  color: '#4b5563',
+  color: '#1D212B',
   fontFamily: 'inherit',
   transition: 'opacity 0.2s ease',
 };
 
 const selectStyle: React.CSSProperties = {
   padding: '4px 8px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '8px',
   fontSize: '13px',
   background: '#fff',
   fontFamily: 'inherit',
-  color: '#4b5563',
+  color: '#1D212B',
 };
 
 const labelStyle: React.CSSProperties = {
@@ -358,11 +358,11 @@ const labelStyle: React.CSSProperties = {
 const dayBtnStyle: React.CSSProperties = {
   width: '30px',
   height: '28px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '8px',
   cursor: 'pointer',
-  fontSize: '11px',
-  fontWeight: 600,
+  fontSize: '10px',
+  fontWeight: 500,
   fontFamily: 'inherit',
   padding: 0,
   display: 'flex',

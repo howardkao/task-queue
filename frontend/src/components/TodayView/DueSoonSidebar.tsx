@@ -52,17 +52,17 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
   return (
     <div style={{ marginBottom: '16px' }}>
       <div style={{
-        fontSize: '12px',
-        color: '#ef4444',
-        fontWeight: 700,
-        marginBottom: '8px',
+        fontSize: '10px',
+        color: '#EA6657',
+        fontWeight: 500,
+        marginBottom: '10px',
         textTransform: 'uppercase',
-        letterSpacing: '0.04em',
+        letterSpacing: '0.06em',
         display: 'flex',
         alignItems: 'center',
         gap: '6px'
       }}>
-        <span style={{ fontSize: '14px' }}>⚑</span> Overdue & Today
+        <span style={{ fontSize: '12px' }}>⏱</span> Overdue & Today
       </div>
       {tasks.map((task) => {
         const isEditing = editingId === task.id;
@@ -80,8 +80,8 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
         const isRock = task.classification === 'rock';
         const isPebble = task.classification === 'pebble';
 
-        const borderColor = isBoulder ? '#FFB3B3' : isRock ? '#d7b27a' : isPebble ? '#93c5fd' : '#e5e7eb';
-        const icon = isBoulder ? '🪨' : isRock ? 'Rock' : isPebble ? 'Pebble' : '📥';
+        const classLabel = isBoulder ? 'ROCK' : isRock ? 'ROCK' : isPebble ? 'PEBBLE' : 'INBOX';
+        const classColor = isBoulder ? '#E14747' : isRock ? '#E14747' : isPebble ? '#478CD1' : '#9ca3af';
 
         return (
           <div key={task.id}>
@@ -90,47 +90,48 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
               onDragStart={(e) => handleDragStart(e, task)}
               style={{
                 ...cardStyle,
-                border: `2px dashed ${borderColor}`,
-                background: isOverdue ? '#fff1f2' : '#fff',
+                background: isOverdue ? '#FCEDED' : '#fff',
+                border: `1px solid ${isOverdue ? '#f5c6c6' : '#E7E3DF'}`,
                 ...(isPlaced ? placedCardStyle : {}),
               }}
             >
               <div style={cardInner}>
-                <div style={{
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  gap: '2px',
-                  flexShrink: 0,
-                  width: '24px',
-                }}>
-                  {(isBoulder || isRock) && (
-                    <span style={{ ...dragHandle, color: isPlaced ? '#9ca3af' : borderColor }}>⠿</span>
-                  )}
-                  <div style={{ fontSize: '11px', marginTop: '1px' }}>{icon}</div>
-                </div>
-
-                <div 
-                  style={{ flex: 1, cursor: 'pointer' }} 
+                <div
+                  style={{ flex: 1, cursor: 'pointer' }}
                   onClick={() => setEditingId(isEditing ? null : task.id)}
                 >
-                  <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1f2937' }}>
-                    {isPlaced && <span style={{ fontSize: '11px', marginRight: '4px' }}>📅</span>}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
+                    <span style={{
+                      fontSize: '10px',
+                      fontWeight: 500,
+                      color: classColor,
+                      textTransform: 'uppercase',
+                      letterSpacing: '0.04em',
+                    }}>
+                      {classLabel}
+                    </span>
+                    {(isBoulder || isRock) && (
+                      <span style={{ fontSize: '12px', color: isPlaced ? '#9ca3af' : classColor }}>○</span>
+                    )}
+                    {task.recurrence && <span style={{ fontSize: '12px', color: '#9ca3af' }}>↻</span>}
+                    <div style={{ flex: 1 }} />
+                    {deadlineStr && (
+                      <span style={{ fontSize: '12px', color: '#E14747', fontWeight: 600 }}>
+                        △ {deadlineStr}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B', fontWeight: 500 }}>
+                    {isPlaced && <span style={{ fontSize: '10px', marginRight: '4px' }}>📅</span>}
                     {task.title}
                   </div>
                   <div style={metaLine}>
                     {isPlaced && placedTasks[task.id] && (
-                      <span style={{ color: isBoulder ? '#FF7A7A' : '#c08457', marginRight: '8px' }}>
+                      <span style={{ color: isBoulder ? '#EA6657' : '#c08457', marginRight: '8px' }}>
                         {formatPlacedDate(placedTasks[task.id].date)}
                       </span>
                     )}
-                    {projectName && <span style={{ marginRight: '8px' }}>{projectName}</span>}
-                    {deadlineStr && (
-                      <span style={{ color: isOverdue ? '#ef4444' : '#ef4444', fontWeight: 600 }}>
-                        ⚑ {deadlineStr}
-                      </span>
-                    )}
-                    {task.recurrence && <span style={{ marginLeft: '8px' }}>↻</span>}
+                    {projectName && <span>{projectName}</span>}
                   </div>
                 </div>
               </div>
@@ -153,9 +154,9 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
 
 const cardStyle: React.CSSProperties = {
   borderRadius: '12px',
-  marginBottom: '6px',
+  marginBottom: '8px',
   background: '#fff',
-  boxShadow: '0 1px 2px rgba(0,0,0,0.05)',
+  border: '1px solid #E7E3DF',
   overflow: 'hidden',
   transition: 'all 0.15s',
 };
@@ -163,9 +164,8 @@ const cardStyle: React.CSSProperties = {
 const placedCardStyle: React.CSSProperties = {
   borderStyle: 'solid',
   borderWidth: '1px',
-  borderColor: '#e5e7eb',
-  background: '#fafafa',
-  boxShadow: 'none',
+  borderColor: '#E7E3DF',
+  background: '#F9F7F6',
   opacity: 0.7,
 };
 
@@ -173,24 +173,17 @@ const cardInner: React.CSSProperties = {
   display: 'flex',
   alignItems: 'flex-start',
   gap: '10px',
-  padding: '10px 12px',
-};
-
-const dragHandle: React.CSSProperties = {
-  fontSize: '16px',
-  userSelect: 'none',
-  flexShrink: 0,
-  cursor: 'grab',
+  padding: '12px 14px',
 };
 
 const titleStyle: React.CSSProperties = {
   fontSize: '14px',
-  color: '#1f2937',
+  color: '#1D212B',
   fontWeight: 500,
 };
 
 const metaLine: React.CSSProperties = {
   fontSize: '12px',
   color: '#9ca3af',
-  marginTop: '2px',
+  marginTop: '3px',
 };

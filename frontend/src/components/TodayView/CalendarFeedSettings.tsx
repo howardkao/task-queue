@@ -145,7 +145,7 @@ export function CalendarFeedSettings() {
               <div
                 style={{ ...colorDotStyle, backgroundColor: feed.color, opacity: feed.enabled ? 1 : 0.4 }}
               />
-              <span style={{ flex: 1, fontSize: '14px', color: feed.enabled ? '#1f2937' : '#9ca3af' }}>
+              <span style={{ flex: 1, fontSize: '14px', color: feed.enabled ? '#1D212B' : '#9ca3af' }}>
                 {feed.name}
               </span>
               <button
@@ -160,7 +160,7 @@ export function CalendarFeedSettings() {
               </button>
               {confirmDeleteId === feed.id ? (
                 <span style={{ display: 'flex', gap: '4px' }}>
-                  <button style={{ ...iconBtnStyle, color: '#ef4444' }} onClick={() => handleDelete(feed.id)}>
+                  <button style={{ ...iconBtnStyle, color: '#DC2828' }} onClick={() => handleDelete(feed.id)}>
                     yes
                   </button>
                   <button style={iconBtnStyle} onClick={() => setConfirmDeleteId(null)}>
@@ -168,7 +168,7 @@ export function CalendarFeedSettings() {
                   </button>
                 </span>
               ) : (
-                <button style={{ ...iconBtnStyle, color: '#ef4444' }} onClick={() => setConfirmDeleteId(feed.id)} title="Delete">
+                <button style={{ ...iconBtnStyle, color: '#DC2828' }} onClick={() => setConfirmDeleteId(feed.id)} title="Delete">
                   del
                 </button>
               )}
@@ -244,7 +244,7 @@ function FeedForm({
               height: '24px',
               borderRadius: '50%',
               backgroundColor: c,
-              border: color === c ? '2px solid #1f2937' : '2px solid transparent',
+              border: color === c ? '2px solid #1D212B' : '2px solid transparent',
               cursor: 'pointer',
               padding: 0,
               outline: 'none',
@@ -261,8 +261,8 @@ function FeedForm({
 const sectionLabelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: '14px',
-  fontWeight: 600,
-  color: '#374151',
+  fontWeight: 500,
+  color: '#1D212B',
   marginBottom: '10px',
 };
 
@@ -271,7 +271,7 @@ const feedRowStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: '8px',
   padding: '8px 0',
-  borderBottom: '1px solid #f3f4f6',
+  borderBottom: '1px solid #EFEDEB',
 };
 
 const colorDotStyle: React.CSSProperties = {
@@ -296,7 +296,7 @@ const feedFormStyle: React.CSSProperties = {
   flexDirection: 'column',
   gap: '8px',
   padding: '12px',
-  background: '#f9fafb',
+  background: '#F2F0ED',
   borderRadius: '10px',
   marginBottom: '8px',
 };
@@ -304,7 +304,7 @@ const feedFormStyle: React.CSSProperties = {
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '8px 10px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '8px',
   fontSize: '13px',
   fontFamily: 'inherit',
@@ -330,8 +330,8 @@ const saveBtnStyle: React.CSSProperties = {
 
 const cancelBtnStyle: React.CSSProperties = {
   padding: '6px 14px',
-  background: '#e5e7eb',
-  color: '#374151',
+  background: '#E7E3DF',
+  color: '#1D212B',
   border: 'none',
   borderRadius: '8px',
   fontSize: '13px',

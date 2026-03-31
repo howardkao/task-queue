@@ -25,11 +25,11 @@ export function TriageInput({ onSubmit }: TriageInputProps) {
       style={{
         width: '100%',
         padding: '12px 16px',
-        border: '2px solid #e5e7eb',
+        border: '2px solid #E7E3DF',
         borderRadius: '12px',
         fontSize: '15px',
         background: '#fff',
-        color: '#1f2937',
+        color: '#1D212B',
         outline: 'none',
         marginBottom: '20px',
         fontFamily: 'inherit',
@@ -37,10 +37,10 @@ export function TriageInput({ onSubmit }: TriageInputProps) {
         transition: 'border-color 0.2s ease',
       }}
       onFocus={e => {
-        e.currentTarget.style.borderColor = '#d1d5db';
+        e.currentTarget.style.borderColor = '#EFEDEB';
       }}
       onBlur={e => {
-        e.currentTarget.style.borderColor = '#e5e7eb';
+        e.currentTarget.style.borderColor = '#E7E3DF';
       }}
     />
   );

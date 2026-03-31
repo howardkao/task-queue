@@ -91,14 +91,14 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
         onClick={() => setShowLog(!showLog)}
         style={{
           cursor: 'pointer', color: '#6b7280', fontSize: '14px',
-          userSelect: 'none', fontWeight: 600,
+          userSelect: 'none', fontWeight: 500,
         }}
       >
         Activity Log ({activityLog.length}) {showLog ? '▲' : '▼'}
       </div>
       {showLog && (
         <div style={{
-          marginTop: '8px', background: '#fff', border: '1px solid #e5e7eb',
+          marginTop: '8px', background: '#fff', border: '1px solid #E7E3DF',
           borderRadius: '16px', padding: '8px 0', maxHeight: '300px', overflow: 'auto',
           boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
         }}>
@@ -109,13 +109,13 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
           )}
           {activityLog.map(entry => (
             <div key={entry.id} style={{
-              padding: '6px 16px', borderBottom: '1px solid #f3f4f6',
+              padding: '6px 16px', borderBottom: '1px solid #EFEDEB',
               display: 'flex', gap: '8px', alignItems: 'baseline',
             }}>
-              <span style={{ fontSize: '11px', color: '#9ca3af', whiteSpace: 'nowrap', minWidth: '70px' }}>
+              <span style={{ fontSize: '10px', color: '#9ca3af', whiteSpace: 'nowrap', minWidth: '70px' }}>
                 {formatTimestamp(entry.timestamp)}
               </span>
-              <span style={{ fontSize: '13px', color: '#4b5563' }}>
+              <span style={{ fontSize: '13px', color: '#1D212B' }}>
                 {entry.description}
               </span>
             </div>
@@ -137,9 +137,9 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
             onKeyDown={e => e.key === 'Enter' && handleAddTask()}
             placeholder="Add a task..."
             style={{
-              flex: 1, padding: '6px 10px', border: '2px solid #e5e7eb',
+              flex: 1, padding: '6px 10px', border: '2px solid #E7E3DF',
               borderRadius: '12px', fontSize: '13px', fontFamily: 'inherit', outline: 'none',
-              color: '#1f2937',
+              color: '#1D212B',
             }}
           />
           <button onClick={handleAddTask} style={btnSmStyle}>Add</button>
@@ -151,9 +151,9 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
               onClick={() => setNewTaskType(type)}
               style={{
                 ...btnSmStyle,
-                background: newTaskType === type ? '#FF7A7A' : '#f9fafb',
-                color: newTaskType === type ? '#fff' : '#4b5563',
-                borderColor: newTaskType === type ? '#FF7A7A' : '#e5e7eb',
+                background: newTaskType === type ? '#EA6657' : '#F2F0ED',
+                color: newTaskType === type ? '#fff' : '#1D212B',
+                borderColor: newTaskType === type ? '#EA6657' : '#E7E3DF',
                 textTransform: 'capitalize',
                 fontWeight: 700,
               }}
@@ -237,17 +237,17 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
               <div key={t.id} style={completedTaskStyle}>
                 <div style={{
                   width: '16px', height: '16px',
-                  background: '#FF7A7A', border: '2px solid #FF7A7A',
+                  background: '#EA6657', border: '2px solid #EA6657',
                   borderRadius: '6px', flexShrink: 0,
                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '11px', color: '#fff',
+                  fontSize: '10px', color: '#fff',
                 }}>✓</div>
                 <div style={{ flex: 1 }}>
                   <span style={{ fontSize: '14px', textDecoration: 'line-through', color: '#9ca3af' }}>
                     {t.title}
                   </span>
                   {t.completedAt && (
-                    <div style={{ fontSize: '11px', color: '#d1d5db' }}>
+                    <div style={{ fontSize: '10px', color: '#d1d5db' }}>
                       {formatTimestamp(t.completedAt)}
                     </div>
                   )}
@@ -275,7 +275,7 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
       <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '6px' }}>
         <span
           onClick={onBack}
-          style={{ color: '#FF7A7A', cursor: 'pointer', textDecoration: 'none', fontWeight: 600 }}
+          style={{ color: '#EA6657', cursor: 'pointer', textDecoration: 'none', fontWeight: 600 }}
         >
           ← Projects
         </span>
@@ -303,14 +303,14 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
         {!confirmingDelete ? (
           <button
             onClick={() => setConfirmingDelete(true)}
-            style={{ ...btnSmStyle, color: '#ef4444', borderColor: '#fca5a5' }}
+            style={{ ...btnSmStyle, color: '#DC2828', borderColor: '#FCEDED' }}
           >
             Delete Project
           </button>
         ) : (
           <button
             onClick={() => deleteProject.mutate(projectId, { onSuccess: onBack })}
-            style={{ ...btnSmStyle, background: '#ef4444', color: '#fff', borderColor: '#ef4444' }}
+            style={{ ...btnSmStyle, background: '#DC2828', color: '#fff', borderColor: '#DC2828' }}
           >
             Confirm Delete
           </button>
@@ -385,9 +385,9 @@ function TaskRow({
           <div
             style={{
               fontSize: '14px',
-              color: '#1f2937',
+              color: '#1D212B',
               fontWeight: 500,
-              borderBottom: editing ? '1px dashed #FF7A7A' : '1px dashed transparent',
+              borderBottom: editing ? '1px dashed #EA6657' : '1px dashed transparent',
             }}
           >
             {task.title}
@@ -395,7 +395,7 @@ function TaskRow({
           {(task.recurrence || deadlineStr) && (
             <div style={taskRowMetaStyle}>
               {task.recurrence && <span style={{ marginRight: '4px' }}>↻</span>}
-              {deadlineStr && <span style={{ color: '#FF6B6B' }}>⚑ {deadlineStr}</span>}
+              {deadlineStr && <span style={{ color: '#E14747' }}>⚑ {deadlineStr}</span>}
             </div>
           )}
         </div>
@@ -428,16 +428,17 @@ function formatTimestamp(ts: any): string {
 }
 
 const btnSmStyle: React.CSSProperties = {
-  padding: '4px 10px', border: '1px solid #e5e7eb', borderRadius: '12px',
-  background: '#f9fafb', cursor: 'pointer', fontSize: '12px',
-  fontWeight: 600, color: '#4b5563', fontFamily: 'inherit',
+  padding: '4px 10px', border: '1px solid #E7E3DF', borderRadius: '12px',
+  background: '#F2F0ED', cursor: 'pointer', fontSize: '12px',
+  fontWeight: 600, color: '#1D212B', fontFamily: 'inherit',
   transition: 'opacity 0.2s ease',
 };
 
 const projectNameInputStyle: React.CSSProperties = {
   fontSize: '22px',
-  fontWeight: 700,
-  color: '#1f2937',
+  fontWeight: 600,
+  lineHeight: 1.2,
+  color: '#1D212B',
   border: '1px solid transparent',
   borderRadius: '10px',
   background: 'transparent',
@@ -450,7 +451,7 @@ const projectNameInputStyle: React.CSSProperties = {
 
 const sectionHeaderStyle: React.CSSProperties = {
   fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em',
-  color: '#6b7280', marginBottom: '8px', fontWeight: 600,
+  color: '#6b7280', marginBottom: '8px', fontWeight: 500,
 };
 
 const emptyTaskStyle: React.CSSProperties = {
@@ -471,7 +472,7 @@ const taskRowMetaStyle: React.CSSProperties = {
 };
 
 const taskRowCardStyle: React.CSSProperties = {
-  border: '2px dashed #e5e7eb',
+  border: '2px dashed #E7E3DF',
   borderRadius: '12px',
   background: '#fff',
   boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
@@ -482,28 +483,28 @@ const completedTaskStyle: React.CSSProperties = {
   alignItems: 'center',
   gap: '8px',
   padding: '8px 10px',
-  borderBottom: '1px solid #f3f4f6',
+  borderBottom: '1px solid #EFEDEB',
   background: '#fff',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '10px',
   marginBottom: '6px',
 };
 
 const editorStyle: React.CSSProperties = {
   width: '100%', minHeight: '400px', padding: '16px 20px',
-  border: '2px solid #e5e7eb', borderRadius: '16px', background: '#fff',
+  border: '2px solid #E7E3DF', borderRadius: '16px', background: '#fff',
   fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
-  fontSize: '14px', lineHeight: '1.7', color: '#1f2937',
+  fontSize: '14px', lineHeight: '1.7', color: '#1D212B',
   resize: 'vertical', outline: 'none', boxSizing: 'border-box',
   boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
 };
 
 function getTaskTypeStyles(classification: Task['classification']) {
   if (classification === 'boulder') {
-    return { border: '#FFB3B3', bg: '#fff', handle: '#FFB3B3' };
+    return { border: '#EA6657', bg: '#fff', handle: '#EA6657' };
   }
   if (classification === 'rock') {
     return { border: '#d7b27a', bg: '#fff', handle: '#d7b27a' };
   }
-  return { border: '#e5e7eb', bg: '#fff', handle: '#d1d5db' };
+  return { border: '#E7E3DF', bg: '#fff', handle: '#d1d5db' };
 }

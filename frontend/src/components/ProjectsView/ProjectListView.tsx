@@ -132,7 +132,7 @@ export function ProjectListView({ onOpenProject }: ProjectListViewProps) {
               style={newProjectInputStyle}
             />
             <button onClick={handleCreate} style={btnStyle}>Create</button>
-            <button onClick={() => { setShowInput(false); setNewName(''); }} style={{ ...btnStyle, borderColor: '#fca5a5', color: '#ef4444' }}>Cancel</button>
+            <button onClick={() => { setShowInput(false); setNewName(''); }} style={{ ...btnStyle, borderColor: '#FCEDED', color: '#DC2828' }}>Cancel</button>
           </div>
         )}
         {isMobile && (
@@ -263,7 +263,7 @@ function ProjectRow({
         </div>
         <div style={projectMetaStyle}>
           <span>{taskCount} active task{taskCount !== 1 ? 's' : ''}</span>
-          {isDragOver && <span style={{ color: '#FF7A7A' }}>Drop to assign</span>}
+          {isDragOver && <span style={{ color: '#EA6657' }}>Drop to assign</span>}
         </div>
       </div>
       <button
@@ -275,14 +275,14 @@ function ProjectRow({
       {!confirmingDelete ? (
         <button
           onClick={() => setConfirmingDelete(true)}
-          style={{ ...btnStyle, fontSize: '12px', padding: '4px 10px', color: '#ef4444', borderColor: '#fca5a5' }}
+          style={{ ...btnStyle, fontSize: '12px', padding: '4px 10px', color: '#DC2828', borderColor: '#FCEDED' }}
         >
           Delete
         </button>
       ) : (
         <button
           onClick={onDelete}
-          style={{ ...btnStyle, fontSize: '12px', padding: '4px 10px', background: '#ef4444', color: '#fff', borderColor: '#ef4444' }}
+          style={{ ...btnStyle, fontSize: '12px', padding: '4px 10px', background: '#DC2828', color: '#fff', borderColor: '#DC2828' }}
         >
           Confirm Delete
         </button>
@@ -325,7 +325,7 @@ function RailTaskCard({
           </div>
           <div style={railTaskMetaStyle}>
             <span>{formatClassification(task.classification)}</span>
-            {task.deadline && <span style={{ color: '#FF6B6B' }}>⚑ {formatDeadline(task.deadline)}</span>}
+            {task.deadline && <span style={{ color: '#E14747' }}>⚑ {formatDeadline(task.deadline)}</span>}
           </div>
         </div>
       </div>
@@ -378,18 +378,17 @@ const railStyle: React.CSSProperties = {
 };
 
 const projectsPanelStyle: React.CSSProperties = {
-  background: '#fcfcfb',
-  border: '1px solid #ece9e1',
-  borderRadius: '22px',
+  background: '#F9F7F6',
+  border: '1px solid #EFEDEB',
+  borderRadius: '16px',
   padding: '18px',
 };
 
 const railCardStyle: React.CSSProperties = {
-  background: '#fffaf3',
-  border: '1px solid #f0dfc5',
-  borderRadius: '22px',
+  background: '#F9F7F6',
+  border: '1px solid #EFEDEB',
+  borderRadius: '16px',
   padding: '18px',
-  boxShadow: '0 10px 30px rgba(80, 56, 28, 0.08)',
 };
 
 const projectRowStyle: React.CSSProperties = {
@@ -398,7 +397,7 @@ const projectRowStyle: React.CSSProperties = {
   gap: '10px',
   padding: '14px 16px',
   background: '#fff',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '16px',
   marginBottom: '8px',
   boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
@@ -406,15 +405,15 @@ const projectRowStyle: React.CSSProperties = {
 };
 
 const projectRowDragOverStyle: React.CSSProperties = {
-  borderColor: '#FF7A7A',
+  borderColor: '#EA6657',
   boxShadow: '0 0 0 3px rgba(255, 122, 122, 0.15)',
   transform: 'translateY(-1px)',
 };
 
 const projectNameStyle: React.CSSProperties = {
-  fontSize: '15px',
-  fontWeight: 700,
-  color: '#FF7A7A',
+  fontSize: '14px',
+  fontWeight: 500,
+  color: '#EA6657',
   cursor: 'pointer',
   textDecoration: 'none',
   marginBottom: '4px',
@@ -450,7 +449,7 @@ const railCountStyle: React.CSSProperties = {
   border: '1px solid #ead9ba',
   color: '#8b7355',
   fontSize: '13px',
-  fontWeight: 700,
+  fontWeight: 500,
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
@@ -485,8 +484,8 @@ const dragHandleStyle: React.CSSProperties = {
 
 const railTaskTitleStyle: React.CSSProperties = {
   fontSize: '14px',
-  fontWeight: 600,
-  color: '#1f2937',
+  fontWeight: 500,
+  color: '#1D212B',
   cursor: 'pointer',
   marginBottom: '4px',
 };
@@ -509,24 +508,24 @@ const summaryStyle: React.CSSProperties = {
 const newProjectInputStyle: React.CSSProperties = {
   flex: 1,
   padding: '8px 12px',
-  border: '2px solid #e5e7eb',
+  border: '2px solid #E7E3DF',
   borderRadius: '12px',
   fontSize: '14px',
   fontFamily: 'inherit',
   outline: 'none',
-  color: '#1f2937',
+  color: '#1D212B',
 };
 
 const btnStyle: React.CSSProperties = {
   display: 'inline-block',
   padding: '6px 14px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '12px',
-  background: '#f9fafb',
+  background: '#F2F0ED',
   cursor: 'pointer',
   fontSize: '13px',
   fontWeight: 600,
-  color: '#4b5563',
+  color: '#1D212B',
   fontFamily: 'inherit',
   transition: 'opacity 0.2s ease',
 };
@@ -537,7 +536,7 @@ const sectionHeaderStyle: React.CSSProperties = {
   letterSpacing: '0.05em',
   color: '#6b7280',
   marginBottom: '12px',
-  fontWeight: 600,
+  fontWeight: 500,
 };
 
 const emptyStyle: React.CSSProperties = {
@@ -574,7 +573,7 @@ const filterChipStyle: React.CSSProperties = {
 };
 
 const activeFilterChipStyle: React.CSSProperties = {
-  background: '#FF7A7A',
-  borderColor: '#FF7A7A',
+  background: '#EA6657',
+  borderColor: '#EA6657',
   color: '#fff',
 };

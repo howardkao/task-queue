@@ -29,7 +29,7 @@ export function SideDrawer({ open, onClose, title, children }: SideDrawerProps) 
 const backdropStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
-  background: 'rgba(15, 23, 42, 0.18)',
+  background: 'rgba(29, 33, 43, 0.18)',
   zIndex: 40,
 };
 
@@ -40,9 +40,9 @@ const drawerStyle: React.CSSProperties = {
   bottom: '12px',
   width: 'min(88vw, 420px)',
   background: '#fff',
-  border: '1px solid #e5e7eb',
-  borderRadius: '22px',
-  boxShadow: '0 24px 60px rgba(15, 23, 42, 0.2)',
+  border: '1px solid #E7E3DF',
+  borderRadius: '16px',
+  boxShadow: '0 24px 60px rgba(29, 33, 43, 0.15)',
   zIndex: 41,
   display: 'flex',
   flexDirection: 'column',
@@ -54,14 +54,14 @@ const headerStyle: React.CSSProperties = {
   alignItems: 'center',
   justifyContent: 'space-between',
   padding: '14px 16px',
-  borderBottom: '1px solid #e5e7eb',
-  background: '#fcfcfb',
+  borderBottom: '1px solid #EFEDEB',
+  background: '#F9F7F6',
 };
 
 const titleStyle: React.CSSProperties = {
   fontSize: '14px',
-  fontWeight: 700,
-  color: '#1f2937',
+  fontWeight: 500,
+  color: '#1D212B',
   textTransform: 'uppercase',
   letterSpacing: '0.04em',
 };
@@ -69,7 +69,7 @@ const titleStyle: React.CSSProperties = {
 const closeBtnStyle: React.CSSProperties = {
   width: '32px',
   height: '32px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '10px',
   background: '#fff',
   cursor: 'pointer',

@@ -31,7 +31,7 @@ export function TriageView() {
         letterSpacing: '0.05em',
         color: '#6b7280',
         marginBottom: '12px',
-        fontWeight: 600,
+        fontWeight: 500,
       }}>
         Inbox ({inboxTasks.length} unclassified)
       </h2>
@@ -48,7 +48,7 @@ export function TriageView() {
           padding: '40px 20px',
           color: '#9ca3af',
           fontStyle: 'italic',
-          fontSize: '15px',
+          fontSize: '14px',
         }}>
           Inbox zero — nothing to triage!
         </div>

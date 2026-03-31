@@ -9,7 +9,6 @@ import { useIsMobile } from '../../hooks/useViewport';
 import { useEventsForDates } from '../../hooks/useCalendar';
 import type { CalEvent } from './DayCalendar';
 import type { CalendarEvent, Classification, Priority } from '../../types';
-import { STANDALONE_PROJECT_FILTER } from '../../hooks/useTasks';
 import type { TodayProjectFilter } from '../../hooks/useTasks';
 import { SideDrawer } from '../shared/SideDrawer';
 import { DueSoonSidebar } from './DueSoonSidebar';
@@ -288,11 +287,11 @@ export function TodayView() {
           style={{
             width: '100%',
             padding: '10px 14px',
-            border: '2px solid #e5e7eb',
+            border: '1px solid #E7E3DF',
             borderRadius: '12px',
             fontSize: '14px',
             background: '#fff',
-            color: '#1f2937',
+            color: '#1D212B',
             outline: 'none',
             fontFamily: 'inherit',
             boxSizing: 'border-box',
@@ -309,17 +308,13 @@ export function TodayView() {
                   display: 'flex',
                   alignItems: 'center',
                   gap: '8px',
-                  padding: '8px 12px',
-                  background: '#fff',
-                  border: '1px solid #e5e7eb',
-                  borderRadius: '10px',
-                  marginBottom: '4px',
+                  padding: '8px 0',
                 }}
               >
-                <div style={{ flex: 1, fontSize: '14px', color: '#1f2937', fontWeight: 500 }}>
+                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#E7E3DF', flexShrink: 0 }} />
+                <div style={{ flex: 1, fontSize: '14px', color: '#1D212B', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {task.title}
                 </div>
-                <button onClick={() => handleClassify(task.id, 'boulder')} style={classifyBtnStyle}>🪨</button>
                 <button onClick={() => handleClassify(task.id, 'rock')} style={classifyBtnStyle}>Rock</button>
                 <button onClick={() => handleClassify(task.id, 'pebble')} style={classifyBtnStyle}>Pebble</button>
               </div>
@@ -328,7 +323,7 @@ export function TodayView() {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: '24px', marginBottom: '16px', background: '#fcfcfd', padding: '10px', borderRadius: '12px', border: '1px solid #f3f4f6' }}>
+      <div style={{ display: 'flex', gap: '24px', marginBottom: '16px', background: '#F9F7F6', padding: '12px', borderRadius: '12px', border: '1px solid #EFEDEB' }}>
         <div style={{ flex: 1 }}>
           <div style={filterHeaderStyle}>Priority</div>
           <div style={filterChipWrapStyle}>
@@ -338,24 +333,25 @@ export function TodayView() {
             >
               All
             </button>
-            {(['high', 'med', 'low'] as const).map(p => {
-              const colors: Record<Priority, { bg: string; border: string }> = {
-                high: { bg: '#ef4444', border: '#ef4444' },
-                med: { bg: '#f59e0b', border: '#f59e0b' },
-                low: { bg: '#9ca3af', border: '#9ca3af' },
+            {(['high', 'med', 'low', 'none'] as const).map(p => {
+              const colors: Record<string, { bg: string; border: string }> = {
+                high: { bg: '#E14747', border: '#E14747' },
+                med: { bg: '#F59F0A', border: '#F59F0A' },
+                low: { bg: '#478CD1', border: '#478CD1' },
+                none: { bg: '#9ca3af', border: '#9ca3af' },
               };
-              const active = priorityFilter.includes(p);
+              const active = priorityFilter.includes(p as Priority);
+              const label = p === 'none' ? 'None' : p.charAt(0).toUpperCase() + p.slice(1);
               return (
                 <button
                   key={p}
-                  onClick={() => togglePriorityFilter(p)}
+                  onClick={() => togglePriorityFilter(p as Priority)}
                   style={{
                     ...filterChipStyle,
                     ...(active ? { background: colors[p].bg, borderColor: colors[p].border, color: '#fff' } : {}),
-                    textTransform: 'capitalize',
                   }}
                 >
-                  {p}
+                  {label}
                 </button>
               );
             })}
@@ -370,12 +366,6 @@ export function TodayView() {
               style={{ ...filterChipStyle, ...(projectFilter.length === 0 ? activeFilterChipStyle : {}) }}
             >
               All
-            </button>
-            <button
-              onClick={() => toggleProjectFilter(STANDALONE_PROJECT_FILTER)}
-              style={{ ...filterChipStyle, ...(projectFilter.includes(STANDALONE_PROJECT_FILTER) ? activeFilterChipStyle : {}) }}
-            >
-              None
             </button>
             {projects.map(project => (
               <button
@@ -392,11 +382,11 @@ export function TodayView() {
 
       <div style={{
         display: 'flex',
-        border: '1px solid #e5e7eb',
+        border: '1px solid #E7E3DF',
         borderRadius: '12px',
         overflow: 'hidden',
         marginBottom: '12px',
-        background: '#f9fafb',
+        background: '#F2F0ED',
       }}>
         {(['boulders', 'rocks', 'pebbles'] as const).map(mode => (
           <div
@@ -408,8 +398,8 @@ export function TodayView() {
               padding: '8px',
               cursor: 'pointer',
               fontSize: '14px',
-              color: sidebarMode === mode ? '#fff' : '#4b5563',
-              background: sidebarMode === mode ? '#FF7A7A' : 'transparent',
+              color: sidebarMode === mode ? '#fff' : '#1D212B',
+              background: sidebarMode === mode ? '#EA6657' : 'transparent',
               fontWeight: sidebarMode === mode ? 700 : 500,
               userSelect: 'none',
               textTransform: 'capitalize',
@@ -470,11 +460,11 @@ export function TodayView() {
                   onChange={(e) => setDayCount(parseInt(e.target.value, 10))}
                   style={{
                     padding: '4px 8px',
-                    border: '1px solid #e5e7eb',
+                    border: '1px solid #E7E3DF',
                     borderRadius: '8px',
                     background: '#fff',
                     fontSize: '12px',
-                    color: '#4b5563',
+                    color: '#1D212B',
                     fontFamily: 'inherit',
                     cursor: 'pointer',
                     outline: 'none',
@@ -563,7 +553,7 @@ export function TodayView() {
           <div style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.5 }}>
             Adjusting these will change the visible range of your daily calendar.
           </div>
-          <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '16px' }}>
+          <div style={{ borderTop: '1px solid #E7E3DF', paddingTop: '16px' }}>
             <CalendarFeedSettings />
           </div>
         </div>
@@ -583,38 +573,38 @@ export function TodayView() {
 
 const navBtn: React.CSSProperties = {
   padding: '4px 10px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '8px',
   background: '#fff',
   cursor: 'pointer',
   fontSize: '16px',
   fontWeight: 600,
-  color: '#4b5563',
+  color: '#1D212B',
   fontFamily: 'inherit',
   transition: 'all 0.15s ease',
 };
 
 const classifyBtnStyle: React.CSSProperties = {
-  padding: '4px 10px',
-  border: '1px solid #e5e7eb',
+  padding: '4px 12px',
+  border: '1px solid #E7E3DF',
   borderRadius: '8px',
-  background: '#f9fafb',
+  background: '#F2F0ED',
   cursor: 'pointer',
   fontSize: '12px',
   fontWeight: 600,
-  color: '#4b5563',
+  color: '#1D212B',
   fontFamily: 'inherit',
   transition: 'all 0.15s ease',
   flexShrink: 0,
 };
 
 const filterHeaderStyle: React.CSSProperties = {
-  fontSize: '12px',
+  fontSize: '10px',
   color: '#6b7280',
-  fontWeight: 600,
+  fontWeight: 500,
   marginBottom: '8px',
   textTransform: 'uppercase',
-  letterSpacing: '0.04em',
+  letterSpacing: '0.06em',
 };
 
 const filterChipWrapStyle: React.CSSProperties = {
@@ -624,34 +614,35 @@ const filterChipWrapStyle: React.CSSProperties = {
 };
 
 const filterChipStyle: React.CSSProperties = {
-  padding: '6px 10px',
-  border: '1px solid #e5e7eb',
+  padding: '5px 12px',
+  border: '1px solid #E7E3DF',
   borderRadius: '999px',
   fontSize: '12px',
   background: '#fff',
-  color: '#4b5563',
+  color: '#1D212B',
   fontFamily: 'inherit',
   cursor: 'pointer',
+  fontWeight: 500,
 };
 
 const activeFilterChipStyle: React.CSSProperties = {
-  background: '#FF7A7A',
-  borderColor: '#FF7A7A',
+  background: '#EA6657',
+  borderColor: '#EA6657',
   color: '#fff',
 };
 
 const settingLabelStyle: React.CSSProperties = {
   display: 'block',
   fontSize: '14px',
-  fontWeight: 600,
-  color: '#374151',
+  fontWeight: 500,
+  color: '#1D212B',
   marginBottom: '6px',
 };
 
 const settingInputStyle: React.CSSProperties = {
   width: '100%',
   padding: '10px 12px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '10px',
   fontSize: '14px',
   fontFamily: 'inherit',

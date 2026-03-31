@@ -292,8 +292,8 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     <div
       style={{
         padding: '12px',
-        background: '#fafafa',
-        borderTop: '1px solid #e5e7eb',
+        background: '#F9F7F6',
+        borderTop: '1px solid #EFEDEB',
         animation: 'slideDown 0.15s ease',
       }}
       onClick={e => e.stopPropagation()}
@@ -311,7 +311,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
       <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
         {(['boulder', 'rock', 'pebble'] as const).map((type) => {
           const active = classification === type;
-          const color = active ? '#FF7A7A' : '#e5e7eb';
+          const color = active ? '#EA6657' : '#E7E3DF';
           return (
             <button
               key={type}
@@ -320,8 +320,8 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
                 padding: '6px 18px',
                 border: `1px solid ${color}`,
                 borderRadius: '8px',
-                background: active ? '#FF7A7A' : '#f9fafb',
-                color: active ? '#fff' : '#4b5563',
+                background: active ? '#EA6657' : '#F2F0ED',
+                color: active ? '#fff' : '#1D212B',
                 cursor: 'pointer',
                 fontSize: '12px',
                 fontWeight: 600,
@@ -340,7 +340,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
         <span style={labelStyle}>Priority:</span>
         {(['high', 'med', 'low'] as const).map((p) => {
           const active = priority === p;
-          const colors: Record<Priority, string> = { high: '#ef4444', med: '#f59e0b', low: '#9ca3af' };
+          const colors: Record<Priority, string> = { high: '#E14747', med: '#F59F0A', low: '#478CD1' };
           const color = colors[p];
           return (
             <button
@@ -348,10 +348,10 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
               onClick={() => setPriority(p)}
               style={{
                 padding: '4px 14px',
-                border: `1px solid ${active ? color : '#e5e7eb'}`,
+                border: `1px solid ${active ? color : '#E7E3DF'}`,
                 borderRadius: '8px',
-                background: active ? color : '#f9fafb',
-                color: active ? '#fff' : '#4b5563',
+                background: active ? color : '#F2F0ED',
+                color: active ? '#fff' : '#1D212B',
                 cursor: 'pointer',
                 fontSize: '12px',
                 fontWeight: 600,
@@ -434,9 +434,9 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
                   onClick={() => toggleDay(day, weeklyDays, setWeeklyDays)}
                   style={{
                     ...dayBtnStyle,
-                    background: weeklyDays.includes(day) ? '#FF7A7A' : '#fff',
-                    color: weeklyDays.includes(day) ? '#fff' : '#4b5563',
-                    borderColor: weeklyDays.includes(day) ? '#FF7A7A' : '#e5e7eb',
+                    background: weeklyDays.includes(day) ? '#EA6657' : '#fff',
+                    color: weeklyDays.includes(day) ? '#fff' : '#1D212B',
+                    borderColor: weeklyDays.includes(day) ? '#EA6657' : '#E7E3DF',
                   }}
                 >
                   {DAY_LABELS[day]}
@@ -491,9 +491,9 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
                       onClick={() => toggleDay(day, customDays, setCustomDays)}
                       style={{
                         ...dayBtnStyle,
-                        background: customDays.includes(day) ? '#FF7A7A' : '#fff',
-                        color: customDays.includes(day) ? '#fff' : '#4b5563',
-                        borderColor: customDays.includes(day) ? '#FF7A7A' : '#e5e7eb',
+                        background: customDays.includes(day) ? '#EA6657' : '#fff',
+                        color: customDays.includes(day) ? '#fff' : '#1D212B',
+                        borderColor: customDays.includes(day) ? '#EA6657' : '#E7E3DF',
                       }}
                     >
                       {DAY_LABELS[day]}
@@ -522,11 +522,11 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
       )}
 
       {/* Actions */}
-      <div style={{ borderTop: '1px solid #e5e7eb', paddingTop: '8px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+      <div style={{ borderTop: '1px solid #EFEDEB', paddingTop: '8px', display: 'flex', gap: '6px', alignItems: 'center' }}>
         {!confirmingDelete ? (
           <button
             onClick={() => setConfirmingDelete(true)}
-            style={{ ...iconBtnStyle, color: '#ef4444', borderColor: '#fca5a5' }}
+            style={{ ...iconBtnStyle, color: '#DC2828', borderColor: '#FCEDED' }}
             title="Delete task"
           >
             🗑
@@ -534,7 +534,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
         ) : (
           <button
             onClick={handleDelete}
-            style={{ ...iconBtnStyle, background: '#ef4444', color: '#fff', borderColor: '#ef4444', width: 'auto', padding: '0 10px' }}
+            style={{ ...iconBtnStyle, background: '#DC2828', color: '#fff', borderColor: '#DC2828', width: 'auto', padding: '0 10px' }}
             title="Confirm delete"
           >
             Delete
@@ -573,11 +573,11 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '6px 10px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '8px',
   fontSize: '13px',
   fontFamily: 'inherit',
-  color: '#1f2937',
+  color: '#1D212B',
   outline: 'none',
   boxSizing: 'border-box',
   background: '#fff',
@@ -585,12 +585,12 @@ const inputStyle: React.CSSProperties = {
 
 const selectStyle: React.CSSProperties = {
   padding: '4px 8px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '8px',
   fontSize: '12px',
   background: '#fff',
   fontFamily: 'inherit',
-  color: '#4b5563',
+  color: '#1D212B',
 };
 
 const labelStyle: React.CSSProperties = {
@@ -601,11 +601,11 @@ const labelStyle: React.CSSProperties = {
 const dayBtnStyle: React.CSSProperties = {
   width: '28px',
   height: '26px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '6px',
   cursor: 'pointer',
   fontSize: '10px',
-  fontWeight: 600,
+  fontWeight: 500,
   fontFamily: 'inherit',
   padding: 0,
   display: 'flex',
@@ -617,13 +617,13 @@ const dayBtnStyle: React.CSSProperties = {
 const iconBtnStyle: React.CSSProperties = {
   width: '30px',
   height: '28px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '8px',
-  background: '#f9fafb',
+  background: '#F2F0ED',
   cursor: 'pointer',
   fontSize: '13px',
   fontWeight: 600,
-  color: '#4b5563',
+  color: '#1D212B',
   fontFamily: 'inherit',
   display: 'flex',
   alignItems: 'center',

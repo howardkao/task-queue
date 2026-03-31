@@ -91,7 +91,7 @@ export function PebbleSortView() {
     <div style={{ padding: '20px 24px', maxWidth: '800px', margin: '0 auto' }}>
       <div style={{
         fontSize: '14px',
-        fontWeight: 600,
+        fontWeight: 500,
         color: '#6b7280',
         marginBottom: '16px',
         textTransform: 'uppercase',
@@ -112,7 +112,7 @@ export function PebbleSortView() {
           padding: '40px 20px',
           color: '#9ca3af',
           fontStyle: 'italic',
-          fontSize: '15px',
+          fontSize: '14px',
         }}>
           No pebbles yet — classify some tasks from the Triage view.
         </div>

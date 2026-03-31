@@ -73,11 +73,11 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
         boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
       }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
-          <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#1f2937', margin: 0 }}>
+          <h2 style={{ fontSize: '18px', fontWeight: 600, lineHeight: 1.2, color: '#1D212B', margin: 0 }}>
             Invite Codes
           </h2>
           <button onClick={onClose} style={{
-            background: 'none', border: 'none', fontSize: '20px', cursor: 'pointer', color: '#9ca3af',
+            background: 'none', border: 'none', fontSize: '18px', cursor: 'pointer', color: '#9ca3af',
           }}>
             ✕
           </button>
@@ -85,7 +85,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
 
         <button onClick={handleCreate} style={{
           width: '100%', padding: '10px', border: 'none', borderRadius: '10px',
-          background: '#FF7A7A', color: '#fff', fontSize: '14px', fontWeight: 700,
+          background: '#EA6657', color: '#fff', fontSize: '14px', fontWeight: 500,
           cursor: 'pointer', fontFamily: 'inherit', marginBottom: '16px',
         }}>
           Generate Invite Code
@@ -102,28 +102,28 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
         {codes.map(c => {
           const expired = c.expiresAt && c.expiresAt.toDate() < new Date();
           const status = c.used ? 'Used' : expired ? 'Expired' : 'Active';
-          const statusColor = c.used ? '#9ca3af' : expired ? '#f59e0b' : '#10b981';
+          const statusColor = c.used ? '#9ca3af' : expired ? '#F59F0A' : '#10b981';
 
           return (
             <div key={c.id} style={{
               display: 'flex', alignItems: 'center', gap: '10px',
-              padding: '10px 12px', background: '#f9fafb', borderRadius: '10px',
-              marginBottom: '6px', border: '1px solid #e5e7eb',
+              padding: '10px 12px', background: '#F2F0ED', borderRadius: '10px',
+              marginBottom: '6px', border: '1px solid #E7E3DF',
             }}>
               <code style={{
-                flex: 1, fontSize: '14px', fontWeight: 600, color: '#1f2937',
+                flex: 1, fontSize: '14px', fontWeight: 500, color: '#1D212B',
                 letterSpacing: '0.05em',
               }}>
                 {c.code || c.id}
               </code>
-              <span style={{ fontSize: '11px', fontWeight: 600, color: statusColor }}>{status}</span>
+              <span style={{ fontSize: '10px', fontWeight: 500, color: statusColor }}>{status}</span>
               {!c.used && !expired && (
                 <button
                   onClick={() => handleCopy(c.code || c.id)}
                   style={{
-                    padding: '4px 8px', border: '1px solid #e5e7eb', borderRadius: '6px',
-                    background: '#fff', cursor: 'pointer', fontSize: '11px', fontFamily: 'inherit',
-                    color: copied === (c.code || c.id) ? '#10b981' : '#4b5563',
+                    padding: '4px 8px', border: '1px solid #E7E3DF', borderRadius: '6px',
+                    background: '#fff', cursor: 'pointer', fontSize: '10px', fontFamily: 'inherit',
+                    color: copied === (c.code || c.id) ? '#10b981' : '#1D212B',
                   }}
                 >
                   {copied === (c.code || c.id) ? 'Copied!' : 'Copy'}
@@ -132,9 +132,9 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
               <button
                 onClick={() => handleDelete(c.id)}
                 style={{
-                  padding: '4px 8px', border: '1px solid #fca5a5', borderRadius: '6px',
-                  background: '#fff', cursor: 'pointer', fontSize: '11px', fontFamily: 'inherit',
-                  color: '#ef4444',
+                  padding: '4px 8px', border: '1px solid #FCEDED', borderRadius: '6px',
+                  background: '#fff', cursor: 'pointer', fontSize: '10px', fontFamily: 'inherit',
+                  color: '#DC2828',
                 }}
               >
                 Delete

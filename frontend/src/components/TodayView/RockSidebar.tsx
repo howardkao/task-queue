@@ -58,18 +58,6 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
     persistOrder(list);
   }, [displayRocks, persistOrder]);
 
-  const handleBumpToTop = useCallback((id: string) => {
-    const idx = displayRocks.findIndex(t => t.id === id);
-    if (idx > 0) applyReorder(idx, 0);
-  }, [applyReorder, displayRocks]);
-
-  const handleDropBy10 = useCallback((id: string) => {
-    const idx = displayRocks.findIndex(t => t.id === id);
-    if (idx >= 0) {
-      const newIdx = Math.min(idx + 10, displayRocks.length - 1);
-      if (newIdx !== idx) applyReorder(idx, newIdx);
-    }
-  }, [applyReorder, displayRocks]);
 
   const handleDragStart = (e: React.DragEvent, rock: Task, index: number) => {
     e.dataTransfer.setData('boulder-id', rock.id);
@@ -116,7 +104,7 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
 
   return (
     <div>
-      <h2 style={sectionHeader}>Drag rocks to calendar</h2>
+      <h2 style={sectionHeader}>Drag Rocks to Calendar</h2>
 
       {displayRocks.length === 0 && (
         <div style={emptyStyle}>No rocks available.</div>
@@ -153,37 +141,27 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
                   gap: '2px',
                   flexShrink: 0,
                 }}>
-                  <span style={{ ...dragHandle, color: isPlaced ? '#d8ccb3' : '#d7b27a' }}>⠿</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleBumpToTop(rock.id); }}
-                    title="Bump to top"
-                    style={reorderBtn}
-                  >
-                    ⤒
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDropBy10(rock.id); }}
-                    title="Drop 10"
-                    style={reorderBtn}
-                  >
-                    ↓
-                  </button>
+                  <span style={{ ...dragHandle, color: isPlaced ? '#E7E3DF' : '#EFEDEB' }}>⠿</span>
                 </div>
+                <span style={{ fontSize: '16px', color: isPlaced ? '#E7E3DF' : '#c08457', flexShrink: 0, marginTop: '1px' }}>○</span>
                 <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setEditingId(isEditing ? null : rock.id)}>
-                  <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1f2937' }}>
-                    {isPlaced && <span style={{ fontSize: '11px', marginRight: '4px' }}>📅</span>}
+                  <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>
+                    {isPlaced && <span style={{ fontSize: '10px', marginRight: '4px' }}>📅</span>}
                     {rock.title}
                   </div>
                   {isPlaced && placedBoulders[rock.id] && (
-                    <div style={{ fontSize: '11px', color: '#c08457', marginTop: '1px' }}>
+                    <div style={{ fontSize: '10px', color: '#c08457', marginTop: '1px' }}>
                       {formatPlacedDate(placedBoulders[rock.id].date)}
                     </div>
                   )}
-                  {projectName && <div style={metaLine}>{projectName}</div>}
-                  {(deadlineStr || rock.recurrence || rock.lastOccurrenceCompletedAt) && (
+                  {(projectName || deadlineStr) && (
                     <div style={metaLine}>
-                      {deadlineStr && <span style={{ color: '#FF6B6B' }}>⚑ {deadlineStr}</span>}
-                      {deadlineStr && (rock.recurrence || rock.lastOccurrenceCompletedAt) && <span style={{ margin: '0 4px' }}></span>}
+                      {deadlineStr && <span style={{ color: '#E14747', marginRight: '8px' }}>△ {deadlineStr}</span>}
+                      {projectName && <span>{projectName}</span>}
+                    </div>
+                  )}
+                  {(rock.recurrence || rock.lastOccurrenceCompletedAt) && (
+                    <div style={metaLine}>
                       {rock.recurrence && <span style={{ marginRight: '4px' }}>↻</span>}
                       {rock.lastOccurrenceCompletedAt && (
                         <span style={{ fontSize: '10px', color: '#9ca3af' }}>
@@ -211,12 +189,12 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
 }
 
 const sectionHeader: React.CSSProperties = {
-  fontSize: '14px',
+  fontSize: '10px',
   textTransform: 'uppercase',
-  letterSpacing: '0.05em',
+  letterSpacing: '0.06em',
   color: '#6b7280',
   marginBottom: '12px',
-  fontWeight: 600,
+  fontWeight: 500,
 };
 
 const emptyStyle: React.CSSProperties = {
@@ -235,19 +213,17 @@ const dropIndicatorLine: React.CSSProperties = {
 };
 
 const cardStyle: React.CSSProperties = {
-  border: '2px dashed #d7b27a',
+  border: '1px solid #E7E3DF',
   borderRadius: '12px',
   marginBottom: '6px',
   background: '#fff',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
   overflow: 'hidden',
   cursor: 'grab',
 };
 
 const placedCardStyle: React.CSSProperties = {
-  border: '1px solid #e5e7eb',
-  background: '#fafafa',
-  boxShadow: 'none',
+  border: '1px solid #E7E3DF',
+  background: '#F9F7F6',
   opacity: 0.7,
 };
 
@@ -265,29 +241,16 @@ const dragHandle: React.CSSProperties = {
   marginTop: '1px',
 };
 
-const reorderBtn: React.CSSProperties = {
-  padding: '0px 4px',
-  border: '1px solid #e5e7eb',
-  borderRadius: '4px',
-  background: '#f9fafb',
-  cursor: 'pointer',
-  fontSize: '10px',
-  color: '#9ca3af',
-  fontFamily: 'inherit',
-  lineHeight: '1.4',
-  display: 'block',
-};
-
 const titleStyle: React.CSSProperties = {
   fontSize: '14px',
-  color: '#1f2937',
+  color: '#1D212B',
   fontWeight: 500,
 };
 
 const metaLine: React.CSSProperties = {
   fontSize: '12px',
   color: '#9ca3af',
-  marginTop: '2px',
+  marginTop: '3px',
 };
 
 function formatDeadline(deadline: string): string {

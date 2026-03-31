@@ -66,18 +66,6 @@ export function BoulderSidebar({
     persistOrder(list);
   }, [displayBoulders, persistOrder]);
 
-  const handleBumpToTop = useCallback((id: string) => {
-    const idx = displayBoulders.findIndex(t => t.id === id);
-    if (idx > 0) applyReorder(idx, 0);
-  }, [displayBoulders, applyReorder]);
-
-  const handleDropBy10 = useCallback((id: string) => {
-    const idx = displayBoulders.findIndex(t => t.id === id);
-    if (idx >= 0) {
-      const newIdx = Math.min(idx + 10, displayBoulders.length - 1);
-      if (newIdx !== idx) applyReorder(idx, newIdx);
-    }
-  }, [displayBoulders, applyReorder]);
 
   const handleDragStart = (e: React.DragEvent, boulder: Task, index: number) => {
     // Set boulder-id for calendar drops
@@ -141,7 +129,7 @@ export function BoulderSidebar({
   return (
     <div>
       <h2 style={sectionHeader}>
-        Drag boulders to calendar
+        Drag Boulders to Calendar
       </h2>
 
       {displayBoulders.length === 0 && (
@@ -174,7 +162,7 @@ export function BoulderSidebar({
               }}
             >
             <div style={cardInner}>
-              {/* Drag handle + reorder buttons */}
+              {/* Drag handle */}
               <div style={{
                 display: 'flex',
                 flexDirection: 'column',
@@ -182,44 +170,34 @@ export function BoulderSidebar({
                 gap: '2px',
                 flexShrink: 0,
               }}>
-                <span style={{ ...dragHandle, color: isPlaced ? '#e5c6c6' : '#FFB3B3' }}>⠿</span>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleBumpToTop(b.id); }}
-                  title="Bump to top"
-                  style={reorderBtn}
-                >
-                  ⤒
-                </button>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleDropBy10(b.id); }}
-                  title="Drop 10"
-                  style={reorderBtn}
-                >
-                  ↓
-                </button>
+                <span style={{ ...dragHandle, color: isPlaced ? '#E7E3DF' : '#EFEDEB' }}>⠿</span>
               </div>
+
+              {/* Checkbox circle */}
+              <span style={{ fontSize: '16px', color: isPlaced ? '#E7E3DF' : '#EA6657', flexShrink: 0, marginTop: '1px' }}>○</span>
 
               {/* Content area — click to expand */}
               <div
                 style={{ flex: 1, cursor: 'pointer' }}
                 onClick={() => setEditingId(isEditing ? null : b.id)}
               >
-                <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1f2937' }}>
-                  {isPlaced && <span style={{ fontSize: '11px', marginRight: '4px' }}>📅</span>}
+                <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>
+                  {isPlaced && <span style={{ fontSize: '10px', marginRight: '4px' }}>📅</span>}
                   {b.title}
                 </div>
                 {isPlaced && placedBoulders[b.id] && (
-                  <div style={{ fontSize: '11px', color: '#FF7A7A', marginTop: '1px' }}>
+                  <div style={{ fontSize: '10px', color: '#EA6657', marginTop: '1px' }}>
                     {formatPlacedDate(placedBoulders[b.id].date)}
                   </div>
                 )}
-                {projectName && (
-                  <div style={metaLine}>{projectName}</div>
-                )}
-                {(deadlineStr || b.recurrence || b.lastOccurrenceCompletedAt) && (
+                {(projectName || deadlineStr) && (
                   <div style={metaLine}>
-                    {deadlineStr && <span style={{ color: '#FF6B6B' }}>⚑ {deadlineStr}</span>}
-                    {deadlineStr && (b.recurrence || b.lastOccurrenceCompletedAt) && <span style={{ margin: '0 4px' }}></span>}
+                    {deadlineStr && <span style={{ color: '#E14747', marginRight: '8px' }}>△ {deadlineStr}</span>}
+                    {projectName && <span>{projectName}</span>}
+                  </div>
+                )}
+                {(b.recurrence || b.lastOccurrenceCompletedAt) && (
+                  <div style={metaLine}>
                     {b.recurrence && <span style={{ marginRight: '4px' }}>↻</span>}
                     {b.lastOccurrenceCompletedAt && (
                       <span style={{ fontSize: '10px', color: '#9ca3af' }}>
@@ -260,12 +238,12 @@ export function BoulderSidebar({
 }
 
 const sectionHeader: React.CSSProperties = {
-  fontSize: '14px',
+  fontSize: '10px',
   textTransform: 'uppercase',
-  letterSpacing: '0.05em',
+  letterSpacing: '0.06em',
   color: '#6b7280',
   marginBottom: '12px',
-  fontWeight: 600,
+  fontWeight: 500,
 };
 
 const emptyStyle: React.CSSProperties = {
@@ -278,26 +256,24 @@ const emptyStyle: React.CSSProperties = {
 
 const dropIndicatorLine: React.CSSProperties = {
   height: '3px',
-  background: '#FF7A7A',
+  background: '#EA6657',
   borderRadius: '2px',
   margin: '2px 0',
 };
 
 const cardStyle: React.CSSProperties = {
-  border: '2px dashed #FFB3B3',
+  border: '1px solid #E7E3DF',
   borderRadius: '12px',
   marginBottom: '6px',
   background: '#fff',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
   overflow: 'hidden',
   cursor: 'grab',
   transition: 'all 0.15s',
 };
 
 const placedCardStyle: React.CSSProperties = {
-  border: '1px solid #e5e7eb',
-  background: '#fafafa',
-  boxShadow: 'none',
+  border: '1px solid #E7E3DF',
+  background: '#F9F7F6',
   opacity: 0.7,
 };
 
@@ -309,36 +285,23 @@ const cardInner: React.CSSProperties = {
 };
 
 const dragHandle: React.CSSProperties = {
-  color: '#FFB3B3',
+  color: '#EFEDEB',
   fontSize: '16px',
   userSelect: 'none',
   flexShrink: 0,
   marginTop: '1px',
 };
 
-const reorderBtn: React.CSSProperties = {
-  padding: '0px 4px',
-  border: '1px solid #e5e7eb',
-  borderRadius: '4px',
-  background: '#f9fafb',
-  cursor: 'pointer',
-  fontSize: '10px',
-  color: '#9ca3af',
-  fontFamily: 'inherit',
-  lineHeight: '1.4',
-  display: 'block',
-};
-
 const titleStyle: React.CSSProperties = {
   fontSize: '14px',
-  color: '#1f2937',
+  color: '#1D212B',
   fontWeight: 500,
 };
 
 const metaLine: React.CSSProperties = {
   fontSize: '12px',
   color: '#9ca3af',
-  marginTop: '2px',
+  marginTop: '3px',
 };
 
 function formatDeadline(deadline: string): string {

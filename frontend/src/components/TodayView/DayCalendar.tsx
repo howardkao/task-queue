@@ -169,7 +169,7 @@ export function DayCalendar({
       height: `${Math.max(height, 24)}px`,
       borderRadius: '12px',
       padding: '4px 8px',
-      fontSize: compact ? '11px' : '13px',
+      fontSize: compact ? '10px' : '13px',
       overflow: 'hidden',
       zIndex: interacting?.eventId === event.id ? 10 : 1,
       boxSizing: 'border-box',
@@ -179,9 +179,9 @@ export function DayCalendar({
     if (event.type === 'boulder' || event.type === 'rock') {
       return {
         ...baseStyle,
-        border: event.type === 'rock' ? '2px dashed #c08457' : '2px dashed #FF7A7A',
-        background: event.type === 'rock' ? '#fff7ed' : '#fff5f5',
-        borderLeft: event.type === 'rock' ? '4px solid #c08457' : '4px solid #FF7A7A',
+        border: event.type === 'rock' ? '2px dashed #c08457' : '2px dashed #EA6657',
+        background: event.type === 'rock' ? '#fff7ed' : '#FCEDED',
+        borderLeft: event.type === 'rock' ? '4px solid #c08457' : '4px solid #EA6657',
         padding: '8px',
         cursor: 'grab',
       };
@@ -202,7 +202,7 @@ export function DayCalendar({
       ...baseStyle,
       background: event.busy !== false ? `${bgColor}33` : `${bgColor}11`,
       borderLeft: `4px solid ${bgColor}`,
-      color: '#4b5563',
+      color: '#1D212B',
     };
   };
 
@@ -218,14 +218,13 @@ export function DayCalendar({
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{
-        fontSize: compact ? '13px' : '16px',
-        fontWeight: 700,
-        color: '#1f2937',
+        fontSize: compact ? '12px' : '16px',
+        fontWeight: 600,
+        color: '#1D212B',
         padding: compact ? '8px 10px' : '12px 16px',
-        border: '1px solid #e5e7eb',
-        borderRadius: '16px 16px 0 0',
+        border: '1px solid #E7E3DF',
+        borderRadius: '12px 12px 0 0',
         background: '#fff',
-        boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
       }}>
         {date}
       </div>
@@ -235,12 +234,12 @@ export function DayCalendar({
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
         style={{
-          border: '1px solid #e5e7eb',
+          border: '1px solid #E7E3DF',
           borderTop: 'none',
-          borderRadius: '0 0 16px 16px',
+          borderRadius: '0 0 12px 12px',
           background: '#fff',
           position: 'relative',
-          borderLeft: showLabels ? '1px solid #e5e7eb' : 'none',
+          borderLeft: showLabels ? '1px solid #E7E3DF' : 'none',
         }}
       >
         {/* Time grid */}
@@ -248,7 +247,7 @@ export function DayCalendar({
           <div key={time} style={{
             display: 'flex',
             minHeight: `${SLOT_HEIGHT}px`,
-            borderBottom: '1px dashed #f3f4f6',
+            borderBottom: '1px dashed #EFEDEB',
           }}>
             {showLabels && (
               <div style={{
@@ -258,7 +257,7 @@ export function DayCalendar({
                 color: '#9ca3af',
                 textAlign: 'right',
                 flexShrink: 0,
-                borderRight: '1px solid #f3f4f6',
+                borderRight: '1px solid #EFEDEB',
               }}>
                 {formatTime(time)}
               </div>
@@ -274,7 +273,7 @@ export function DayCalendar({
             left: `${timeColWidth}px`,
             right: '0',
             height: '2px',
-            background: '#ef4444',
+            background: '#E14747',
             zIndex: 15,
             pointerEvents: 'none',
           }}>
@@ -285,7 +284,7 @@ export function DayCalendar({
               width: '8px',
               height: '8px',
               borderRadius: '50%',
-              background: '#ef4444',
+              background: '#E14747',
             }} />
           </div>
         )}
@@ -299,7 +298,7 @@ export function DayCalendar({
               left: `${timeColWidth}px`,
               right: '0',
               height: '2px',
-              background: '#FF7A7A',
+              background: '#EA6657',
               zIndex: 20,
               pointerEvents: 'none',
             }} />
@@ -308,8 +307,8 @@ export function DayCalendar({
               top: `${(dragOverHour - startHour) * PX_PER_HOUR - 10}px`,
               left: '2px',
               fontSize: '10px',
-              fontWeight: 700,
-              color: '#FF7A7A',
+              fontWeight: 500,
+              color: '#EA6657',
               zIndex: 20,
               pointerEvents: 'none',
               background: '#fff',
@@ -332,7 +331,7 @@ export function DayCalendar({
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <div style={{ fontWeight: 700, fontSize: '14px', color: '#1f2937' }}>{event.title}</div>
+                    <div style={{ fontWeight: 500, fontSize: '14px', color: '#1D212B' }}>{event.title}</div>
                   </div>
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
                     <div
@@ -341,12 +340,12 @@ export function DayCalendar({
                       onMouseDown={(e) => e.stopPropagation()}
                       style={{
                         padding: '2px 6px',
-                        border: '1px solid #fecaca',
+                        border: '1px solid #E7E3DF',
                         borderRadius: '6px',
                         background: '#fff',
                         cursor: 'grab',
                         fontSize: '12px',
-                        color: event.type === 'rock' ? '#c08457' : '#FF6B6B',
+                        color: event.type === 'rock' ? '#c08457' : '#EA6657',
                         lineHeight: '1',
                         flexShrink: 0,
                       }}
@@ -360,7 +359,7 @@ export function DayCalendar({
                       onMouseDown={(e) => e.stopPropagation()}
                       style={{
                         padding: '2px 6px',
-                        border: '1px solid #e5e7eb',
+                        border: '1px solid #E7E3DF',
                         borderRadius: '6px',
                         background: '#fff',
                         cursor: 'pointer',
@@ -396,13 +395,13 @@ export function DayCalendar({
                     width: '30px',
                     height: '3px',
                     borderRadius: '2px',
-                    background: event.type === 'rock' ? '#d6a46c' : '#FFB3B3',
+                    background: event.type === 'rock' ? '#d6a46c' : '#EA6657',
                   }} />
                 </div>
               </>
             ) : (
               <>
-                <div style={{ fontWeight: event.busy !== false ? 500 : 400, color: '#4b5563' }}>{event.title}</div>
+                <div style={{ fontWeight: event.busy !== false ? 500 : 400, color: '#1D212B' }}>{event.title}</div>
                 {event.busy === false && (
                   <div style={{ fontSize: '10px', color: '#9ca3af' }}>available</div>
                 )}

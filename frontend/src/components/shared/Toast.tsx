@@ -46,7 +46,7 @@ export function ToastProvider({ children }: { children: React.ReactNode }) {
               fontSize: '13px',
               fontWeight: 600,
               color: '#fff',
-              background: toast.type === 'error' ? '#FF6B6B' : '#4ade80',
+              background: toast.type === 'error' ? '#E14747' : '#4ade80',
               boxShadow: '0 4px 6px rgba(0,0,0,0.1)',
               animation: 'slideIn 0.2s ease',
               maxWidth: '320px',

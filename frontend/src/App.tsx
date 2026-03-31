@@ -86,7 +86,7 @@ function AppContent() {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        minHeight: '100vh', background: '#F7F7F7',
+        minHeight: '100vh', background: '#FBFAF9',
         fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
         color: '#9ca3af', fontSize: '15px',
       }}>
@@ -107,8 +107,8 @@ function AppContent() {
   return (
     <div style={{
       fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
-      background: '#F7F7F7',
-      color: '#1f2937',
+      background: '#FBFAF9',
+      color: '#1D212B',
       minHeight: '100vh',
     }}>
       <div style={{ display: 'flex', alignItems: 'center' }}>
@@ -201,7 +201,7 @@ function FullPageLoading() {
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: '100vh',
-      background: '#F7F7F7',
+      background: '#FBFAF9',
       fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
       color: '#9ca3af',
       fontSize: '15px',
@@ -226,13 +226,13 @@ function SectionLoading() {
 
 const headerBtn: React.CSSProperties = {
   padding: '6px 12px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '8px',
-  background: '#f9fafb',
+  background: '#F2F0ED',
   cursor: 'pointer',
   fontSize: '12px',
   fontWeight: 600,
-  color: '#4b5563',
+  color: '#1D212B',
   fontFamily: 'inherit',
 };
 
@@ -240,6 +240,12 @@ const menuBtn: React.CSSProperties = {
   ...headerBtn,
   minWidth: '42px',
   textAlign: 'center',
+  background: 'transparent',
+  border: '1px solid #E7E3DF',
+  borderRadius: '999px',
+  padding: '6px 14px',
+  fontSize: '18px',
+  color: '#1D212B',
 };
 
 const drawerActionBtn: React.CSSProperties = {
@@ -249,18 +255,18 @@ const drawerActionBtn: React.CSSProperties = {
   gap: '8px',
   width: '100%',
   padding: '10px 12px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '10px',
-  background: '#f9fafb',
+  background: '#F2F0ED',
   cursor: 'pointer',
-  color: '#374151',
+  color: '#1D212B',
   fontSize: '14px',
   fontWeight: 600,
   fontFamily: 'inherit',
 };
 
 const drawerBadge: React.CSSProperties = {
-  background: '#FF7A7A',
+  background: '#EA6657',
   color: '#fff',
   fontSize: '11px',
   fontWeight: 700,

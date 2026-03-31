@@ -42,18 +42,6 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
     persistOrder(list);
   }, [displayPebbles, persistOrder]);
 
-  const handleBumpToTop = useCallback((id: string) => {
-    const idx = displayPebbles.findIndex(t => t.id === id);
-    if (idx > 0) applyReorder(idx, 0);
-  }, [displayPebbles, applyReorder]);
-
-  const handleDropBy10 = useCallback((id: string) => {
-    const idx = displayPebbles.findIndex(t => t.id === id);
-    if (idx >= 0) {
-      const newIdx = Math.min(idx + 10, displayPebbles.length - 1);
-      if (newIdx !== idx) applyReorder(idx, newIdx);
-    }
-  }, [displayPebbles, applyReorder]);
 
   const handleComplete = useCallback((id: string) => {
     setLocalOrder(prev => (prev || pebbles).filter(t => t.id !== id));
@@ -152,7 +140,7 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
                 }}
               >
               <div style={cardInner}>
-                {/* Drag handle + reorder buttons stacked vertically */}
+                {/* Drag handle */}
                 <div style={{
                   display: 'flex',
                   flexDirection: 'column',
@@ -161,20 +149,6 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
                   flexShrink: 0,
                 }}>
                   <span style={dragHandle}>⠿</span>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleBumpToTop(task.id); }}
-                    title="Bump to top"
-                    style={reorderBtn}
-                  >
-                    ⤒
-                  </button>
-                  <button
-                    onClick={(e) => { e.stopPropagation(); handleDropBy10(task.id); }}
-                    title="Drop 10"
-                    style={reorderBtn}
-                  >
-                    ↓
-                  </button>
                 </div>
 
                 {/* Content area — click to expand */}
@@ -186,10 +160,10 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
                     <span style={titleStyle}>{task.title}</span>
                     {ageInDays !== null && ageInDays > 7 && (
                       <span style={{
-                        fontSize: '11px',
+                        fontSize: '10px',
                         fontStyle: 'italic',
                         flexShrink: 0,
-                        color: ageInDays > 30 ? '#FF6B6B' : ageInDays > 14 ? '#f59e0b' : '#9ca3af',
+                        color: ageInDays > 30 ? '#E14747' : ageInDays > 14 ? '#F59F0A' : '#9ca3af',
                       }}>
                         {ageInDays}d
                       </span>
@@ -200,7 +174,7 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
                   )}
                   {(deadlineStr || task.recurrence || task.lastOccurrenceCompletedAt) && (
                     <div style={metaLine}>
-                      {deadlineStr && <span style={{ color: '#FF6B6B' }}>⚑ {deadlineStr}</span>}
+                      {deadlineStr && <span style={{ color: '#E14747' }}>△ {deadlineStr}</span>}
                       {deadlineStr && (task.recurrence || task.lastOccurrenceCompletedAt) && <span style={{ margin: '0 4px' }}></span>}
                       {task.recurrence && <span style={{ marginRight: '4px' }}>↻</span>}
                       {task.lastOccurrenceCompletedAt && (
@@ -236,12 +210,12 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
 }
 
 const sectionHeader: React.CSSProperties = {
-  fontSize: '14px',
+  fontSize: '10px',
   textTransform: 'uppercase',
-  letterSpacing: '0.05em',
+  letterSpacing: '0.06em',
   color: '#6b7280',
   marginBottom: '8px',
-  fontWeight: 600,
+  fontWeight: 500,
 };
 
 const emptyStyle: React.CSSProperties = {
@@ -254,17 +228,16 @@ const emptyStyle: React.CSSProperties = {
 
 const dropIndicatorLine: React.CSSProperties = {
   height: '3px',
-  background: '#FF7A7A',
+  background: '#EA6657',
   borderRadius: '2px',
   margin: '2px 0',
 };
 
 const cardStyle: React.CSSProperties = {
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '12px',
   marginBottom: '6px',
   background: '#fff',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
   overflow: 'hidden',
   cursor: 'grab',
   transition: 'all 0.15s',
@@ -278,34 +251,21 @@ const cardInner: React.CSSProperties = {
 };
 
 const dragHandle: React.CSSProperties = {
-  color: '#d1d5db',
+  color: '#EFEDEB',
   fontSize: '16px',
   userSelect: 'none',
 };
 
-const reorderBtn: React.CSSProperties = {
-  padding: '0px 4px',
-  border: '1px solid #e5e7eb',
-  borderRadius: '4px',
-  background: '#f9fafb',
-  cursor: 'pointer',
-  fontSize: '10px',
-  color: '#9ca3af',
-  fontFamily: 'inherit',
-  lineHeight: '1.4',
-  display: 'block',
-};
-
 const titleStyle: React.CSSProperties = {
   fontSize: '14px',
-  color: '#1f2937',
+  color: '#1D212B',
   fontWeight: 500,
 };
 
 const metaLine: React.CSSProperties = {
   fontSize: '12px',
   color: '#9ca3af',
-  marginTop: '2px',
+  marginTop: '3px',
 };
 
 function getAgeDays(createdAt: any): number {

@@ -28,7 +28,7 @@ export function IceboxView() {
       {!isLoading && tasks.length === 0 && (
         <div style={{
           textAlign: 'center', padding: '40px 20px',
-          color: '#9ca3af', fontStyle: 'italic', fontSize: '15px',
+          color: '#9ca3af', fontStyle: 'italic', fontSize: '14px',
         }}>
           Nothing on ice.
         </div>
@@ -85,7 +85,7 @@ function IceboxCard({ task, projectMap, onReactivate, onDelete }: {
   return (
     <div style={cardStyle}>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: '14px', fontWeight: 500, color: '#1f2937' }}>{task.title}</div>
+        <div style={{ fontSize: '14px', fontWeight: 500, color: '#1D212B' }}>{task.title}</div>
         {projectName && (
           <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px' }}>{projectName}</div>
         )}
@@ -118,7 +118,7 @@ function IceboxCard({ task, projectMap, onReactivate, onDelete }: {
         {!confirming ? (
           <button
             onClick={() => setConfirming(true)}
-            style={{ ...actionBtn, color: '#ef4444', borderColor: '#fca5a5' }}
+            style={{ ...actionBtn, color: '#DC2828', borderColor: '#FCEDED' }}
             title="Delete permanently"
           >
             Delete
@@ -126,7 +126,7 @@ function IceboxCard({ task, projectMap, onReactivate, onDelete }: {
         ) : (
           <button
             onClick={() => { onDelete.mutate(task.id); setConfirming(false); }}
-            style={{ ...actionBtn, background: '#ef4444', color: '#fff', borderColor: '#ef4444' }}
+            style={{ ...actionBtn, background: '#DC2828', color: '#fff', borderColor: '#DC2828' }}
           >
             Confirm
           </button>
@@ -142,13 +142,13 @@ const sectionHeader: React.CSSProperties = {
   letterSpacing: '0.05em',
   color: '#6b7280',
   marginBottom: '12px',
-  fontWeight: 600,
+  fontWeight: 500,
 };
 
 const groupHeader: React.CSSProperties = {
   fontSize: '13px',
   color: '#9ca3af',
-  fontWeight: 600,
+  fontWeight: 400,
   marginTop: '16px',
   marginBottom: '8px',
 };
@@ -159,7 +159,7 @@ const cardStyle: React.CSSProperties = {
   gap: '12px',
   padding: '10px 14px',
   background: '#fff',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '12px',
   marginBottom: '6px',
   boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
@@ -167,13 +167,13 @@ const cardStyle: React.CSSProperties = {
 
 const actionBtn: React.CSSProperties = {
   padding: '4px 10px',
-  border: '1px solid #e5e7eb',
+  border: '1px solid #E7E3DF',
   borderRadius: '8px',
-  background: '#f9fafb',
+  background: '#F2F0ED',
   cursor: 'pointer',
   fontSize: '12px',
   fontWeight: 600,
-  color: '#4b5563',
+  color: '#1D212B',
   fontFamily: 'inherit',
   transition: 'all 0.15s ease',
 };

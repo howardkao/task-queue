@@ -109,7 +109,7 @@ export function Login() {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      minHeight: '100vh', background: '#F7F7F7',
+      minHeight: '100vh', background: '#FBFAF9',
       fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
     }}>
       <div style={{
@@ -118,7 +118,7 @@ export function Login() {
         boxShadow: '0 4px 24px rgba(0,0,0,0.08)',
       }}>
         <h1 style={{
-          fontSize: '24px', fontWeight: 700, color: '#1f2937',
+          fontSize: '28px', fontWeight: 600, lineHeight: 1.2, color: '#1D212B',
           marginBottom: '4px', textAlign: 'center',
         }}>
           Task Queue
@@ -133,7 +133,7 @@ export function Login() {
 
         {error && (
           <div style={{
-            background: '#fef2f2', border: '1px solid #fca5a5', borderRadius: '10px',
+            background: '#fef2f2', border: '1px solid #FCEDED', borderRadius: '10px',
             padding: '10px 14px', fontSize: '13px', color: '#dc2626', marginBottom: '16px',
           }}>
             {error}
@@ -186,7 +186,7 @@ export function Login() {
           disabled={loading}
           style={{
             width: '100%', padding: '12px', border: 'none', borderRadius: '12px',
-            background: '#FF7A7A', color: '#fff', fontSize: '15px', fontWeight: 700,
+            background: '#EA6657', color: '#fff', fontSize: '14px', fontWeight: 600,
             cursor: loading ? 'not-allowed' : 'pointer', fontFamily: 'inherit',
             opacity: loading ? 0.6 : 1, transition: 'opacity 0.2s ease',
             marginBottom: '16px',
@@ -229,11 +229,11 @@ export function Login() {
 const inputStyle: React.CSSProperties = {
   width: '100%',
   padding: '12px 14px',
-  border: '2px solid #e5e7eb',
+  border: '2px solid #E7E3DF',
   borderRadius: '12px',
-  fontSize: '15px',
+  fontSize: '14px',
   fontFamily: 'inherit',
-  color: '#1f2937',
+  color: '#1D212B',
   outline: 'none',
   marginBottom: '12px',
   boxSizing: 'border-box',
@@ -243,7 +243,7 @@ const inputStyle: React.CSSProperties = {
 const linkBtn: React.CSSProperties = {
   background: 'none',
   border: 'none',
-  color: '#FF7A7A',
+  color: '#EA6657',
   cursor: 'pointer',
   fontFamily: 'inherit',
   fontSize: '13px',
