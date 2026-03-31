@@ -315,6 +315,7 @@ export function TodayView() {
                 <div style={{ flex: 1, fontSize: '14px', color: '#1D212B', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {task.title}
                 </div>
+                <button onClick={() => handleClassify(task.id, 'boulder')} style={classifyBtnStyle}>Boulder</button>
                 <button onClick={() => handleClassify(task.id, 'rock')} style={classifyBtnStyle}>Rock</button>
                 <button onClick={() => handleClassify(task.id, 'pebble')} style={classifyBtnStyle}>Pebble</button>
               </div>

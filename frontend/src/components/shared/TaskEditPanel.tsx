@@ -285,7 +285,17 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   const addLinks: { label: string; action: () => void }[] = [];
   if (!showNotes) addLinks.push({ label: '+ Add notes', action: () => setShowNotes(true) });
   if (!showProject) addLinks.push({ label: '+ Add project', action: () => setShowProject(true) });
-  if (!showDeadline) addLinks.push({ label: '+ Add deadline', action: () => setShowDeadline(true) });
+  if (!showDeadline) addLinks.push({ 
+    label: '+ Add deadline', 
+    action: () => { 
+      setShowDeadline(true); 
+      if (!deadlineDate) {
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        setDeadlineDate(today);
+      }
+    } 
+  });
   if (showDeadline && !showRecurrence) addLinks.push({ label: '+ Add recurrence', action: () => { setShowRecurrence(true); if (!recMode) handleRecModeChange('weekly'); } });
 
   return (

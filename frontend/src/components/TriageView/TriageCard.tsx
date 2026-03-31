@@ -117,7 +117,17 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
   const addLinks: { label: string; action: () => void }[] = [];
   if (!showNotes) addLinks.push({ label: '+ Add notes', action: () => setShowNotes(true) });
   if (!showProject) addLinks.push({ label: '+ Add project', action: () => setShowProject(true) });
-  if (!showDeadline) addLinks.push({ label: '+ Add deadline', action: () => setShowDeadline(true) });
+  if (!showDeadline) addLinks.push({ 
+    label: '+ Add deadline', 
+    action: () => { 
+      setShowDeadline(true); 
+      if (!deadline) {
+        const now = new Date();
+        const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+        setDeadline(today);
+      }
+    } 
+  });
   if (showDeadline && !showRecurrence) addLinks.push({ label: '+ Add recurrence', action: () => { setShowRecurrence(true); if (!recMode) setRecMode('weekly'); } });
 
   return (
