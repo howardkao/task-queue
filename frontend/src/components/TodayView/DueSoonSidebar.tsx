@@ -78,10 +78,6 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
         // Visual style based on classification
         const isBoulder = task.classification === 'boulder';
         const isRock = task.classification === 'rock';
-        const isPebble = task.classification === 'pebble';
-
-        const classLabel = isBoulder ? 'ROCK' : isRock ? 'ROCK' : isPebble ? 'PEBBLE' : 'INBOX';
-        const classColor = isBoulder ? '#E14747' : isRock ? '#E14747' : isPebble ? '#478CD1' : '#9ca3af';
 
         return (
           <div key={task.id}>
@@ -90,49 +86,43 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
               onDragStart={(e) => handleDragStart(e, task)}
               style={{
                 ...cardStyle,
-                background: isOverdue ? '#FCEDED' : '#fff',
+                background: isOverdue ? '#FCEDED' : (isPlaced ? '#F9F7F6' : '#fff'),
                 border: `1px solid ${isOverdue ? '#f5c6c6' : '#E7E3DF'}`,
                 ...(isPlaced ? placedCardStyle : {}),
               }}
             >
               <div style={cardInner}>
+                {(isBoulder || isRock) && (
+                  <div style={{
+                    display: 'flex',
+                    flexDirection: 'column',
+                    alignItems: 'center',
+                    gap: '2px',
+                    flexShrink: 0,
+                  }}>
+                    <span style={{ ...dragHandle, color: isPlaced ? '#E7E3DF' : '#EFEDEB' }}>⠿</span>
+                  </div>
+                )}
                 <div
                   style={{ flex: 1, cursor: 'pointer' }}
                   onClick={() => setEditingId(isEditing ? null : task.id)}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '4px' }}>
-                    <span style={{
-                      fontSize: '10px',
-                      fontWeight: 500,
-                      color: classColor,
-                      textTransform: 'uppercase',
-                      letterSpacing: '0.04em',
-                    }}>
-                      {classLabel}
-                    </span>
-                    {(isBoulder || isRock) && (
-                      <span style={{ fontSize: '12px', color: isPlaced ? '#9ca3af' : classColor }}>○</span>
-                    )}
-                    {task.recurrence && <span style={{ fontSize: '12px', color: '#9ca3af' }}>↻</span>}
-                    <div style={{ flex: 1 }} />
-                    {deadlineStr && (
-                      <span style={{ fontSize: '12px', color: '#E14747', fontWeight: 600 }}>
-                        △ {deadlineStr}
-                      </span>
-                    )}
-                  </div>
                   <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B', fontWeight: 500 }}>
                     {isPlaced && <span style={{ fontSize: '10px', marginRight: '4px' }}>📅</span>}
                     {task.title}
                   </div>
-                  <div style={metaLine}>
-                    {isPlaced && placedTasks[task.id] && (
-                      <span style={{ color: isBoulder ? '#EA6657' : '#c08457', marginRight: '8px' }}>
-                        {formatPlacedDate(placedTasks[task.id].date)}
-                      </span>
-                    )}
-                    {projectName && <span>{projectName}</span>}
-                  </div>
+                  {(projectName || isPlaced || deadlineStr || task.recurrence) && (
+                    <div style={metaLine}>
+                      {isPlaced && placedTasks[task.id] && (
+                        <span style={{ color: isBoulder ? '#EA6657' : '#c08457', marginRight: '8px' }}>
+                          {formatPlacedDate(placedTasks[task.id].date)}
+                        </span>
+                      )}
+                      {deadlineStr && <span style={{ color: '#E14747', marginRight: '8px' }}>△ {deadlineStr}</span>}
+                      {projectName && <span style={{ marginRight: '8px' }}>{projectName}</span>}
+                      {task.recurrence && <span>↻</span>}
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -173,7 +163,12 @@ const cardInner: React.CSSProperties = {
   display: 'flex',
   alignItems: 'flex-start',
   gap: '10px',
-  padding: '12px 14px',
+  padding: '10px 12px',
+};
+
+const dragHandle: React.CSSProperties = {
+  fontSize: '16px',
+  userSelect: 'none',
 };
 
 const titleStyle: React.CSSProperties = {

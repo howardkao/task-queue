@@ -27,7 +27,7 @@ function icalToCalEvents(events: CalendarEvent[]): CalEvent[] {
     const start = new Date(e.start);
     const end = new Date(e.end);
     const startHour = start.getHours() + start.getMinutes() / 60;
-    const duration = (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24);
+    const duration = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
     return {
       id: `ical-${i}`,
       title: e.title,
@@ -311,7 +311,6 @@ export function TodayView() {
                   padding: '8px 0',
                 }}
               >
-                <span style={{ width: '6px', height: '6px', borderRadius: '50%', background: '#E7E3DF', flexShrink: 0 }} />
                 <div style={{ flex: 1, fontSize: '14px', color: '#1D212B', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                   {task.title}
                 </div>

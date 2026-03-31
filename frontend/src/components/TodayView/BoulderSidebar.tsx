@@ -173,9 +173,6 @@ export function BoulderSidebar({
                 <span style={{ ...dragHandle, color: isPlaced ? '#E7E3DF' : '#EFEDEB' }}>⠿</span>
               </div>
 
-              {/* Checkbox circle */}
-              <span style={{ fontSize: '16px', color: isPlaced ? '#E7E3DF' : '#EA6657', flexShrink: 0, marginTop: '1px' }}>○</span>
-
               {/* Content area — click to expand */}
               <div
                 style={{ flex: 1, cursor: 'pointer' }}

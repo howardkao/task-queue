@@ -142,11 +142,9 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
                   flexShrink: 0,
                 }}>
                   <span style={{ ...dragHandle, color: isPlaced ? '#E7E3DF' : '#EFEDEB' }}>⠿</span>
-                </div>
-                <span style={{ fontSize: '16px', color: isPlaced ? '#E7E3DF' : '#c08457', flexShrink: 0, marginTop: '1px' }}>○</span>
-                <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setEditingId(isEditing ? null : rock.id)}>
-                  <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>
-                    {isPlaced && <span style={{ fontSize: '10px', marginRight: '4px' }}>📅</span>}
+                  </div>
+                  <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setEditingId(isEditing ? null : rock.id)}>
+                  <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>                    {isPlaced && <span style={{ fontSize: '10px', marginRight: '4px' }}>📅</span>}
                     {rock.title}
                   </div>
                   {isPlaced && placedBoulders[rock.id] && (
