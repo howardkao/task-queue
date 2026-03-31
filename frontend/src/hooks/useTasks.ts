@@ -157,13 +157,20 @@ function getTimestamp(value: any): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function isDueSoon(deadline: any): boolean {
+function isOverdueOrDueToday(deadline: any): boolean {
   const ts = getTimestamp(deadline);
   if (ts === 0) return false;
-  const now = Date.now();
-  const diff = ts - now;
-  // Due within 48 hours and not already passed (or slightly passed)
-  return diff <= 48 * 60 * 60 * 1000;
+  const now = new Date();
+  now.setHours(23, 59, 59, 999); // End of today
+  return ts <= now.getTime();
+}
+
+function isDueLater(deadline: any): boolean {
+  const ts = getTimestamp(deadline);
+  if (ts === 0) return false;
+  const now = new Date();
+  now.setHours(23, 59, 59, 999); // End of today
+  return ts > now.getTime();
 }
 
 function isFutureRecurring(task: Task): boolean {
@@ -189,7 +196,12 @@ function filterByTodayProject(tasks: Task[], projectFilter: TodayProjectFilter) 
 
 function sortTodayTasks(tasks: Task[]) {
   return [...tasks].sort((a, b) => {
-    // Future recurring tasks go to the bottom
+    // 1. Due Later tasks (that aren't in Due Soon) go to the very top
+    const aDueLater = isDueLater(a.deadline);
+    const bDueLater = isDueLater(b.deadline);
+    if (aDueLater !== bDueLater) return aDueLater ? -1 : 1;
+
+    // 2. Future recurring tasks go to the bottom
     const aFuture = isFutureRecurring(a);
     const bFuture = isFutureRecurring(b);
     if (aFuture !== bFuture) return aFuture ? 1 : -1;
@@ -204,20 +216,19 @@ function sortTodayTasks(tasks: Task[]) {
   });
 }
 
-function useTodayTaskList(tasks: Task[], projectFilter: TodayProjectFilter = [], excludeDueSoon = true) {
+function useTodayTaskList(tasks: Task[], projectFilter: TodayProjectFilter = []) {
   const { data: activeProjects = [] } = useProjects('active');
 
   const data = useMemo(() => {
     const activeProjectIds = new Set(activeProjects.map(project => project.id));
     let visibleTasks = filterOutOnHoldProjectTasks(tasks, activeProjectIds);
     
-    if (excludeDueSoon) {
-      visibleTasks = visibleTasks.filter(t => !isDueSoon(t.deadline));
-    }
+    // We only exclude tasks that are in the "Due Soon" section (Overdue/Today)
+    visibleTasks = visibleTasks.filter(t => !isOverdueOrDueToday(t.deadline));
 
     const projectFilteredTasks = filterByTodayProject(visibleTasks, projectFilter);
     return sortTodayTasks(projectFilteredTasks);
-  }, [tasks, activeProjects, projectFilter, excludeDueSoon]);
+  }, [tasks, activeProjects, projectFilter]);
 
   return data;
 }
@@ -226,7 +237,7 @@ export function useDueSoonTasks() {
   const { data: allTasks = [] } = useTasks({ status: 'active' });
   
   return useMemo(() => {
-    const dueSoon = allTasks.filter(t => isDueSoon(t.deadline));
+    const dueSoon = allTasks.filter(t => isOverdueOrDueToday(t.deadline));
     return dueSoon.sort((a, b) => getTimestamp(a.deadline) - getTimestamp(b.deadline));
   }, [allTasks]);
 }

@@ -196,19 +196,38 @@ function isAdmin(payload: FirebaseTokenPayload, env: Env): boolean {
 
 // ── Response helpers ─────────────────────────────────────────────────────────
 
-function corsHeaders(env: Env): Record<string, string> {
+function corsHeaders(env: Env, request?: Request): Record<string, string> {
+  const requestOrigin = request?.headers.get('Origin');
+  const allowedOrigin = env.ALLOWED_ORIGIN || '*';
+
+  let headerOrigin = allowedOrigin;
+  if (allowedOrigin === '*') {
+    headerOrigin = requestOrigin || '*';
+  } else if (requestOrigin) {
+    const allowedOrigins = allowedOrigin.split(',').map(o => o.trim());
+    if (allowedOrigins.includes(requestOrigin)) {
+      headerOrigin = requestOrigin;
+    } else {
+      headerOrigin = allowedOrigins[0];
+    }
+  }
+
   return {
-    'Access-Control-Allow-Origin': env.ALLOWED_ORIGIN || '*',
+    'Access-Control-Allow-Origin': headerOrigin,
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
-    'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type, X-Requested-With',
+    'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Max-Age': '86400',
+    'Vary': 'Origin',
   };
 }
-
-function jsonResponse(data: unknown, env: Env, status = 200): Response {
+function jsonResponse(data: unknown, env: Env, status = 200, request?: Request): Response {
   return new Response(JSON.stringify(data), {
     status,
-    headers: { 'Content-Type': 'application/json', ...corsHeaders(env) },
+    headers: { 
+      'Content-Type': 'application/json', 
+      ...corsHeaders(env, request) 
+    },
   });
 }
 
@@ -335,37 +354,37 @@ function getTimezoneDate(dateStr: string, timeStr: string, tz: string): Date {
 
 // ── Route handlers ───────────────────────────────────────────────────────────
 
-async function handleGetFeeds(env: Env): Promise<Response> {
+async function handleGetFeeds(request: Request, env: Env): Promise<Response> {
   const feeds = await getFeeds(env);
-  return jsonResponse({ feeds: feeds.map(stripUrl) }, env);
+  return jsonResponse({ feeds: feeds.map(stripUrl) }, env, 200, request);
 }
 
 async function handleCreateFeed(request: Request, env: Env, payload: FirebaseTokenPayload): Promise<Response> {
   if (!isAdmin(payload, env)) {
-    return jsonResponse({ error: 'Admin access required' }, env, 403);
+    return jsonResponse({ error: 'Admin access required' }, env, 403, request);
   }
 
   let body: { name?: string; url?: string; color?: string };
   try {
     body = await request.json();
   } catch {
-    return jsonResponse({ error: 'Invalid JSON body' }, env, 400);
+    return jsonResponse({ error: 'Invalid JSON body' }, env, 400, request);
   }
 
   const { name, url, color } = body;
   if (!name || typeof name !== 'string' || name.trim().length === 0) {
-    return jsonResponse({ error: 'Name is required' }, env, 400);
+    return jsonResponse({ error: 'Name is required' }, env, 400, request);
   }
   if (!url || typeof url !== 'string') {
-    return jsonResponse({ error: 'URL is required' }, env, 400);
+    return jsonResponse({ error: 'URL is required' }, env, 400, request);
   }
   if (!color || typeof color !== 'string') {
-    return jsonResponse({ error: 'Color is required' }, env, 400);
+    return jsonResponse({ error: 'Color is required' }, env, 400, request);
   }
 
   const urlError = validateFeedUrl(url);
   if (urlError) {
-    return jsonResponse({ error: urlError }, env, 400);
+    return jsonResponse({ error: urlError }, env, 400, request);
   }
 
   const feeds = await getFeeds(env);
@@ -383,7 +402,7 @@ async function handleCreateFeed(request: Request, env: Env, payload: FirebaseTok
   feeds.push(newFeed);
   await saveFeeds(env, feeds);
 
-  return jsonResponse({ feed: stripUrl(newFeed) }, env, 201);
+  return jsonResponse({ feed: stripUrl(newFeed) }, env, 201, request);
 }
 
 async function handleUpdateFeed(
@@ -393,20 +412,20 @@ async function handleUpdateFeed(
   feedId: string,
 ): Promise<Response> {
   if (!isAdmin(payload, env)) {
-    return jsonResponse({ error: 'Admin access required' }, env, 403);
+    return jsonResponse({ error: 'Admin access required' }, env, 403, request);
   }
 
   let body: { name?: string; url?: string; color?: string; enabled?: boolean };
   try {
     body = await request.json();
   } catch {
-    return jsonResponse({ error: 'Invalid JSON body' }, env, 400);
+    return jsonResponse({ error: 'Invalid JSON body' }, env, 400, request);
   }
 
   const feeds = await getFeeds(env);
   const index = feeds.findIndex(f => f.id === feedId);
   if (index === -1) {
-    return jsonResponse({ error: 'Feed not found' }, env, 404);
+    return jsonResponse({ error: 'Feed not found' }, env, 404, request);
   }
 
   const feed = feeds[index];
@@ -418,7 +437,7 @@ async function handleUpdateFeed(
   if (body.url !== undefined && body.url.length > 0) {
     const urlError = validateFeedUrl(body.url);
     if (urlError) {
-      return jsonResponse({ error: urlError }, env, 400);
+      return jsonResponse({ error: urlError }, env, 400, request);
     }
     feed.url = body.url;
     urlChanged = true;
@@ -433,28 +452,29 @@ async function handleUpdateFeed(
     await deleteCachedIcal(env, feedId);
   }
 
-  return jsonResponse({ feed: stripUrl(feed) }, env);
+  return jsonResponse({ feed: stripUrl(feed) }, env, 200, request);
 }
 
 async function handleDeleteFeed(
+  request: Request,
   env: Env,
   payload: FirebaseTokenPayload,
   feedId: string,
 ): Promise<Response> {
   if (!isAdmin(payload, env)) {
-    return jsonResponse({ error: 'Admin access required' }, env, 403);
+    return jsonResponse({ error: 'Admin access required' }, env, 403, request);
   }
 
   const feeds = await getFeeds(env);
   const filtered = feeds.filter(f => f.id !== feedId);
   if (filtered.length === feeds.length) {
-    return jsonResponse({ error: 'Feed not found' }, env, 404);
+    return jsonResponse({ error: 'Feed not found' }, env, 404, request);
   }
 
   await saveFeeds(env, filtered);
   await deleteCachedIcal(env, feedId);
 
-  return jsonResponse({ success: true }, env);
+  return jsonResponse({ success: true }, env, 200, request);
 }
 
 async function handleTodayEvents(request: Request, env: Env): Promise<Response> {
@@ -462,7 +482,7 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
   const enabledFeeds = feeds.filter(f => f.enabled);
 
   if (enabledFeeds.length === 0) {
-    return jsonResponse({ events: [], message: 'No calendar feeds configured.' }, env);
+    return jsonResponse({ events: [], message: 'No calendar feeds configured.' }, env, 200, request);
   }
 
   const url = new URL(request.url);
@@ -525,20 +545,21 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
   }
 
   allEvents.sort((a, b) => new Date(a.start).getTime() - new Date(b.start).getTime());
-  return jsonResponse({ events: allEvents }, env);
+  return jsonResponse({ events: allEvents }, env, 200, request);
 }
 
 // ── Router ───────────────────────────────────────────────────────────────────
 
 function parseRoute(pathname: string): { base: string; id?: string } {
   const parts = pathname.split('/').filter(Boolean);
-  // /calendar/feeds/:id → base = "/calendar/feeds", id = parts[2]
-  // /calendar/feeds     → base = "/calendar/feeds", id = undefined
-  // /calendar/today     → base = "/calendar/today", id = undefined
+  const normalized = '/' + parts.join('/');
+
+  // /calendar/feeds/:id
   if (parts.length >= 3 && parts[0] === 'calendar' && parts[1] === 'feeds') {
     return { base: '/calendar/feeds', id: parts[2] };
   }
-  return { base: pathname, id: undefined };
+
+  return { base: normalized, id: undefined };
 }
 
 export default {
@@ -548,7 +569,7 @@ export default {
 
       // Handle CORS preflight
       if (request.method === 'OPTIONS') {
-        return new Response(null, { status: 204, headers: corsHeaders(env) });
+        return new Response(null, { status: 204, headers: corsHeaders(env, request) });
       }
 
       const route = parseRoute(url.pathname);
@@ -560,7 +581,7 @@ export default {
           payload = await authenticateRequest(request, env);
         } catch (error) {
           console.error('Calendar auth failed:', error);
-          return jsonResponse({ error: 'Unauthorized', message: (error as Error).message }, env, 401);
+          return jsonResponse({ error: 'Unauthorized', message: (error as Error).message }, env, 401, request);
         }
 
         // GET /calendar/today
@@ -570,7 +591,7 @@ export default {
 
         // GET /calendar/feeds
         if (route.base === '/calendar/feeds' && request.method === 'GET' && !route.id) {
-          return await handleGetFeeds(env);
+          return await handleGetFeeds(request, env);
         }
 
         // POST /calendar/feeds
@@ -585,23 +606,23 @@ export default {
 
         // DELETE /calendar/feeds/:id
         if (route.base === '/calendar/feeds' && request.method === 'DELETE' && route.id) {
-          return await handleDeleteFeed(env, payload, route.id);
+          return await handleDeleteFeed(request, env, payload, route.id);
         }
       }
 
       // Health check
       if (url.pathname === '/' || url.pathname === '/health') {
-        return jsonResponse({ status: 'ok', service: 'task-queue-calendar' }, env);
+        return jsonResponse({ status: 'ok', service: 'task-queue-calendar' }, env, 200, request);
       }
 
-      return jsonResponse({ error: 'Not found' }, env, 404);
+      return jsonResponse({ error: 'Not found' }, env, 404, request);
     } catch (err: any) {
       console.error('Worker global error:', err);
       return jsonResponse({
         error: 'Internal Server Error',
         message: err.message,
         stack: err.stack,
-      }, env, 500);
+      }, env, 500, request);
     }
   },
 };

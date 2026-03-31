@@ -8,6 +8,7 @@ export interface CalEvent {
   type: 'meeting' | 'personal' | 'boulder' | 'rock';
   busy?: boolean;
   projectName?: string;
+  color?: string;
 }
 
 interface DayCalendarProps {
@@ -187,18 +188,20 @@ export function DayCalendar({
     }
 
     if (event.type === 'meeting') {
+      const bgColor = event.color || '#60a5fa';
       return {
         ...baseStyle,
-        background: event.busy !== false ? '#dbeafe' : 'rgba(219, 234, 254, 0.4)',
-        borderLeft: '4px solid #60a5fa',
+        background: event.busy !== false ? `${bgColor}33` : `${bgColor}11`, // 20% or 6.6% opacity
+        borderLeft: `4px solid ${bgColor}`,
         color: '#4b5563',
       };
     }
 
+    const bgColor = event.color || '#86efac';
     return {
       ...baseStyle,
-      background: event.busy !== false ? '#dcfce7' : 'rgba(220, 252, 231, 0.4)',
-      borderLeft: '4px solid #86efac',
+      background: event.busy !== false ? `${bgColor}33` : `${bgColor}11`,
+      borderLeft: `4px solid ${bgColor}`,
       color: '#4b5563',
     };
   };

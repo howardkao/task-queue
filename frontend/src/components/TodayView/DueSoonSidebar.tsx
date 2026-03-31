@@ -47,11 +47,23 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
     }
   };
 
+  if (tasks.length === 0) return null;
+
   return (
-    <div style={{ marginBottom: '12px' }}>
-      {tasks.length === 0 && (
-        <div style={emptyStyle}>No tasks due soon.</div>
-      )}
+    <div style={{ marginBottom: '16px' }}>
+      <div style={{
+        fontSize: '12px',
+        color: '#ef4444',
+        fontWeight: 700,
+        marginBottom: '8px',
+        textTransform: 'uppercase',
+        letterSpacing: '0.04em',
+        display: 'flex',
+        alignItems: 'center',
+        gap: '6px'
+      }}>
+        <span style={{ fontSize: '14px' }}>⚑</span> Overdue & Today
+      </div>
       {tasks.map((task) => {
         const isEditing = editingId === task.id;
         const isPlaced = placedIds.includes(task.id);
@@ -138,14 +150,6 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
     </div>
   );
 }
-
-const emptyStyle: React.CSSProperties = {
-  padding: '12px',
-  color: '#9ca3af',
-  fontStyle: 'italic',
-  fontSize: '13px',
-  textAlign: 'center',
-};
 
 const cardStyle: React.CSSProperties = {
   borderRadius: '12px',

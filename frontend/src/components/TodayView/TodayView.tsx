@@ -36,6 +36,7 @@ function icalToCalEvents(events: CalendarEvent[]): CalEvent[] {
       duration: Math.max(duration, 0.25),
       type: 'meeting' as const,
       busy: e.busy,
+      color: e.color,
     };
   });
 }
