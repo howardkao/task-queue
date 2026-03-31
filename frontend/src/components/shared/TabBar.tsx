@@ -1,3 +1,4 @@
+import { cn } from '@/lib/utils';
 
 export type TabId = 'today' | 'icebox' | 'projects';
 
@@ -15,46 +16,36 @@ interface TabBarProps {
 
 export function TabBar({ tabs, activeTab, onTabChange }: TabBarProps) {
   return (
-    <nav style={{
-      display: 'flex',
-      gap: '4px',
-      alignItems: 'center',
-      background: '#FBFAF9',
-      padding: '12px 16px',
-    }}>
-      {tabs.map(tab => {
+    <nav className="flex items-center gap-2 px-5 py-3">
+      {tabs.map((tab) => {
         const isActive = activeTab === tab.id;
         return (
           <button
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
-            style={{
-              padding: isActive ? '8px 20px' : '8px 16px',
-              cursor: 'pointer',
-              background: isActive ? '#EA6657' : 'transparent',
-              border: isActive ? '1px solid #EA6657' : '1px solid transparent',
-              borderRadius: '999px',
-              fontSize: '14px',
-              color: isActive ? '#fff' : '#1D212B',
-              fontWeight: isActive ? 700 : 500,
-              fontFamily: 'inherit',
-              transition: 'all 0.2s ease',
-            }}
-          >
-            {tab.label}
-            {tab.badge !== undefined && tab.badge > 0 && (
-              <span style={{
-                background: isActive ? '#fff' : '#EA6657',
-                color: isActive ? '#EA6657' : '#fff',
-                fontSize: '10px',
-                fontWeight: 500,
-                padding: '2px 7px',
-                borderRadius: '9999px',
-                marginLeft: '6px',
-              }}>
-                {tab.badge}
-              </span>
+            className={cn(
+              "relative px-4 py-1.5 text-[13px] font-medium rounded-full transition-all duration-200",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+              isActive
+                ? "bg-primary text-primary-foreground"
+                : "text-muted-foreground hover:text-foreground"
             )}
+          >
+            <span className="flex items-center gap-1.5">
+              {tab.label}
+              {tab.badge !== undefined && tab.badge > 0 && (
+                <span
+                  className={cn(
+                    "inline-flex items-center justify-center min-w-[1.125rem] h-[1.125rem] px-1 text-[10px] font-semibold rounded-full",
+                    isActive
+                      ? "bg-primary-foreground/20 text-primary-foreground"
+                      : "bg-muted text-muted-foreground"
+                  )}
+                >
+                  {tab.badge}
+                </span>
+              )}
+            </span>
           </button>
         );
       })}

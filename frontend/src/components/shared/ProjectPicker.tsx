@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Check, ChevronDown, Plus } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 export interface ProjectPickerProject {
   id: string;
@@ -151,156 +153,126 @@ export function ProjectPicker({ projects, value, onChange, onCreateProject }: Pr
 
   return (
     <div
-      style={{ position: 'relative', minWidth: '220px', flex: '1 1 220px' }}
-      onBlur={() => window.setTimeout(() => setIsOpen(false), 120)}
+      className="relative min-w-[200px] flex-1"
+      onBlur={() => window.setTimeout(() => setIsOpen(false), 150)}
     >
-      <input
-        type="text"
-        value={query}
-        placeholder="Search or create a project..."
-        onFocus={() => setIsOpen(true)}
-        onChange={(e) => {
-          setQuery(e.target.value);
-          setIsOpen(true);
-        }}
-        onKeyDown={(e) => {
-          if (e.key === 'Escape') {
-            setIsOpen(false);
-          }
-          if (e.key === 'Enter' && trimmedQuery && !hasExactMatch && onCreateProject) {
-            e.preventDefault();
-            void handleCreate();
-          }
-        }}
-        style={pickerInputStyle}
-      />
+      {/* Input Field */}
+      <div className="relative">
+        <input
+          type="text"
+          value={query}
+          placeholder="Search or create project..."
+          onFocus={() => setIsOpen(true)}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setIsOpen(true);
+          }}
+          onKeyDown={(e) => {
+            if (e.key === 'Escape') {
+              setIsOpen(false);
+            }
+            if (e.key === 'Enter' && trimmedQuery && !hasExactMatch && onCreateProject) {
+              e.preventDefault();
+              void handleCreate();
+            }
+          }}
+          className={cn(
+            "w-full h-8 px-3 pr-8 text-[13px] rounded-md",
+            "bg-card border border-input text-foreground placeholder:text-muted-foreground",
+            "focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring",
+            "transition-all duration-150"
+          )}
+        />
+        <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+      </div>
 
+      {/* Dropdown Menu */}
       {isOpen && (
-        <div style={menuStyle}>
-          <button type="button" onMouseDown={() => handleSelect('')} style={menuItemStyle}>
-            No project
-          </button>
-
-          {trimmedQuery
-            ? <div style={sectionLabelStyle}>Matches</div>
-            : <div style={sectionLabelStyle}>Active and Recent</div>}
-
-          {searchResults.length === 0 && (
-            <div style={emptyStyle}>No matching projects.</div>
+        <div
+          className={cn(
+            "absolute top-full left-0 right-0 mt-1 z-50",
+            "max-h-56 overflow-y-auto",
+            "bg-popover border border-border rounded-lg shadow-lg",
+            "animate-in fade-in-0 zoom-in-95 duration-150"
           )}
-
-          {searchResults.map(project => (
+        >
+          <div className="p-1">
+            {/* No Project Option */}
             <button
-              key={project.id}
               type="button"
-              onMouseDown={() => handleSelect(project.id)}
-              style={{
-                ...menuItemStyle,
-                ...(project.id === value ? selectedMenuItemStyle : {}),
-              }}
-            >
-              <span>{project.name}</span>
-              {(project.status || 'active') !== 'active' && (
-                <span style={statusPillStyle}>On Hold</span>
+              onMouseDown={() => handleSelect('')}
+              className={cn(
+                "w-full flex items-center gap-2 px-3 py-2 rounded-md text-[13px] text-left",
+                "text-muted-foreground hover:bg-secondary hover:text-foreground",
+                "transition-colors duration-150"
               )}
+            >
+              No project
             </button>
-          ))}
 
-          {trimmedQuery && !hasExactMatch && onCreateProject && (
-            <>
-              <div style={sectionLabelStyle}>Create</div>
-              <button
-                type="button"
-                onMouseDown={() => { void handleCreate(); }}
-                style={createItemStyle}
-                disabled={isCreating}
-              >
-                {isCreating ? 'Creating...' : `Create "${query.trim()}"`}
-              </button>
-            </>
-          )}
+            {/* Section Label */}
+            <div className="px-3 pt-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {trimmedQuery ? 'Matches' : 'Active & Recent'}
+            </div>
+
+            {/* Results */}
+            {searchResults.length === 0 ? (
+              <div className="px-3 py-2 text-[13px] text-muted-foreground italic">
+                No matching projects.
+              </div>
+            ) : (
+              searchResults.map((project) => (
+                <button
+                  key={project.id}
+                  type="button"
+                  onMouseDown={() => handleSelect(project.id)}
+                  className={cn(
+                    "w-full flex items-center justify-between gap-2 px-3 py-2 rounded-md text-[13px] text-left",
+                    "transition-colors duration-150",
+                    project.id === value
+                      ? "bg-primary/10 text-foreground"
+                      : "text-foreground hover:bg-secondary"
+                  )}
+                >
+                  <span className="flex items-center gap-2">
+                    {project.id === value && (
+                      <Check className="w-3.5 h-3.5 text-primary" />
+                    )}
+                    <span>{project.name}</span>
+                  </span>
+                  {(project.status || 'active') !== 'active' && (
+                    <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-muted-foreground">
+                      On Hold
+                    </span>
+                  )}
+                </button>
+              ))
+            )}
+
+            {/* Create Option */}
+            {trimmedQuery && !hasExactMatch && onCreateProject && (
+              <>
+                <div className="px-3 pt-3 pb-1.5 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+                  Create
+                </div>
+                <button
+                  type="button"
+                  onMouseDown={() => { void handleCreate(); }}
+                  className={cn(
+                    "w-full flex items-center gap-2 px-3 py-2 rounded-md text-[13px] text-left",
+                    "text-primary font-medium hover:bg-primary/10",
+                    "transition-colors duration-150"
+                  )}
+                  disabled={isCreating}
+                >
+                  <Plus className="w-3.5 h-3.5" />
+                  {isCreating ? 'Creating...' : `Create "${query.trim()}"`}
+                </button>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>
   );
 }
-
-const pickerInputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '4px 8px',
-  border: '1px solid #E7E3DF',
-  borderRadius: '8px',
-  fontSize: '12px',
-  background: '#fff',
-  fontFamily: 'inherit',
-  color: '#1D212B',
-  boxSizing: 'border-box',
-};
-
-const menuStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: 'calc(100% + 6px)',
-  left: 0,
-  right: 0,
-  zIndex: 30,
-  maxHeight: '240px',
-  overflowY: 'auto',
-  border: '1px solid #E7E3DF',
-  borderRadius: '12px',
-  background: '#fff',
-  boxShadow: '0 10px 24px rgba(15, 23, 42, 0.12)',
-  padding: '6px',
-};
-
-const sectionLabelStyle: React.CSSProperties = {
-  fontSize: '10px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
-  color: '#9ca3af',
-  padding: '8px 8px 4px',
-  fontWeight: 500,
-};
-
-const menuItemStyle: React.CSSProperties = {
-  width: '100%',
-  border: 'none',
-  background: 'transparent',
-  borderRadius: '8px',
-  padding: '8px',
-  textAlign: 'left',
-  cursor: 'pointer',
-  fontSize: '12px',
-  color: '#1D212B',
-  fontFamily: 'inherit',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: '8px',
-};
-
-const selectedMenuItemStyle: React.CSSProperties = {
-  background: '#FCEDED',
-  color: '#EA6657',
-};
-
-const createItemStyle: React.CSSProperties = {
-  ...menuItemStyle,
-  fontWeight: 600,
-  color: '#EA6657',
-};
-
-const statusPillStyle: React.CSSProperties = {
-  fontSize: '10px',
-  color: '#6b7280',
-  background: '#EFEDEB',
-  borderRadius: '999px',
-  padding: '2px 6px',
-  flexShrink: 0,
-};
-
-const emptyStyle: React.CSSProperties = {
-  padding: '8px',
-  fontSize: '12px',
-  color: '#9ca3af',
-  fontStyle: 'italic',
-};

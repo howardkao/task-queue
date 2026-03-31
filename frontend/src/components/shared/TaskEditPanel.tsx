@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
+import { X, Trash2, Check, Snowflake, Calendar, Clock, Plus, Repeat, FileText, FolderOpen } from 'lucide-react';
+import { cn } from '@/lib/utils';
 import type { Task, RecurrenceRule, Classification, Priority } from '../../types';
 import { useUpdateTask, useDeleteTask } from '../../hooks/useTasks';
 import { useProjects, useCreateProject } from '../../hooks/useProjects';
@@ -68,6 +70,21 @@ function buildEditableState(task: Task): EditableTaskState {
     recurrence: task.recurrence || null,
   };
 }
+
+const PRIORITY_CLASSES: Record<Priority, { active: string; inactive: string }> = {
+  high: {
+    active: 'bg-priority-high text-white border-priority-high',
+    inactive: 'bg-card text-foreground border-input hover:bg-priority-high-bg',
+  },
+  med: {
+    active: 'bg-priority-med text-white border-priority-med',
+    inactive: 'bg-card text-foreground border-input hover:bg-priority-med-bg',
+  },
+  low: {
+    active: 'bg-priority-low text-white border-priority-low',
+    inactive: 'bg-card text-foreground border-input hover:bg-priority-low-bg',
+  },
+};
 
 export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditPanelProps) {
   const updateTask = useUpdateTask();
@@ -253,7 +270,6 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
       setCustomDays([dayOfWeekFromDate(deadlineDate)]);
     }
     if (mode === 'periodically') {
-      // Set defaults if not already set
       if (periodicallyUnit === 'hours') setPeriodicallyValue(24);
       else if (periodicallyUnit === 'weeks') setPeriodicallyValue(2);
       else setPeriodicallyValue(3);
@@ -282,30 +298,30 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   };
 
   // Collect which add-field links to show
-  const addLinks: { label: string; action: () => void }[] = [];
-  if (!showNotes) addLinks.push({ label: '+ Add notes', action: () => setShowNotes(true) });
-  if (!showProject) addLinks.push({ label: '+ Add project', action: () => setShowProject(true) });
-  if (!showDeadline) addLinks.push({ 
-    label: '+ Add deadline', 
-    action: () => { 
-      setShowDeadline(true); 
+  const addLinks: { label: string; icon: React.ReactNode; action: () => void }[] = [];
+  if (!showNotes) addLinks.push({ label: 'Notes', icon: <FileText className="w-3 h-3" />, action: () => setShowNotes(true) });
+  if (!showProject) addLinks.push({ label: 'Project', icon: <FolderOpen className="w-3 h-3" />, action: () => setShowProject(true) });
+  if (!showDeadline) addLinks.push({
+    label: 'Deadline',
+    icon: <Calendar className="w-3 h-3" />,
+    action: () => {
+      setShowDeadline(true);
       if (!deadlineDate) {
         const now = new Date();
         const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
         setDeadlineDate(today);
       }
-    } 
+    }
   });
-  if (showDeadline && !showRecurrence) addLinks.push({ label: '+ Add recurrence', action: () => { setShowRecurrence(true); if (!recMode) handleRecModeChange('weekly'); } });
+  if (showDeadline && !showRecurrence) addLinks.push({
+    label: 'Recurrence',
+    icon: <Repeat className="w-3 h-3" />,
+    action: () => { setShowRecurrence(true); if (!recMode) handleRecModeChange('weekly'); }
+  });
 
   return (
     <div
-      style={{
-        padding: '12px',
-        background: '#F9F7F6',
-        borderTop: '1px solid #EFEDEB',
-        animation: 'slideDown 0.15s ease',
-      }}
+      className="p-4 bg-card border-t border-border animate-in slide-in-from-top-2 duration-200"
       onClick={e => e.stopPropagation()}
     >
       {/* Title */}
@@ -314,115 +330,189 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
         value={title}
         onChange={e => setTitle(e.target.value)}
         rows={1}
-        style={{ ...inputStyle, fontWeight: 600, marginBottom: '8px', resize: 'none', overflow: 'hidden' }}
+        className={cn(
+          "w-full px-3 py-2 mb-4 text-[15px] font-semibold text-foreground leading-snug",
+          "bg-transparent border-0 resize-none overflow-hidden",
+          "focus:outline-none",
+          "placeholder:text-muted-foreground"
+        )}
+        placeholder="Task title..."
       />
 
-      {/* Type toggle — always visible */}
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', flexWrap: 'wrap' }}>
-        {(['boulder', 'rock', 'pebble'] as const).map((type) => {
-          const active = classification === type;
-          const color = active ? '#EA6657' : '#E7E3DF';
-          return (
-            <button
-              key={type}
-              onClick={() => setClassification(type)}
-              style={{
-                padding: '6px 18px',
-                border: `1px solid ${color}`,
-                borderRadius: '8px',
-                background: active ? '#EA6657' : '#F2F0ED',
-                color: active ? '#fff' : '#1D212B',
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: 600,
-                fontFamily: 'inherit',
-                transition: 'all 0.15s ease',
-              }}
-            >
-              {type === 'boulder' ? 'Boulder' : type === 'rock' ? 'Rock' : 'Pebble'}
-            </button>
-          );
-        })}
+      {/* Classification Toggle - Pill style */}
+      <div className="mb-4">
+        <div className="flex rounded-full border border-border bg-card p-0.5 w-fit">
+          {(['boulder', 'rock', 'pebble'] as const).map((type) => {
+            const active = classification === type;
+            return (
+              <button
+                key={type}
+                onClick={() => setClassification(type)}
+                className={cn(
+                  "px-4 py-1.5 text-[13px] font-medium rounded-full transition-all duration-200",
+                  active
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {type.charAt(0).toUpperCase() + type.slice(1)}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Priority toggle */}
-      <div style={{ display: 'flex', gap: '6px', marginBottom: '10px', alignItems: 'center' }}>
-        <span style={labelStyle}>Priority:</span>
-        {(['high', 'med', 'low'] as const).map((p) => {
-          const active = priority === p;
-          const colors: Record<Priority, string> = { high: '#E14747', med: '#F59F0A', low: '#478CD1' };
-          const color = colors[p];
-          return (
-            <button
-              key={p}
-              onClick={() => setPriority(p)}
-              style={{
-                padding: '4px 14px',
-                border: `1px solid ${active ? color : '#E7E3DF'}`,
-                borderRadius: '8px',
-                background: active ? color : '#F2F0ED',
-                color: active ? '#fff' : '#1D212B',
-                cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: 600,
-                fontFamily: 'inherit',
-                transition: 'all 0.15s ease',
-                textTransform: 'capitalize',
-              }}
-            >
-              {p}
-            </button>
-          );
-        })}
+      {/* Priority Toggle - Color-coded chips */}
+      <div className="mb-4">
+        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+          Priority
+        </label>
+        <div className="flex flex-wrap gap-1.5">
+          {(['high', 'med', 'low'] as const).map((p) => {
+            const active = priority === p;
+            const classes = PRIORITY_CLASSES[p];
+            return (
+              <button
+                key={p}
+                onClick={() => setPriority(p)}
+                className={cn(
+                  "px-3 py-1 text-[12px] font-medium rounded-full border transition-all duration-150",
+                  active ? classes.active : classes.inactive
+                )}
+              >
+                {p.charAt(0).toUpperCase() + p.slice(1)}
+              </button>
+            );
+          })}
+        </div>
       </div>
 
-      {/* Notes — progressive */}
+      {/* Notes - Progressive */}
       {showNotes && (
-        <div style={{ position: 'relative', marginBottom: '8px' }}>
-          <textarea
-            value={notes}
-            onChange={e => setNotes(e.target.value)}
-            placeholder="Notes..."
-            style={{ ...inputStyle, minHeight: '40px', resize: 'vertical' }}
-          />
-          <span onClick={() => removeField('notes')} style={removeXStyle} title="Remove notes">✕</span>
+        <div className="relative mb-4">
+          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            Notes
+          </label>
+          <div className="relative">
+            <textarea
+              value={notes}
+              onChange={e => setNotes(e.target.value)}
+              placeholder="Add notes..."
+              className={cn(
+                "w-full min-h-[72px] px-3 py-2 text-[13px] text-foreground leading-relaxed",
+                "bg-card border border-input rounded-lg resize-y",
+                "focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring",
+                "transition-all duration-150 placeholder:text-muted-foreground"
+              )}
+            />
+            <button
+              onClick={() => removeField('notes')}
+              className="absolute top-2 right-2 p-1 text-muted-foreground hover:text-foreground transition-colors"
+              title="Remove notes"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Project — progressive */}
+      {/* Project - Progressive */}
       {showProject && (
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px' }}>
-          <span style={labelStyle}>Project:</span>
-          <ProjectPicker
-            projects={projects}
-            value={projectId}
-            onChange={setProjectId}
-            onCreateProject={(name) => createProject.mutateAsync({ name })}
-          />
-          <span onClick={() => removeField('project')} style={removeXStyle} title="Remove project">✕</span>
+        <div className="mb-4">
+          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            Project
+          </label>
+          <div className="flex items-center gap-2">
+            <ProjectPicker
+              projects={projects}
+              value={projectId}
+              onChange={setProjectId}
+              onCreateProject={(name) => createProject.mutateAsync({ name })}
+            />
+            <button
+              onClick={() => removeField('project')}
+              className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+              title="Remove project"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Deadline — progressive */}
+      {/* Deadline - Progressive */}
       {showDeadline && (
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap' }}>
-          <span style={labelStyle}>Deadline:</span>
-          <input type="date" value={deadlineDate} onChange={e => setDeadlineDate(e.target.value)} style={selectStyle} />
-          {showTime ? (
-            <input type="time" value={deadlineTime} onChange={e => setDeadlineTime(e.target.value)} style={selectStyle} />
-          ) : (
-            <span onClick={() => setShowTime(true)} style={addFieldStyle}>+ Add time</span>
-          )}
-          <span onClick={() => removeField('deadline')} style={removeXStyle} title="Remove deadline">✕</span>
+        <div className="mb-4">
+          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            Deadline
+          </label>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <input
+                type="date"
+                value={deadlineDate}
+                onChange={e => setDeadlineDate(e.target.value)}
+                className={cn(
+                  "h-8 pl-8 pr-3 text-[13px] rounded-md",
+                  "bg-card border border-input text-foreground",
+                  "focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring",
+                  "transition-all duration-150"
+                )}
+              />
+            </div>
+            {showTime ? (
+              <div className="relative">
+                <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                <input
+                  type="time"
+                  value={deadlineTime}
+                  onChange={e => setDeadlineTime(e.target.value)}
+                  className={cn(
+                    "h-8 pl-8 pr-3 text-[13px] rounded-md",
+                    "bg-card border border-input text-foreground",
+                    "focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring",
+                    "transition-all duration-150"
+                  )}
+                />
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowTime(true)}
+                className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+              >
+                <Plus className="w-3 h-3" />
+                Add time
+              </button>
+            )}
+            <button
+              onClick={() => removeField('deadline')}
+              className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+              title="Remove deadline"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
       )}
 
-      {/* Recurrence — progressive */}
+      {/* Recurrence - Progressive */}
       {showRecurrence && showDeadline && (
-        <div style={{ marginBottom: '8px' }}>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '8px' }}>
-            <span style={labelStyle}>Repeats:</span>
-            <select value={recMode} onChange={e => handleRecModeChange(e.target.value as RecurrenceMode)} style={selectStyle}>
+        <div className="mb-4">
+          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            Repeats
+          </label>
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <select
+              value={recMode}
+              onChange={e => handleRecModeChange(e.target.value as RecurrenceMode)}
+              className={cn(
+                "h-8 px-3 text-[13px] rounded-md appearance-none",
+                "bg-card border border-input text-foreground",
+                "focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring",
+                "transition-all duration-150"
+              )}
+            >
               <option value="">Never</option>
               <option value="daily">Daily</option>
               <option value="weekly">Weekly</option>
@@ -431,23 +521,29 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
               <option value="periodically">Periodically</option>
               <option value="custom">Custom</option>
             </select>
-            <span onClick={() => removeField('recurrence')} style={removeXStyle} title="Remove recurrence">✕</span>
+            <button
+              onClick={() => removeField('recurrence')}
+              className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+              title="Remove recurrence"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
           </div>
 
           {/* Weekly day picker */}
           {recMode === 'weekly' && (
-            <div style={{ display: 'flex', gap: '4px', alignItems: 'center', marginBottom: '4px' }}>
-              <span style={{ fontSize: '12px', color: '#6b7280', marginRight: '4px' }}>On:</span>
+            <div className="flex items-center gap-1 mb-2">
+              <span className="text-[11px] text-muted-foreground mr-1">On:</span>
               {ALL_DAYS.map(day => (
                 <button
                   key={day}
                   onClick={() => toggleDay(day, weeklyDays, setWeeklyDays)}
-                  style={{
-                    ...dayBtnStyle,
-                    background: weeklyDays.includes(day) ? '#EA6657' : '#fff',
-                    color: weeklyDays.includes(day) ? '#fff' : '#1D212B',
-                    borderColor: weeklyDays.includes(day) ? '#EA6657' : '#E7E3DF',
-                  }}
+                  className={cn(
+                    "w-7 h-6 text-[11px] font-medium rounded border transition-all duration-150",
+                    weeklyDays.includes(day)
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-card text-foreground border-input hover:bg-secondary"
+                  )}
                 >
                   {DAY_LABELS[day]}
                 </button>
@@ -457,54 +553,79 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
 
           {/* Periodically */}
           {recMode === 'periodically' && (
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-              <span style={{ fontSize: '12px', color: '#6b7280' }}>Reschedule</span>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-[11px] text-muted-foreground">Reschedule</span>
               <input
-                type="number" min={1} value={periodicallyValue}
+                type="number"
+                min={1}
+                value={periodicallyValue}
                 onChange={e => setPeriodicallyValue(Math.max(1, parseInt(e.target.value) || 1))}
-                style={{ ...selectStyle, width: '52px', textAlign: 'center' }}
+                className={cn(
+                  "w-14 h-8 px-2 text-[13px] text-center rounded-md",
+                  "bg-card border border-input text-foreground",
+                  "focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring"
+                )}
               />
               <select
                 value={periodicallyUnit}
                 onChange={e => handlePeriodicallyUnitChange(e.target.value as any)}
-                style={selectStyle}
+                className={cn(
+                  "h-8 px-3 text-[13px] rounded-md appearance-none",
+                  "bg-card border border-input text-foreground",
+                  "focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring"
+                )}
               >
                 <option value="hours">hours</option>
                 <option value="days">days</option>
                 <option value="weeks">weeks</option>
               </select>
-              <span style={{ fontSize: '12px', color: '#6b7280' }}>after completion</span>
+              <span className="text-[11px] text-muted-foreground">after completion</span>
             </div>
           )}
 
           {/* Custom */}
           {recMode === 'custom' && (
-            <div>
-              <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-                <span style={{ fontSize: '12px', color: '#6b7280' }}>Every</span>
+            <div className="space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-muted-foreground">Every</span>
                 <input
-                  type="number" min={1} max={26} value={customInterval}
+                  type="number"
+                  min={1}
+                  max={26}
+                  value={customInterval}
                   onChange={e => setCustomInterval(Math.min(26, Math.max(1, parseInt(e.target.value) || 1)))}
-                  style={{ ...selectStyle, width: '52px', textAlign: 'center' }}
+                  className={cn(
+                    "w-14 h-8 px-2 text-[13px] text-center rounded-md",
+                    "bg-card border border-input text-foreground",
+                    "focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring"
+                  )}
                 />
-                <select value={customUnit} onChange={e => setCustomUnit(e.target.value as 'weekly' | 'monthly')} style={selectStyle}>
+                <select
+                  value={customUnit}
+                  onChange={e => setCustomUnit(e.target.value as 'weekly' | 'monthly')}
+                  className={cn(
+                    "h-8 px-3 text-[13px] rounded-md appearance-none",
+                    "bg-card border border-input text-foreground",
+                    "focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring"
+                  )}
+                >
                   <option value="weekly">{customInterval === 1 ? 'week' : 'weeks'}</option>
                   <option value="monthly">{customInterval === 1 ? 'month' : 'months'}</option>
                 </select>
               </div>
               {customUnit === 'weekly' && (
-                <div style={{ marginTop: '6px', display: 'flex', gap: '4px', alignItems: 'center' }}>
-                  <span style={{ fontSize: '12px', color: '#6b7280', marginRight: '4px' }}>On:</span>
+                <div className="flex items-center gap-1">
+                  <span className="text-[11px] text-muted-foreground mr-1">On:</span>
                   {ALL_DAYS.map(day => (
                     <button
                       key={day}
                       onClick={() => toggleDay(day, customDays, setCustomDays)}
-                      style={{
-                        ...dayBtnStyle,
-                        background: customDays.includes(day) ? '#EA6657' : '#fff',
-                        color: customDays.includes(day) ? '#fff' : '#1D212B',
-                        borderColor: customDays.includes(day) ? '#EA6657' : '#E7E3DF',
-                      }}
+                      className={cn(
+                        "w-7 h-6 text-[11px] font-medium rounded border transition-all duration-150",
+                        customDays.includes(day)
+                          ? "bg-primary text-primary-foreground border-primary"
+                          : "bg-card text-foreground border-input hover:bg-secondary"
+                      )}
                     >
                       {DAY_LABELS[day]}
                     </button>
@@ -518,33 +639,46 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
 
       {/* Add-field links */}
       {addLinks.length > 0 && (
-        <div style={{ display: 'flex', gap: '12px', marginBottom: '10px', flexWrap: 'wrap' }}>
+        <div className="flex flex-wrap gap-1.5 mb-4">
           {addLinks.map(link => (
-            <span
+            <button
               key={link.label}
               onClick={link.action}
-              style={addFieldStyle}
+              className={cn(
+                "flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium",
+                "text-muted-foreground hover:text-foreground hover:bg-secondary",
+                "transition-all duration-150"
+              )}
             >
+              <Plus className="w-3 h-3" />
               {link.label}
-            </span>
+            </button>
           ))}
         </div>
       )}
 
       {/* Actions */}
-      <div style={{ borderTop: '1px solid #EFEDEB', paddingTop: '8px', display: 'flex', gap: '6px', alignItems: 'center' }}>
+      <div className="flex items-center gap-2 pt-3 border-t border-border">
         {!confirmingDelete ? (
           <button
             onClick={() => setConfirmingDelete(true)}
-            style={{ ...iconBtnStyle, color: '#DC2828', borderColor: '#FCEDED' }}
+            className={cn(
+              "flex items-center justify-center w-8 h-8 rounded-md",
+              "text-destructive/70 hover:text-destructive hover:bg-destructive/10",
+              "transition-all duration-150"
+            )}
             title="Delete task"
           >
-            🗑
+            <Trash2 className="w-4 h-4" />
           </button>
         ) : (
           <button
             onClick={handleDelete}
-            style={{ ...iconBtnStyle, background: '#DC2828', color: '#fff', borderColor: '#DC2828', width: 'auto', padding: '0 10px' }}
+            className={cn(
+              "flex items-center justify-center h-8 px-3 rounded-md",
+              "bg-destructive text-destructive-foreground font-medium text-[12px]",
+              "hover:bg-destructive/90 transition-all duration-150"
+            )}
             title="Confirm delete"
           >
             Delete
@@ -553,115 +687,63 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
         {onComplete && (
           <button
             onClick={() => { flushAutosave(); onComplete(task.id); onClose(); }}
-            style={{ ...iconBtnStyle, color: '#22c55e', borderColor: '#bbf7d0' }}
+            className={cn(
+              "flex items-center justify-center w-8 h-8 rounded-md",
+              "text-emerald-600 hover:bg-emerald-50",
+              "transition-all duration-150"
+            )}
             title="Complete"
           >
-            ✓
+            <Check className="w-4 h-4" />
           </button>
         )}
         {onIcebox && (
           <button
             onClick={() => { flushAutosave(); onIcebox(task.id); onClose(); }}
-            style={{ ...iconBtnStyle, color: '#6b7280' }}
+            className={cn(
+              "flex items-center justify-center w-8 h-8 rounded-md",
+              "text-muted-foreground hover:text-foreground hover:bg-secondary",
+              "transition-all duration-150"
+            )}
             title="Icebox"
           >
-            ❄
+            <Snowflake className="w-4 h-4" />
           </button>
         )}
-        <div style={saveStatusStyle}>
-          {saveState === 'saving' && 'Saving...'}
-          {saveState === 'saved' && 'Saved'}
-          {saveState === 'error' && 'Save failed'}
+
+        {/* Save Status */}
+        <div className="text-[11px] text-muted-foreground min-w-[50px]">
+          {saveState === 'saving' && (
+            <span className="flex items-center gap-1">
+              <span className="w-1.5 h-1.5 bg-amber-500 rounded-full animate-pulse" />
+              Saving...
+            </span>
+          )}
+          {saveState === 'saved' && (
+            <span className="flex items-center gap-1 text-emerald-600">
+              <Check className="w-3 h-3" />
+              Saved
+            </span>
+          )}
+          {saveState === 'error' && (
+            <span className="text-destructive">Save failed</span>
+          )}
         </div>
-        <div style={{ flex: 1 }} />
-        <button onClick={handleClose} style={iconBtnStyle} title="Close">✕</button>
+
+        <div className="flex-1" />
+
+        <button
+          onClick={handleClose}
+          className={cn(
+            "flex items-center justify-center w-8 h-8 rounded-md",
+            "text-muted-foreground hover:text-foreground hover:bg-secondary",
+            "transition-all duration-150"
+          )}
+          title="Close"
+        >
+          <X className="w-4 h-4" />
+        </button>
       </div>
     </div>
   );
 }
-
-const inputStyle: React.CSSProperties = {
-  width: '100%',
-  padding: '6px 10px',
-  border: '1px solid #E7E3DF',
-  borderRadius: '8px',
-  fontSize: '13px',
-  fontFamily: 'inherit',
-  color: '#1D212B',
-  outline: 'none',
-  boxSizing: 'border-box',
-  background: '#fff',
-};
-
-const selectStyle: React.CSSProperties = {
-  padding: '4px 8px',
-  border: '1px solid #E7E3DF',
-  borderRadius: '8px',
-  fontSize: '12px',
-  background: '#fff',
-  fontFamily: 'inherit',
-  color: '#1D212B',
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: '12px',
-  color: '#6b7280',
-};
-
-const dayBtnStyle: React.CSSProperties = {
-  width: '28px',
-  height: '26px',
-  border: '1px solid #E7E3DF',
-  borderRadius: '6px',
-  cursor: 'pointer',
-  fontSize: '10px',
-  fontWeight: 500,
-  fontFamily: 'inherit',
-  padding: 0,
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  transition: 'all 0.15s ease',
-};
-
-const iconBtnStyle: React.CSSProperties = {
-  width: '30px',
-  height: '28px',
-  border: '1px solid #E7E3DF',
-  borderRadius: '8px',
-  background: '#F2F0ED',
-  cursor: 'pointer',
-  fontSize: '13px',
-  fontWeight: 600,
-  color: '#1D212B',
-  fontFamily: 'inherit',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: 0,
-  transition: 'all 0.15s ease',
-};
-
-const removeXStyle: React.CSSProperties = {
-  fontSize: '12px',
-  color: '#d1d5db',
-  cursor: 'pointer',
-  transition: 'color 0.15s',
-  userSelect: 'none',
-  padding: '0 2px',
-};
-
-const addFieldStyle: React.CSSProperties = {
-  fontSize: '12px',
-  color: '#9ca3af',
-  cursor: 'pointer',
-  padding: '3px 0',
-  transition: 'color 0.15s',
-  userSelect: 'none',
-};
-
-const saveStatusStyle: React.CSSProperties = {
-  fontSize: '12px',
-  color: '#9ca3af',
-  minWidth: '64px',
-};

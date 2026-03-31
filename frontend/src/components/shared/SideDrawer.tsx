@@ -1,4 +1,6 @@
 import type { ReactNode } from 'react';
+import { X } from 'lucide-react';
+import { cn } from '@/lib/utils';
 
 interface SideDrawerProps {
   open: boolean;
@@ -12,74 +14,50 @@ export function SideDrawer({ open, onClose, title, children }: SideDrawerProps) 
 
   return (
     <>
-      <div onClick={onClose} style={backdropStyle} />
-      <div style={drawerStyle}>
-        <div style={headerStyle}>
-          <div style={titleStyle}>{title}</div>
-          <button onClick={onClose} style={closeBtnStyle}>✕</button>
+      {/* Backdrop */}
+      <div
+        onClick={onClose}
+        className="fixed inset-0 bg-foreground/10 z-40 animate-in fade-in duration-200"
+        aria-hidden="true"
+      />
+
+      {/* Drawer Panel */}
+      <div
+        className={cn(
+          "fixed top-0 right-0 bottom-0 w-[min(90vw,380px)]",
+          "bg-card border-l border-border shadow-xl",
+          "z-50 flex flex-col overflow-hidden",
+          "animate-in slide-in-from-right duration-300"
+        )}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="drawer-title"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-border">
+          <h2
+            id="drawer-title"
+            className="text-[13px] font-semibold text-foreground tracking-wide uppercase"
+          >
+            {title}
+          </h2>
+          <button
+            onClick={onClose}
+            className={cn(
+              "flex items-center justify-center w-7 h-7 rounded-md",
+              "text-muted-foreground hover:text-foreground hover:bg-secondary",
+              "transition-all duration-150",
+              "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+            )}
+            aria-label="Close drawer"
+          >
+            <X className="w-4 h-4" />
+          </button>
         </div>
-        <div style={contentStyle}>
-          {children}
-        </div>
+
+        {/* Content */}
+        <div className="flex-1 overflow-y-auto p-5">{children}</div>
       </div>
     </>
   );
 }
-
-const backdropStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(29, 33, 43, 0.18)',
-  zIndex: 40,
-};
-
-const drawerStyle: React.CSSProperties = {
-  position: 'fixed',
-  top: '12px',
-  right: '12px',
-  bottom: '12px',
-  width: 'min(88vw, 420px)',
-  background: '#fff',
-  border: '1px solid #E7E3DF',
-  borderRadius: '16px',
-  boxShadow: '0 24px 60px rgba(29, 33, 43, 0.15)',
-  zIndex: 41,
-  display: 'flex',
-  flexDirection: 'column',
-  overflow: 'hidden',
-};
-
-const headerStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  padding: '14px 16px',
-  borderBottom: '1px solid #EFEDEB',
-  background: '#F9F7F6',
-};
-
-const titleStyle: React.CSSProperties = {
-  fontSize: '14px',
-  fontWeight: 500,
-  color: '#1D212B',
-  textTransform: 'uppercase',
-  letterSpacing: '0.04em',
-};
-
-const closeBtnStyle: React.CSSProperties = {
-  width: '32px',
-  height: '32px',
-  border: '1px solid #E7E3DF',
-  borderRadius: '10px',
-  background: '#fff',
-  cursor: 'pointer',
-  fontSize: '13px',
-  color: '#6b7280',
-  fontFamily: 'inherit',
-};
-
-const contentStyle: React.CSSProperties = {
-  padding: '14px',
-  overflowY: 'auto',
-  flex: 1,
-};
