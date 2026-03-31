@@ -58,8 +58,8 @@ export function DayCalendar({
     type: 'move' | 'resize';
     eventId: string;
     startY: number;
-    originalStartHour: number;
-    originalDuration: number;
+    currentStartHour: number;
+    currentDuration: number;
   } | null>(null);
 
   const slots = useMemo(() => {
@@ -122,12 +122,18 @@ export function DayCalendar({
     const event = events.find(ev => ev.id === eventId);
     if (!event) return;
 
+    // Track state in a ref to be accessible in handleMouseUp without closure staleness
+    const stateRef = {
+      currentStartHour: event.startHour,
+      currentDuration: event.duration
+    };
+
     setInteracting({
       type: action,
       eventId,
       startY: e.clientY,
-      originalStartHour: event.startHour,
-      originalDuration: event.duration,
+      currentStartHour: event.startHour,
+      currentDuration: event.duration,
     });
 
     const handleMouseMove = (me: MouseEvent) => {
@@ -137,15 +143,22 @@ export function DayCalendar({
       if (action === 'move') {
         const newStart = snapToGrid(event.startHour + deltaHours);
         const clamped = Math.max(startHour, Math.min(newStart, endHour - event.duration));
-        onBoulderMove?.(eventId.replace('boulder-', ''), clamped);
+        stateRef.currentStartHour = clamped;
+        setInteracting(prev => prev ? { ...prev, currentStartHour: clamped } : null);
       } else {
         const newDuration = snapToGrid(event.duration + deltaHours);
         const clamped = Math.max(SNAP, Math.min(newDuration, endHour - event.startHour));
-        onBoulderResize?.(eventId.replace('boulder-', ''), clamped);
+        stateRef.currentDuration = clamped;
+        setInteracting(prev => prev ? { ...prev, currentDuration: clamped } : null);
       }
     };
 
     const handleMouseUp = () => {
+      if (action === 'move') {
+        onBoulderMove?.(eventId.replace('boulder-', ''), stateRef.currentStartHour);
+      } else {
+        onBoulderResize?.(eventId.replace('boulder-', ''), stateRef.currentDuration);
+      }
       setInteracting(null);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
@@ -158,8 +171,12 @@ export function DayCalendar({
   const timeColWidth = showLabels ? (compact ? 40 : 60) : 0;
 
   const getEventStyle = (event: CalEvent): React.CSSProperties => {
-    const top = (event.startHour - startHour) * PX_PER_HOUR;
-    const height = event.duration * PX_PER_HOUR - 4;
+    const isInteracting = interacting?.eventId === event.id;
+    const displayStartHour = isInteracting ? interacting.currentStartHour : event.startHour;
+    const displayDuration = isInteracting ? interacting.currentDuration : event.duration;
+
+    const top = (displayStartHour - startHour) * PX_PER_HOUR;
+    const height = displayDuration * PX_PER_HOUR - 4;
 
     const baseStyle: React.CSSProperties = {
       position: 'absolute',
