@@ -10,6 +10,8 @@ export interface CalEvent {
   busy?: boolean;
   projectName?: string;
   color?: string;
+  description?: string;
+  location?: string;
 }
 
 interface DayCalendarProps {
@@ -45,6 +47,7 @@ export function DayCalendar({
   const gridRef = useRef<HTMLDivElement>(null);
   const [dragOverHour, setDragOverHour] = useState<number | null>(null);
   const [now, setNow] = useState(new Date());
+  const [selectedEvent, setSelectedEvent] = useState<CalEvent | null>(null);
 
   // Update current time every minute if it's today
   useMemo(() => {
@@ -214,6 +217,7 @@ export function DayCalendar({
         background: event.busy !== false ? `${bgColor}33` : `${bgColor}11`, // 20% or 6.6% opacity
         borderLeft: `4px solid ${bgColor}`,
         color: '#4b5563',
+        cursor: 'pointer',
       };
     }
 
@@ -223,6 +227,7 @@ export function DayCalendar({
       background: event.busy !== false ? `${bgColor}33` : `${bgColor}11`,
       borderLeft: `4px solid ${bgColor}`,
       color: '#1D212B',
+      cursor: 'pointer',
     };
   };
 
@@ -272,6 +277,7 @@ export function DayCalendar({
             <div key={event.id} style={{ display: 'flex' }}>
               <div style={{ width: `${timeColWidth + 8}px`, flexShrink: 0 }} />
               <div
+                onClick={() => setSelectedEvent(event)}
                 style={{
                   flex: 1,
                   fontSize: '11px',
@@ -286,6 +292,7 @@ export function DayCalendar({
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   marginRight: '4px',
+                  cursor: 'pointer',
                 }}
                 title={event.title}
               >
@@ -394,6 +401,7 @@ export function DayCalendar({
             key={event.id}
             style={getEventStyle(event)}
             onMouseDown={(event.type === 'boulder' || event.type === 'rock') ? (e) => handleMouseDown(e, event.id, 'move') : undefined}
+            onClick={(event.type === 'meeting' || event.type === 'personal') ? () => setSelectedEvent(event) : undefined}
           >
             {(event.type === 'boulder' || event.type === 'rock') ? (
               <>
@@ -478,6 +486,112 @@ export function DayCalendar({
           </div>
         ))}
       </div>
+
+      {/* Event Details Modal */}
+      {selectedEvent && (
+        <div 
+          onClick={() => setSelectedEvent(null)}
+          style={{
+            position: 'fixed',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'rgba(0,0,0,0.4)',
+            zIndex: 1000,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: '20px',
+          }}
+        >
+          <div 
+            onClick={e => e.stopPropagation()}
+            style={{
+              background: '#fff',
+              borderRadius: '16px',
+              width: '100%',
+              maxWidth: '480px',
+              maxHeight: '80vh',
+              overflow: 'auto',
+              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
+            }}
+          >
+            <div style={{ padding: '24px' }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
+                <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1D212B' }}>{selectedEvent.title}</h3>
+                <button 
+                  onClick={() => setSelectedEvent(null)}
+                  style={{
+                    background: 'none',
+                    border: 'none',
+                    fontSize: '24px',
+                    cursor: 'pointer',
+                    color: '#9ca3af',
+                    lineHeight: 1,
+                    padding: 0,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+
+              <div style={{ display: 'grid', gap: '16px' }}>
+                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', color: '#4b5563' }}>
+                  <span style={{ fontSize: '18px' }}>🕒</span>
+                  <div style={{ fontSize: '14px' }}>
+                    {selectedEvent.allDay ? (
+                      'All Day'
+                    ) : (
+                      `${formatHourMinute(selectedEvent.startHour)} – ${formatHourMinute(selectedEvent.startHour + selectedEvent.duration)}`
+                    )}
+                  </div>
+                </div>
+
+                {selectedEvent.location && (
+                  <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', color: '#4b5563' }}>
+                    <span style={{ fontSize: '18px' }}>📍</span>
+                    <div style={{ fontSize: '14px', wordBreak: 'break-word' }}>{selectedEvent.location}</div>
+                  </div>
+                )}
+
+                {selectedEvent.description && (
+                  <div style={{ borderTop: '1px solid #EFEDEB', paddingTop: '16px', marginTop: '4px' }}>
+                    <div style={{ fontSize: '12px', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 600 }}>
+                      Description
+                    </div>
+                    <div 
+                      style={{ 
+                        fontSize: '14px', 
+                        color: '#1D212B', 
+                        lineHeight: 1.6,
+                        whiteSpace: 'pre-wrap',
+                        wordBreak: 'break-word',
+                      }}
+                      dangerouslySetInnerHTML={{ __html: selectedEvent.description }}
+                    />
+                  </div>
+                )}
+              </div>
+            </div>
+            
+            <div style={{ padding: '16px 24px', background: '#F9F7F6', borderRadius: '0 0 16px 16px', borderTop: '1px solid #EFEDEB', textAlign: 'right' }}>
+              <button 
+                onClick={() => setSelectedEvent(null)}
+                style={{
+                  padding: '8px 20px',
+                  borderRadius: '10px',
+                  border: '1px solid #E7E3DF',
+                  background: '#fff',
+                  fontSize: '14px',
+                  fontWeight: 600,
+                  cursor: 'pointer',
+                  color: '#1D212B',
+                }}
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

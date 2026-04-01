@@ -60,6 +60,8 @@ export interface CalendarEvent {
   calendarName: string;
   color: string;
   allDay?: boolean;
+  description?: string;
+  location?: string;
 }
 
 export interface CalendarFeed {

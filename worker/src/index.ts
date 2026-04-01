@@ -47,6 +47,8 @@ interface CalendarEvent {
   calendarName: string;
   color: string;
   allDay?: boolean;
+  description?: string;
+  location?: string;
 }
 
 interface FirebaseTokenHeader {
@@ -557,6 +559,8 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
               calendarName: feed.name,
               color: feed.color,
               allDay: true,
+              description: event.description,
+              location: event.location,
             };
           }
 
@@ -570,6 +574,8 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
             busy: event.transparency !== 'TRANSPARENT',
             calendarName: feed.name,
             color: feed.color,
+            description: event.description,
+            location: event.location,
           };
         });
       } catch (err) {

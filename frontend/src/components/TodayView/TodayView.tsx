@@ -42,6 +42,8 @@ function icalToCalEvents(events: CalendarEvent[]): CalEvent[] {
       busy: e.busy,
       color: e.color,
       allDay,
+      description: e.description,
+      location: e.location,
     };
   });
 }
