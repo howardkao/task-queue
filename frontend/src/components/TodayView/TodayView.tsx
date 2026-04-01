@@ -239,15 +239,27 @@ export function TodayView() {
       const events: CalEvent[] = [...baseEvents];
 
       const schedulableTasks = [...allBoulders, ...allRocks, ...dueSoonTasks.filter(t => t.classification === 'boulder' || t.classification === 'rock')];
-      // Add placed schedulable tasks for this day
+      // Add schedulable tasks for this day
       for (const task of schedulableTasks) {
         if (task.placement && task.placement.date === dateKey) {
+          // Placed task
           events.push({
             id: `boulder-${task.id}`,
             title: task.title,
             startHour: task.placement.startHour,
             duration: task.placement.duration,
             type: task.classification === 'rock' ? 'rock' : 'boulder',
+            projectName: task.projectId ? 'Project' : undefined,
+          });
+        } else if (!task.placement && dateKey === todayKey) {
+          // Unplaced task (always show on Today calendar in All Day section)
+          events.push({
+            id: `boulder-${task.id}`,
+            title: task.title,
+            startHour: 0,
+            duration: 24,
+            type: task.classification === 'rock' ? 'rock' : 'boulder',
+            allDay: true,
             projectName: task.projectId ? 'Project' : undefined,
           });
         }
