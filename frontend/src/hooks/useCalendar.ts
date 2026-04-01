@@ -1,7 +1,7 @@
-import { useQuery, useQueries, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import {
   fetchTodayEvents,
-  fetchEventsForDate,
+  fetchEventsForRange,
   getCalendarFeeds,
   createCalendarFeed,
   updateCalendarFeed,
