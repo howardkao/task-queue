@@ -343,21 +343,14 @@ export function TodayView() {
         <div style={{ flex: 1 }}>
           <div style={filterHeaderStyle}>Priority</div>
           <div style={filterChipWrapStyle}>
-            <button
-              onClick={() => setPriorityFilter([])}
-              style={{ ...filterChipStyle, ...(priorityFilter.length === 0 ? activeFilterChipStyle : {}) }}
-            >
-              All
-            </button>
-            {(['high', 'med', 'low', 'none'] as const).map(p => {
+            {(['high', 'med', 'low'] as const).map(p => {
               const colors: Record<string, { bg: string; border: string }> = {
                 high: { bg: '#E14747', border: '#E14747' },
                 med: { bg: '#F59F0A', border: '#F59F0A' },
                 low: { bg: '#478CD1', border: '#478CD1' },
-                none: { bg: '#9ca3af', border: '#9ca3af' },
               };
               const active = priorityFilter.includes(p as Priority);
-              const label = p === 'none' ? 'None' : p.charAt(0).toUpperCase() + p.slice(1);
+              const label = p.charAt(0).toUpperCase() + p.slice(1);
               return (
                 <button
                   key={p}

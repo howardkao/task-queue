@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
 [vars]
-ALLOWED_ORIGIN = "https://hkao-task-queue.web.app,http://localhost:5173,http://localhost:5174"
+ALLOWED_ORIGIN = "https://hkao-task-queue.web.app,https://hkao-task-queue.firebaseapp.com,http://localhost:5173,http://localhost:5174"
 FIREBASE_PROJECT_ID = "hkao-task-queue"
 
 [[kv_namespaces]]

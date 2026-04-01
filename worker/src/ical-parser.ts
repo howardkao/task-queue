@@ -46,11 +46,11 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): ICalE
     const rawEnd = vevent.getFirstPropertyValue('dtend')?.toString();
 
     if (event.isRecurring()) {
-      // Expand recurring event within our date range
-      const iterator = event.iterator();
+      // Expand recurring event starting from our range start to save CPU
+      const iterator = event.iterator(start);
       let next: ICAL.Time | null;
       let count = 0;
-      const MAX_ITERATIONS = 500; // safety limit
+      const MAX_ITERATIONS = 1000; // expansion is cheaper with fast-forward
 
       while ((next = iterator.next()) && count < MAX_ITERATIONS) {
         count++;

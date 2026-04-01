@@ -144,7 +144,7 @@ export async function updateTask(id: string, data: Partial<Task>): Promise<Task>
     }
   }
   if (data.status !== undefined) updates.status = data.status;
-  if (data.priority !== undefined) updates.priority = data.priority;
+  if (data.priority !== undefined && data.priority !== null) updates.priority = data.priority;
   if (data.deadline !== undefined) {
     updates.deadline = data.deadline ? Timestamp.fromDate(new Date(data.deadline)) : null;
   }
@@ -194,6 +194,7 @@ export async function completeTask(id: string): Promise<{ completed: Task; nextO
       title: task.title,
       notes: task.notes,
       classification: task.classification,
+      priority: task.priority,
       deadline: nextDeadline || undefined,
       projectId: task.projectId || undefined,
       recurrence: task.recurrence,

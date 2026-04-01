@@ -410,74 +410,66 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
 
   const allEvents: CalendarEvent[] = [];
 
-  const results = await Promise.allSettled(
-    enabledFeeds.map(async (feed) => {
-      try {
-        let icalText = await getCachedIcal(env, feed.id);
+  // Sequential processing is safer for CPU limits on free Cloudflare Workers
+  for (const feed of enabledFeeds) {
+    try {
+      let icalText = await getCachedIcal(env, feed.id);
 
-        if (!icalText) {
-          const res = await fetch(feed.url, {
-            headers: { 'User-Agent': 'TaskQueue-Calendar/1.0' },
-          });
-          if (!res.ok) return [];
-          icalText = await res.text();
-          await setCachedIcal(env, feed.id, icalText);
-        }
+      if (!icalText) {
+        const res = await fetch(feed.url, {
+          headers: { 'User-Agent': 'TaskQueue-Calendar/1.0' },
+        });
+        if (!res.ok) continue;
+        icalText = await res.text();
+        await setCachedIcal(env, feed.id, icalText);
+      }
 
-        const events = parseICal(icalText, todayStart, todayEnd);
+      const events = parseICal(icalText, todayStart, todayEnd);
 
-        return events.map(event => {
-          try {
-            if (event.isAllDay) {
-              return {
-                title: event.summary || '(No title)',
-                start: todayStart.toISOString(),
-                end: todayEnd.toISOString(),
-                busy: event.transparency !== 'TRANSPARENT',
-                calendarName: feed.name,
-                color: feed.color,
-                allDay: true,
-                description: event.description,
-                location: event.location,
-                uid: event.uid,
-                rrule: event.rrule,
-                rawStart: event.rawStart,
-                rawEnd: event.rawEnd,
-              };
-            }
-
-            const displayStart = event.start < todayStart ? todayStart : event.start;
-            const displayEnd = event.end > todayEnd ? todayEnd : event.end;
-
-            return {
+      for (const event of events) {
+        try {
+          if (event.isAllDay) {
+            allEvents.push({
               title: event.summary || '(No title)',
-              start: displayStart.toISOString(),
-              end: displayEnd.toISOString(),
+              start: todayStart.toISOString(),
+              end: todayEnd.toISOString(),
               busy: event.transparency !== 'TRANSPARENT',
               calendarName: feed.name,
               color: feed.color,
+              allDay: true,
               description: event.description,
               location: event.location,
               uid: event.uid,
               rrule: event.rrule,
               rawStart: event.rawStart,
               rawEnd: event.rawEnd,
-            };
-          } catch (err) {
-            console.error(`Error mapping event "${event.summary}":`, err);
-            return null;
+            });
+            continue;
           }
-        }).filter(Boolean) as CalendarEvent[];
-      } catch (err) {
-        console.error(`Failed to fetch/parse feed "${feed.name}":`, err);
-        return [];
-      }
-    }),
-  );
 
-  for (const result of results) {
-    if (result.status === 'fulfilled') {
-      allEvents.push(...result.value);
+          const displayStart = event.start < todayStart ? todayStart : event.start;
+          const displayEnd = event.end > todayEnd ? todayEnd : event.end;
+
+          allEvents.push({
+            title: event.summary || '(No title)',
+            start: displayStart.toISOString(),
+            end: displayEnd.toISOString(),
+            busy: event.transparency !== 'TRANSPARENT',
+            calendarName: feed.name,
+            color: feed.color,
+            description: event.description,
+            location: event.location,
+            uid: event.uid,
+            rrule: event.rrule,
+            rawStart: event.rawStart,
+            rawEnd: event.rawEnd,
+          });
+        } catch (err) {
+          console.error(`Error mapping event "${event.summary}":`, err);
+        }
+      }
+    } catch (err) {
+      console.error(`Failed to fetch/parse feed "${feed.name}":`, err);
     }
   }
 
