@@ -28,7 +28,7 @@ export interface ParseResult {
  */
 export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): ParseResult {
   const startTime = Date.now();
-  const TIME_LIMIT_MS = 100; // 100ms total for parsing
+  const TIME_LIMIT_MS = 100; 
   
   const jcal = ICAL.parse(text);
   const comp = new ICAL.Component(jcal);
@@ -41,7 +41,6 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): Parse
   const vevents = comp.getAllSubcomponents('vevent');
 
   for (const vevent of vevents) {
-    // Check global time limit
     if (Date.now() - startTime > TIME_LIMIT_MS) {
       warnings.push(`Parsing interrupted: CPU time limit exceeded. Some events might be missing.`);
       break;
@@ -52,22 +51,21 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): Parse
     if (event.isRecurring()) {
       const rrule = vevent.getFirstPropertyValue('rrule') as ICAL.Recur | undefined;
       
-      // Safety: If it has an UNTIL date that is in the past, skip entirely
       if (rrule?.until && rrule.until.compare(start) < 0) continue;
 
-      // Accuracy Fix: We can only "fast-forward" the iterator if there's no COUNT.
-      // ical.js resets the count if you start the iterator mid-stream.
-      const canFastForward = !rrule?.count;
-      const iterStart = (canFastForward && start.compare(event.startDate) > 0) ? start : event.startDate;
+      const iterator = event.iterator();
       
-      const iterator = event.iterator(iterStart);
+      // Fast-forward efficiently if the event has no COUNT.
+      // If it has a COUNT, we MUST start from the beginning to remain accurate.
+      if (!rrule?.count && start.compare(event.startDate) > 0) {
+        iterator.fastForward(start);
+      }
+      
       let next: ICAL.Time | null;
       let iterations = 0;
 
       while ((next = iterator.next())) {
         iterations++;
-        
-        // Infinite loop / CPU spike protection
         if (iterations > 1000) {
           warnings.push(`Event "${event.summary}" (UID: ${vevent.getFirstPropertyValue('uid')}) has too many occurrences; skipping remaining.`);
           break;
@@ -76,12 +74,15 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): Parse
         // Stop if we've gone past the range
         if (next.compare(end) >= 0) break;
 
-        // Skip if occurrence is before range start
-        if (next.compare(start) < 0) continue;
-
         const duration = event.duration;
         const occurrenceEnd = next.clone();
         occurrenceEnd.addDuration(duration);
+
+        // Overlap Check: occurrenceEnd > start AND next < end
+        // For all-day events, we're a bit more lenient to avoid timezone clipping
+        const overlaps = occurrenceEnd.compare(start) > 0 && next.compare(end) < 0;
+        
+        if (!overlaps) continue;
 
         events.push({
           summary: event.summary || '(No title)',
@@ -98,7 +99,6 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): Parse
         });
       }
     } else {
-      // Single event overlap check
       if (event.endDate.compare(start) <= 0 || event.startDate.compare(end) >= 0) continue;
 
       events.push({
