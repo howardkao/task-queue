@@ -3,7 +3,7 @@ import { DayCalendar } from './DayCalendar';
 import { BoulderSidebar } from './BoulderSidebar';
 import { RockSidebar } from './RockSidebar';
 import { PebbleSidebar } from './PebbleSidebar';
-import { useTodayBoulders, useTodayRocks, useTodayInboxTasks, useCreateTask, useClassifyTask, useUpdateTask, useDueSoonTasks } from '../../hooks/useTasks';
+import { useTodayBoulders, useTodayRocks, useTodayInboxTasks, useCreateTask, useClassifyTask, useUpdateTask, useDueSoonTasks, STANDALONE_PROJECT_FILTER } from '../../hooks/useTasks';
 import { useProjects } from '../../hooks/useProjects';
 import { useIsMobile } from '../../hooks/useViewport';
 import { useEventsForDates } from '../../hooks/useCalendar';
@@ -97,6 +97,28 @@ export function TodayView() {
     const saved = localStorage.getItem('today_priorityFilter');
     return saved ? JSON.parse(saved) : [];
   });
+  const [isFilterExpanded, setIsFilterExpanded] = useState(() => {
+    const saved = localStorage.getItem('today_isFilterExpanded');
+    return saved === 'true';
+  });
+
+  const getFilterSummary = useCallback(() => {
+    const pStr = priorityFilter.length === 0 ? 'All' : priorityFilter.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
+    let prjStr = 'All';
+    if (projectFilter.length > 0) {
+      const names = projectFilter.map(pid => {
+        if (pid === STANDALONE_PROJECT_FILTER) return 'None';
+        return projects.find(p => p.id === pid)?.name || 'Unknown';
+      });
+      if (names.length <= 2) {
+        prjStr = names.join(', ');
+      } else {
+        prjStr = `${names.length} projects`;
+      }
+    }
+    return `Priority: ${pStr} • Projects: ${prjStr}`;
+  }, [priorityFilter, projectFilter, projects]);
+
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => {
     const saved = localStorage.getItem('today_sidebarMode');
     return (saved as SidebarMode) || 'boulders';
@@ -125,6 +147,7 @@ export function TodayView() {
   // Persist filters/settings
   useEffect(() => { localStorage.setItem('today_projectFilter', JSON.stringify(projectFilter)); }, [projectFilter]);
   useEffect(() => { localStorage.setItem('today_priorityFilter', JSON.stringify(priorityFilter)); }, [priorityFilter]);
+  useEffect(() => { localStorage.setItem('today_isFilterExpanded', String(isFilterExpanded)); }, [isFilterExpanded]);
   useEffect(() => { localStorage.setItem('today_sidebarMode', sidebarMode); }, [sidebarMode]);
   useEffect(() => { localStorage.setItem('today_dayCount', dayCount.toString()); }, [dayCount]);
   useEffect(() => { localStorage.setItem('today_wakeUpHour', wakeUpHour.toString()); }, [wakeUpHour]);
@@ -164,6 +187,14 @@ export function TodayView() {
   // Priority filtering
   const togglePriorityFilter = useCallback((value: Priority) => {
     setPriorityFilter(prev => (
+      prev.includes(value)
+        ? prev.filter(item => item !== value)
+        : [...prev, value]
+    ));
+  }, []);
+
+  const toggleProjectFilter = useCallback((value: string) => {
+    setProjectFilter(prev => (
       prev.includes(value)
         ? prev.filter(item => item !== value)
         : [...prev, value]
@@ -278,14 +309,6 @@ export function TodayView() {
   const projectBoulderIds = new Set(filteredBoulders.filter(b => b.projectId).map(b => b.projectId));
   const activeProjectCount = projectBoulderIds.size;
 
-  const toggleProjectFilter = useCallback((value: string) => {
-    setProjectFilter(prev => (
-      prev.includes(value)
-        ? prev.filter(item => item !== value)
-        : [...prev, value]
-    ));
-  }, []);
-
   const sidebarContent = (
     <>
       {dueSoonTasks.length > 0 && (
@@ -339,54 +362,98 @@ export function TodayView() {
         )}
       </div>
 
-      <div style={{ display: 'flex', gap: '24px', marginBottom: '16px', background: '#F9F7F6', padding: '12px', borderRadius: '12px', border: '1px solid #EFEDEB' }}>
-        <div style={{ flex: 1 }}>
-          <div style={filterHeaderStyle}>Priority</div>
-          <div style={filterChipWrapStyle}>
-            {(['high', 'med', 'low'] as const).map(p => {
-              const colors: Record<string, { bg: string; border: string }> = {
-                high: { bg: '#E14747', border: '#E14747' },
-                med: { bg: '#F59F0A', border: '#F59F0A' },
-                low: { bg: '#478CD1', border: '#478CD1' },
-              };
-              const active = priorityFilter.includes(p as Priority);
-              const label = p.charAt(0).toUpperCase() + p.slice(1);
-              return (
-                <button
-                  key={p}
-                  onClick={() => togglePriorityFilter(p as Priority)}
-                  style={{
-                    ...filterChipStyle,
-                    ...(active ? { background: colors[p].bg, borderColor: colors[p].border, color: '#fff' } : {}),
-                  }}
-                >
-                  {label}
-                </button>
-              );
-            })}
+      <div style={{
+        background: '#F9F7F6',
+        padding: '12px',
+        borderRadius: '12px',
+        border: '1px solid #EFEDEB',
+        marginBottom: '16px',
+        transition: 'all 0.2s ease',
+      }}>
+        <div
+          onClick={() => setIsFilterExpanded(!isFilterExpanded)}
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+        >
+          <div style={{
+            fontSize: '12px',
+            color: '#6b7280',
+            whiteSpace: 'nowrap',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            flex: 1,
+            marginRight: '12px',
+          }}>
+            {isFilterExpanded ? (
+              <span style={{ textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '10px', fontWeight: 600 }}>Filters</span>
+            ) : (
+              <span>
+                <strong style={{ color: '#1D212B', marginRight: '6px' }}>Filters:</strong>
+                {getFilterSummary()}
+              </span>
+            )}
+          </div>
+          <div style={{ fontSize: '11px', color: '#EA6657', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            {isFilterExpanded ? 'Collapse ▲' : 'Expand ▼'}
           </div>
         </div>
 
-        <div style={{ flex: 2 }}>
-          <div style={filterHeaderStyle}>Projects</div>
-          <div style={filterChipWrapStyle}>
-            <button
-              onClick={() => setProjectFilter([])}
-              style={{ ...filterChipStyle, ...(projectFilter.length === 0 ? activeFilterChipStyle : {}) }}
-            >
-              All
-            </button>
-            {projects.map(project => (
-              <button
-                key={project.id}
-                onClick={() => toggleProjectFilter(project.id)}
-                style={{ ...filterChipStyle, ...(projectFilter.includes(project.id) ? activeFilterChipStyle : {}) }}
-              >
-                {project.name}
-              </button>
-            ))}
+        {isFilterExpanded && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '16px' }}>
+            <div>
+              <div style={filterHeaderStyle}>Priority</div>
+              <div style={filterChipWrapStyle}>
+                {(['high', 'med', 'low'] as const).map(p => {
+                  const colors: Record<string, { bg: string; border: string }> = {
+                    high: { bg: '#E14747', border: '#E14747' },
+                    med: { bg: '#F59F0A', border: '#F59F0A' },
+                    low: { bg: '#478CD1', border: '#478CD1' },
+                  };
+                  const active = priorityFilter.includes(p as Priority);
+                  const label = p.charAt(0).toUpperCase() + p.slice(1);
+                  return (
+                    <button
+                      key={p}
+                      onClick={(e) => { e.stopPropagation(); togglePriorityFilter(p as Priority); }}
+                      style={{
+                        ...filterChipStyle,
+                        ...(active ? { background: colors[p].bg, borderColor: colors[p].border, color: '#fff' } : {}),
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div>
+              <div style={filterHeaderStyle}>Projects</div>
+              <div style={filterChipWrapStyle}>
+                <button
+                  onClick={(e) => { e.stopPropagation(); toggleProjectFilter(STANDALONE_PROJECT_FILTER); }}
+                  style={{ ...filterChipStyle, ...(projectFilter.includes(STANDALONE_PROJECT_FILTER) ? activeFilterChipStyle : {}) }}
+                >
+                  None
+                </button>
+                {projects.map(project => (
+                  <button
+                    key={project.id}
+                    onClick={(e) => { e.stopPropagation(); toggleProjectFilter(project.id); }}
+                    style={{ ...filterChipStyle, ...(projectFilter.includes(project.id) ? activeFilterChipStyle : {}) }}
+                  >
+                    {project.name}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
-        </div>
+        )}
       </div>
 
       <div style={{
