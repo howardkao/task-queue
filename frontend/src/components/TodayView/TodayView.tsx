@@ -6,7 +6,7 @@ import { PebbleSidebar } from './PebbleSidebar';
 import { useTodayBoulders, useTodayRocks, useTodayInboxTasks, useCreateTask, useClassifyTask, useUpdateTask, useDueSoonTasks, STANDALONE_PROJECT_FILTER } from '../../hooks/useTasks';
 import { useProjects } from '../../hooks/useProjects';
 import { useIsMobile } from '../../hooks/useViewport';
-import { useEventsForDates } from '../../hooks/useCalendar';
+import { useEventsForRange } from '../../hooks/useCalendar';
 import type { CalEvent } from './DayCalendar';
 import type { CalendarEvent, Classification, Priority } from '../../types';
 import type { TodayProjectFilter } from '../../hooks/useTasks';
@@ -180,9 +180,9 @@ export function TodayView() {
     return map;
   }, [allBoulders, allRocks, dueSoonTasks]);
 
-  // Fetch calendar events for all visible dates
-  const calendarQueries = useEventsForDates(dateKeys);
-  const apiConfigured = calendarQueries.some(q => q.data !== null && q.data !== undefined);
+  // Fetch calendar events for range (start date + 4 additional days = 5 total)
+  const calendarQuery = useEventsForRange(dateKeys[0], 5);
+  const apiConfigured = calendarQuery.data !== null && calendarQuery.data !== undefined;
 
   // Priority filtering
   const togglePriorityFilter = useCallback((value: Priority) => {
@@ -212,10 +212,22 @@ export function TodayView() {
 
   // Build calendar events per day
   const eventsPerDay = useMemo(() => {
-    return dateKeys.map((dateKey, i) => {
-      const icalEvents = calendarQueries[i]?.data;
-      const baseEvents = icalEvents !== null && icalEvents !== undefined
-        ? icalToCalEvents(icalEvents)
+    const allRangeEvents = calendarQuery.data ? icalToCalEvents(calendarQuery.data) : [];
+
+    return dateKeys.map((dateKey) => {
+      // Filter the range events for this specific day
+      const dayIcalEvents = allRangeEvents.filter(e => {
+        // Find the original raw event start to compare date
+        const ce = e.id.startsWith('ical-') ? calendarQuery.data?.[parseInt(e.id.replace('ical-', ''), 10)] : null;
+        if (!ce) return false;
+        
+        const d = new Date(ce.start);
+        return toDateKey(d) === dateKey;
+      });
+
+      // Fallback logic
+      const baseEvents = calendarQuery.data !== null && calendarQuery.data !== undefined
+        ? dayIcalEvents
         : (dateKey === todayKey ? MOCK_CAL_EVENTS : []);
 
       const events: CalEvent[] = [...baseEvents];
@@ -237,7 +249,7 @@ export function TodayView() {
 
       return events;
     });
-  }, [dateKeys, calendarQueries, allBoulders, allRocks, dueSoonTasks, todayKey]);
+  }, [dateKeys, calendarQuery.data, allBoulders, allRocks, dueSoonTasks, todayKey]);
 
   const maxAllDayCount = useMemo(() => {
     return Math.max(...eventsPerDay.map(dayEvents => dayEvents.filter(e => e.allDay).length), 0);

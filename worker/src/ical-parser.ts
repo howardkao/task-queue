@@ -35,25 +35,28 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): ICalE
 
   for (const vevent of vevents) {
     const event = new ICAL.Event(vevent);
-    const transp = (vevent.getFirstPropertyValue('transp') || 'OPAQUE').toString().toUpperCase();
+    
+    // Quick skip for recurring: if it has an UNTIL date that is in the past
+    if (event.isRecurring()) {
+      const until = vevent.getFirstPropertyValue('until') as ICAL.Time | undefined;
+      if (until && until.compare(start) < 0) continue;
+    } else {
+      // Single event: skip if it doesn't overlap the range
+      if (event.endDate.compare(start) <= 0 || event.startDate.compare(end) >= 0) continue;
+    }
+
     const summary = event.summary || '(No title)';
+    const transp = (vevent.getFirstPropertyValue('transp') || 'OPAQUE').toString().toUpperCase();
     const isAllDay = event.startDate.isDate;
-    const description = vevent.getFirstPropertyValue('description') as string | undefined;
-    const location = vevent.getFirstPropertyValue('location') as string | undefined;
     const uid = vevent.getFirstPropertyValue('uid') as string | undefined;
-    const rrule = vevent.getFirstPropertyValue('rrule')?.toString();
-    const rawStart = vevent.getFirstPropertyValue('dtstart')?.toString();
-    const rawEnd = vevent.getFirstPropertyValue('dtend')?.toString();
 
     if (event.isRecurring()) {
-      // Expand recurring event starting from our range start to save CPU.
-      // We must not pass a start date earlier than the event's actual start date,
-      // as some versions of ical.js may anchor the recurrence incorrectly.
+      // Fast-forward to the range start, but never before the event's actual start date.
       const iterStart = start.compare(event.startDate) > 0 ? start : event.startDate;
       const iterator = event.iterator(iterStart);
       let next: ICAL.Time | null;
       let count = 0;
-      const MAX_ITERATIONS = 1000; // expansion is cheaper with fast-forward
+      const MAX_ITERATIONS = 200; // Limit per-event expansion to save CPU
 
       while ((next = iterator.next()) && count < MAX_ITERATIONS) {
         count++;
@@ -77,38 +80,28 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): ICalE
           end: occurrenceEnd.toJSDate(),
           transparency: transp,
           isAllDay: next.isDate,
-          description,
-          location,
+          description: vevent.getFirstPropertyValue('description') as string | undefined,
+          location: vevent.getFirstPropertyValue('location') as string | undefined,
           uid,
-          rrule,
-          rawStart,
-          rawEnd,
+          rrule: vevent.getFirstPropertyValue('rrule')?.toString(),
+          rawStart: vevent.getFirstPropertyValue('dtstart')?.toString(),
+          rawEnd: vevent.getFirstPropertyValue('dtend')?.toString(),
         });
       }
     } else {
-      // Single event — check if it overlaps the range
-      const dtstart = event.startDate;
-      const dtend = event.endDate;
-
-      // Skip if it ends before the range starts OR starts after the range ends
-      if (dtend.compare(start) <= 0 || dtstart.compare(end) >= 0) continue;
-
-      // Additional safety: skip if it's completely in the future relative to its own start
-      // (This handles weirdly malformed iCal entries)
-      if (dtstart.compare(event.startDate) < 0) continue;
-
+      // Single event overlap confirmed above
       events.push({
         summary,
-        start: dtstart.toJSDate(),
-        end: dtend.toJSDate(),
+        start: event.startDate.toJSDate(),
+        end: event.endDate.toJSDate(),
         transparency: transp,
         isAllDay,
-        description,
-        location,
+        description: vevent.getFirstPropertyValue('description') as string | undefined,
+        location: vevent.getFirstPropertyValue('location') as string | undefined,
         uid,
-        rrule,
-        rawStart,
-        rawEnd,
+        rrule: undefined,
+        rawStart: vevent.getFirstPropertyValue('dtstart')?.toString(),
+        rawEnd: vevent.getFirstPropertyValue('dtend')?.toString(),
       });
     }
   }

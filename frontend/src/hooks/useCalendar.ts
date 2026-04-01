@@ -18,15 +18,12 @@ export function useTodayEvents() {
   });
 }
 
-/** Fetch calendar events for multiple dates in parallel */
-export function useEventsForDates(dates: string[]) {
-  return useQueries({
-    queries: dates.map(date => ({
-      queryKey: ['calendar', date],
-      queryFn: () => fetchEventsForDate(date),
-      staleTime: 5 * 60 * 1000,
-      retry: 1,
-    })),
+export function useEventsForRange(startDate: string, days: number) {
+  return useQuery({
+    queryKey: ['calendar', 'range', startDate, days],
+    queryFn: () => fetchEventsForRange(startDate, days),
+    staleTime: 5 * 60 * 1000,
+    retry: 1,
   });
 }
 
