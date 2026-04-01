@@ -1,6 +1,5 @@
 /**
  * iCal parser for Cloudflare Workers using ical.js.
- * Handles recurring events (RRULE), timezone conversion, and TRANSP.
  */
 
 import ICAL from 'ical.js';
@@ -9,7 +8,7 @@ export interface ICalEvent {
   summary: string;
   start: Date;
   end: Date;
-  transparency: string; // OPAQUE or TRANSPARENT
+  transparency: string;
   isAllDay: boolean;
   description?: string;
   location?: string;
@@ -19,14 +18,22 @@ export interface ICalEvent {
   rawEnd?: string;
 }
 
+export interface ParseResult {
+  events: ICalEvent[];
+  warnings: string[];
+}
+
 /**
  * Parse iCal text and expand recurring events for a given date range.
- * Returns all event occurrences that overlap [rangeStart, rangeEnd).
  */
-export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): ICalEvent[] {
+export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): ParseResult {
+  const startTime = Date.now();
+  const TIME_LIMIT_MS = 100; // 100ms total for parsing
+  
   const jcal = ICAL.parse(text);
   const comp = new ICAL.Component(jcal);
   const events: ICalEvent[] = [];
+  const warnings: string[] = [];
 
   const start = ICAL.Time.fromJSDate(rangeStart, true);
   const end = ICAL.Time.fromJSDate(rangeEnd, true);
@@ -34,77 +41,80 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): ICalE
   const vevents = comp.getAllSubcomponents('vevent');
 
   for (const vevent of vevents) {
-    const event = new ICAL.Event(vevent);
-    
-    // Quick skip for recurring: if it has an UNTIL date that is in the past
-    if (event.isRecurring()) {
-      const until = vevent.getFirstPropertyValue('until') as ICAL.Time | undefined;
-      if (until && until.compare(start) < 0) continue;
-    } else {
-      // Single event: skip if it doesn't overlap the range
-      if (event.endDate.compare(start) <= 0 || event.startDate.compare(end) >= 0) continue;
+    // Check global time limit
+    if (Date.now() - startTime > TIME_LIMIT_MS) {
+      warnings.push(`Parsing interrupted: CPU time limit exceeded. Some events might be missing.`);
+      break;
     }
 
-    const summary = event.summary || '(No title)';
-    const transp = (vevent.getFirstPropertyValue('transp') || 'OPAQUE').toString().toUpperCase();
-    const isAllDay = event.startDate.isDate;
-    const uid = vevent.getFirstPropertyValue('uid') as string | undefined;
-
+    const event = new ICAL.Event(vevent);
+    
     if (event.isRecurring()) {
-      // Fast-forward to the range start, but never before the event's actual start date.
-      const iterStart = start.compare(event.startDate) > 0 ? start : event.startDate;
+      const rrule = vevent.getFirstPropertyValue('rrule') as ICAL.Recur | undefined;
+      
+      // Safety: If it has an UNTIL date that is in the past, skip entirely
+      if (rrule?.until && rrule.until.compare(start) < 0) continue;
+
+      // Accuracy Fix: We can only "fast-forward" the iterator if there's no COUNT.
+      // ical.js resets the count if you start the iterator mid-stream.
+      const canFastForward = !rrule?.count;
+      const iterStart = (canFastForward && start.compare(event.startDate) > 0) ? start : event.startDate;
+      
       const iterator = event.iterator(iterStart);
       let next: ICAL.Time | null;
-      let count = 0;
-      const MAX_ITERATIONS = 200; // Limit per-event expansion to save CPU
+      let iterations = 0;
 
-      while ((next = iterator.next()) && count < MAX_ITERATIONS) {
-        count++;
-
-        // Safety: ensure occurrence is not before the event's intended start
-        if (next.compare(event.startDate) < 0) continue;
+      while ((next = iterator.next())) {
+        iterations++;
+        
+        // Infinite loop / CPU spike protection
+        if (iterations > 1000) {
+          warnings.push(`Event "${event.summary}" (UID: ${vevent.getFirstPropertyValue('uid')}) has too many occurrences; skipping remaining.`);
+          break;
+        }
 
         // Stop if we've gone past the range
         if (next.compare(end) >= 0) break;
+
+        // Skip if occurrence is before range start
+        if (next.compare(start) < 0) continue;
 
         const duration = event.duration;
         const occurrenceEnd = next.clone();
         occurrenceEnd.addDuration(duration);
 
-        // Skip if occurrence ends before range starts
-        if (occurrenceEnd.compare(start) <= 0) continue;
-
         events.push({
-          summary,
+          summary: event.summary || '(No title)',
           start: next.toJSDate(),
           end: occurrenceEnd.toJSDate(),
-          transparency: transp,
+          transparency: (vevent.getFirstPropertyValue('transp') || 'OPAQUE').toString().toUpperCase(),
           isAllDay: next.isDate,
           description: vevent.getFirstPropertyValue('description') as string | undefined,
           location: vevent.getFirstPropertyValue('location') as string | undefined,
-          uid,
-          rrule: vevent.getFirstPropertyValue('rrule')?.toString(),
+          uid: vevent.getFirstPropertyValue('uid') as string | undefined,
+          rrule: rrule?.toString(),
           rawStart: vevent.getFirstPropertyValue('dtstart')?.toString(),
           rawEnd: vevent.getFirstPropertyValue('dtend')?.toString(),
         });
       }
     } else {
-      // Single event overlap confirmed above
+      // Single event overlap check
+      if (event.endDate.compare(start) <= 0 || event.startDate.compare(end) >= 0) continue;
+
       events.push({
-        summary,
+        summary: event.summary || '(No title)',
         start: event.startDate.toJSDate(),
         end: event.endDate.toJSDate(),
-        transparency: transp,
-        isAllDay,
+        transparency: (vevent.getFirstPropertyValue('transp') || 'OPAQUE').toString().toUpperCase(),
+        isAllDay: event.startDate.isDate,
         description: vevent.getFirstPropertyValue('description') as string | undefined,
         location: vevent.getFirstPropertyValue('location') as string | undefined,
-        uid,
-        rrule: undefined,
+        uid: vevent.getFirstPropertyValue('uid') as string | undefined,
         rawStart: vevent.getFirstPropertyValue('dtstart')?.toString(),
         rawEnd: vevent.getFirstPropertyValue('dtend')?.toString(),
       });
     }
   }
 
-  return events;
+  return { events, warnings };
 }

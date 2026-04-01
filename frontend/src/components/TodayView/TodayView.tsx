@@ -183,6 +183,7 @@ export function TodayView() {
   // Fetch calendar events for range (start date + 4 additional days = 5 total)
   const calendarQuery = useEventsForRange(dateKeys[0], 5);
   const apiConfigured = calendarQuery.data !== null && calendarQuery.data !== undefined;
+  const syncWarnings = calendarQuery.data?.syncWarnings || [];
 
   // Priority filtering
   const togglePriorityFilter = useCallback((value: Priority) => {
@@ -212,17 +213,14 @@ export function TodayView() {
 
   // Build calendar events per day
   const eventsPerDay = useMemo(() => {
-    const allRangeEvents = calendarQuery.data ? icalToCalEvents(calendarQuery.data) : [];
+    const allRangeEvents = calendarQuery.data?.events ? icalToCalEvents(calendarQuery.data.events) : [];
 
     return dateKeys.map((dateKey) => {
-      // Filter the range events for this specific day
       const dayIcalEvents = allRangeEvents.filter(e => {
-        // Find the original raw event start to compare date
-        const ce = e.id.startsWith('ical-') ? calendarQuery.data?.[parseInt(e.id.replace('ical-', ''), 10)] : null;
+        // Match using start string date part
+        const ce = e.id.startsWith('ical-') ? calendarQuery.data?.events[parseInt(e.id.replace('ical-', ''), 10)] : null;
         if (!ce) return false;
-        
-        const d = new Date(ce.start);
-        return toDateKey(d) === dateKey;
+        return ce.start.startsWith(dateKey);
       });
 
       // Fallback logic
@@ -519,6 +517,26 @@ export function TodayView() {
 
   return (
     <div style={{ padding: '12px 16px', maxWidth: '1700px', margin: '0 auto' }}>
+      {syncWarnings.length > 0 && (
+        <div style={{
+          background: '#FFF4E5',
+          border: '1px solid #FFD5AD',
+          borderRadius: '12px',
+          padding: '12px 16px',
+          marginBottom: '16px',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '4px'
+        }}>
+          <div style={{ fontSize: '13px', fontWeight: 700, color: '#663C00', display: 'flex', alignItems: 'center', gap: '8px' }}>
+            ⚠️ Calendar Sync Warnings
+          </div>
+          {syncWarnings.map((w, idx) => (
+            <div key={idx} style={{ fontSize: '12px', color: '#663C00' }}>• {w}</div>
+          ))}
+        </div>
+      )}
+
       <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
         {/* Day Calendars */}
         <div style={{ flex: 1, minWidth: 0 }}>

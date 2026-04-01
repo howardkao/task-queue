@@ -13,7 +13,7 @@ export function useTodayEvents() {
   return useQuery({
     queryKey: ['calendar', 'today'],
     queryFn: fetchTodayEvents,
-    staleTime: 5 * 60 * 1000, // 5 minutes — calendar data doesn't change often
+    staleTime: 5 * 60 * 1000,
     retry: 1,
   });
 }

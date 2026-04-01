@@ -52,6 +52,11 @@ export interface ActivityLogEntry {
   timestamp: any;
 }
 
+export interface CalendarResponse {
+  events: CalendarEvent[];
+  syncWarnings: string[];
+}
+
 export interface CalendarEvent {
   title: string;
   start: string;

@@ -265,7 +265,6 @@ export function DayCalendar({
         {date}
       </div>
 
-      {/* All-day events section */}
       {maxAllDayCount > 0 && (
         <div style={{
           padding: '4px 4px',
@@ -277,33 +276,50 @@ export function DayCalendar({
           gap: '2px',
           minHeight: `${maxAllDayCount * ALL_DAY_ROW_HEIGHT + 8}px`, // 8px for vertical padding
         }}>
-          {allDayEvents.map(event => (
-            <div key={event.id} style={{ display: 'flex' }}>
-              <div style={{ width: `${timeColWidth + 8}px`, flexShrink: 0 }} />
-              <div
-                onClick={() => setSelectedEvent(event)}
-                style={{
-                  flex: 1,
-                  fontSize: '11px',
-                  lineHeight: `${ALL_DAY_ROW_HEIGHT - 2}px`,
-                  fontWeight: 500,
-                  padding: '0 8px',
-                  borderRadius: '4px',
-                  background: `${event.color || '#60a5fa'}22`,
-                  borderLeft: `3px solid ${event.color || '#60a5fa'}`,
-                  color: '#4b5563',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  marginRight: '4px',
-                  cursor: 'pointer',
-                }}
-                title={event.title}
-              >
-                {event.title}
+          {allDayEvents.map(event => {
+            const isBoulderOrRock = event.type === 'boulder' || event.type === 'rock';
+            const bgColor = isBoulderOrRock 
+              ? (event.type === 'rock' ? '#fff7ed' : '#FCEDED')
+              : `${event.color || '#60a5fa'}22`;
+            const borderColor = isBoulderOrRock
+              ? (event.type === 'rock' ? '#c08457' : '#EA6657')
+              : (event.color || '#60a5fa');
+
+            return (
+              <div key={event.id} style={{ display: 'flex' }}>
+                <div style={{ width: `${timeColWidth + 8}px`, flexShrink: 0 }} />
+                <div
+                  draggable={isBoulderOrRock}
+                  onDragStart={isBoulderOrRock ? (e) => handlePlacedBoulderDragStart(e, event.id) : undefined}
+                  onClick={() => setSelectedEvent(event)}
+                  style={{
+                    flex: 1,
+                    fontSize: '11px',
+                    lineHeight: `${ALL_DAY_ROW_HEIGHT - 2}px`,
+                    fontWeight: isBoulderOrRock ? 600 : 500,
+                    padding: '0 8px',
+                    borderRadius: '4px',
+                    background: bgColor,
+                    borderLeft: `3px solid ${borderColor}`,
+                    color: isBoulderOrRock ? '#1D212B' : '#4b5563',
+                    whiteSpace: 'nowrap',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    marginRight: '4px',
+                    cursor: isBoulderOrRock ? 'grab' : 'pointer',
+                    userSelect: 'none',
+                    border: isBoulderOrRock ? `1px solid ${borderColor}33` : 'none',
+                    borderLeftWidth: '3px',
+                    boxSizing: 'border-box',
+                  }}
+                  title={event.title}
+                >
+                  {isBoulderOrRock && <span style={{ marginRight: '6px' }}>{event.type === 'rock' ? '●' : '■'}</span>}
+                  {event.title}
+                </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
