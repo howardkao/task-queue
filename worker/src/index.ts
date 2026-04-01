@@ -199,7 +199,7 @@ function isAdmin(payload: FirebaseTokenPayload, env: Env): boolean {
 
 function corsHeaders(env: Env, request?: Request): Record<string, string> {
   const requestOrigin = request?.headers.get('Origin');
-  const allowedOrigin = env.ALLOWED_ORIGIN || '*';
+  const allowedOrigin = env?.ALLOWED_ORIGIN || '*';
 
   let headerOrigin = allowedOrigin;
   if (allowedOrigin === '*') {
@@ -209,6 +209,7 @@ function corsHeaders(env: Env, request?: Request): Record<string, string> {
     if (allowedOrigins.includes(requestOrigin)) {
       headerOrigin = requestOrigin;
     } else {
+      console.warn(`Origin "${requestOrigin}" not in allowed list: ${allowedOrigin}`);
       headerOrigin = allowedOrigins[0];
     }
   }
@@ -222,12 +223,27 @@ function corsHeaders(env: Env, request?: Request): Record<string, string> {
     'Vary': 'Origin',
   };
 }
+
 function jsonResponse(data: unknown, env: Env, status = 200, request?: Request): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: { 
       'Content-Type': 'application/json', 
       ...corsHeaders(env, request) 
+    },
+  });
+}
+
+/** 
+ * Emergency error response with CORS headers, used when the main handler fails 
+ * before it can use jsonResponse.
+ */
+function errorResponse(message: string, env: Env, status = 500, request?: Request): Response {
+  return new Response(JSON.stringify({ error: message }), {
+    status,
+    headers: {
+      'Content-Type': 'application/json',
+      ...corsHeaders(env, request),
     },
   });
 }
@@ -482,6 +498,8 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
   const feeds = await getFeeds(env);
   const enabledFeeds = feeds.filter(f => f.enabled);
 
+  console.log(`Fetching events for ${enabledFeeds.length} enabled feeds`);
+
   if (enabledFeeds.length === 0) {
     return jsonResponse({ events: [], message: 'No calendar feeds configured.' }, env, 200, request);
   }
@@ -499,10 +517,12 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
   const results = await Promise.allSettled(
     enabledFeeds.map(async (feed) => {
       try {
+        console.log(`Processing feed: ${feed.name} (${feed.id})`);
         // Try KV cache first
         let icalText = await getCachedIcal(env, feed.id);
 
         if (!icalText) {
+          console.log(`Cache miss for ${feed.name}, fetching from ${feed.url}`);
           // Cache miss — fetch live
           const res = await fetch(feed.url, {
             headers: { 'User-Agent': 'TaskQueue-Calendar/1.0' },
@@ -513,11 +533,15 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
           }
           icalText = await res.text();
 
-          // Store in cache (fire-and-forget for speed, but await to ensure it completes)
+          // Store in cache
           await setCachedIcal(env, feed.id, icalText);
+        } else {
+          console.log(`Cache hit for ${feed.name}`);
         }
 
+        console.log(`Parsing iCal for ${feed.name}...`);
         const events = parseICal(icalText, todayStart, todayEnd);
+        console.log(`Found ${events.length} events in ${feed.name}`);
 
         return events.map(event => {
           if (event.isAllDay) {
@@ -635,11 +659,13 @@ export default {
       return jsonResponse({ error: 'Not found' }, env, 404, request);
     } catch (err: any) {
       console.error('Worker global error:', err);
-      return jsonResponse({
-        error: 'Internal Server Error',
-        message: err.message,
-        stack: err.stack,
-      }, env, 500, request);
+      // ALWAYS return a response with CORS headers, even on global crash
+      return errorResponse(
+        err.message || 'Internal Server Error',
+        env,
+        500,
+        request
+      );
     }
   },
 };
