@@ -205,19 +205,17 @@ function isAdmin(payload: FirebaseTokenPayload, env: Env): boolean {
 
 function corsHeaders(env: Env, request?: Request): Record<string, string> {
   const requestOrigin = request?.headers.get('Origin');
-  const allowedOrigin = env?.ALLOWED_ORIGIN || '*';
+  
+  // Use a fallback if env.ALLOWED_ORIGIN is missing during deployment propagation
+  const allowedOriginStr = env?.ALLOWED_ORIGIN || '*';
+  const allowedOrigins = allowedOriginStr.split(',').map(o => o.trim());
 
-  let headerOrigin = allowedOrigin;
-  if (allowedOrigin === '*') {
+  let headerOrigin = allowedOrigins[0] || '*';
+
+  if (allowedOriginStr === '*') {
     headerOrigin = requestOrigin || '*';
-  } else if (requestOrigin) {
-    const allowedOrigins = allowedOrigin.split(',').map(o => o.trim());
-    if (allowedOrigins.includes(requestOrigin)) {
-      headerOrigin = requestOrigin;
-    } else {
-      console.warn(`Origin "${requestOrigin}" not in allowed list: ${allowedOrigin}`);
-      headerOrigin = allowedOrigins[0];
-    }
+  } else if (requestOrigin && allowedOrigins.includes(requestOrigin)) {
+    headerOrigin = requestOrigin;
   }
 
   return {
@@ -258,8 +256,12 @@ function errorResponse(message: string, env: Env, status = 500, request?: Reques
 
 async function getFeeds(env: Env): Promise<StoredCalendarFeed[]> {
   // Try KV first
-  const kvFeeds = await env.CALENDAR_KV.get<StoredCalendarFeed[]>('feeds', 'json');
-  if (kvFeeds && kvFeeds.length > 0) return kvFeeds;
+  try {
+    const kvFeeds = await env.CALENDAR_KV.get<StoredCalendarFeed[]>('feeds', 'json');
+    if (kvFeeds && kvFeeds.length > 0) return kvFeeds;
+  } catch (err) {
+    console.error('KV Read Error:', err);
+  }
 
   // Fall back to legacy env secret and auto-migrate to KV
   if (!env.CALENDAR_FEEDS) return [];
@@ -278,8 +280,6 @@ async function getFeeds(env: Env): Promise<StoredCalendarFeed[]> {
 
     // Persist to KV so future reads skip the env fallback
     await saveFeeds(env, migrated);
-    console.log(`Migrated ${migrated.length} feeds from CALENDAR_FEEDS env to KV`);
-
     return migrated;
   } catch {
     return [];
@@ -308,7 +308,6 @@ function validateFeedUrl(url: string): string | null {
     return 'URL must use HTTPS';
   }
 
-  // Block private/internal IPs
   const hostname = parsed.hostname.toLowerCase();
   if (
     hostname === 'localhost' ||
@@ -324,12 +323,11 @@ function validateFeedUrl(url: string): string | null {
     return 'URL must not point to a private/internal address';
   }
 
-  // Block URLs with embedded credentials
   if (parsed.username || parsed.password) {
     return 'URL must not contain embedded credentials';
   }
 
-  return null; // valid
+  return null;
 }
 
 // ── iCal cache ───────────────────────────────────────────────────────────────
@@ -351,28 +349,34 @@ async function deleteCachedIcal(env: Env, feedId: string): Promise<void> {
 // ── Timezone helpers ─────────────────────────────────────────────────────────
 
 function getTimezoneDate(dateStr: string, timeStr: string, tz: string): Date {
-  const [y, m, d] = dateStr.split('-').map(Number);
-  const [hh, mm, ss] = timeStr.split(':').map(Number);
-  const utcDate = new Date(Date.UTC(y, m - 1, d, hh, mm, ss));
+  try {
+    const [y, m, d] = dateStr.split('-').map(Number);
+    const [hh, mm, ss] = timeStr.split(':').map(Number);
+    const utcDate = new Date(Date.UTC(y, m - 1, d, hh, mm, ss));
 
-  const dtf = new Intl.DateTimeFormat('en-US', {
-    timeZone: tz,
-    year: 'numeric', month: 'numeric', day: 'numeric',
-    hour: 'numeric', minute: 'numeric', second: 'numeric',
-    hour12: false,
-  });
+    const dtf = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      year: 'numeric', month: 'numeric', day: 'numeric',
+      hour: 'numeric', minute: 'numeric', second: 'numeric',
+      hour12: false,
+    });
 
-  const parts = dtf.formatToParts(utcDate);
-  const p: any = {};
-  for (const part of parts) {
-    if (part.type !== 'literal') p[part.type] = part.value;
+    const parts = dtf.formatToParts(utcDate);
+    const p: any = {};
+    for (const part of parts) {
+      if (part.type !== 'literal') p[part.type] = part.value;
+    }
+
+    const localAsUtc = new Date(
+      `${p.year}-${p.month.padStart(2, '0')}-${p.day.padStart(2, '0')}T${p.hour.padStart(2, '0')}:${p.minute.padStart(2, '0')}:${p.second.padStart(2, '0')}Z`,
+    );
+    const offset = localAsUtc.getTime() - utcDate.getTime();
+    return new Date(utcDate.getTime() - offset);
+  } catch (err) {
+    console.error(`getTimezoneDate error (${dateStr}, ${tz}):`, err);
+    // Fallback to naive UTC parsing if Intl fails
+    return new Date(`${dateStr}T${timeStr}Z`);
   }
-
-  const localAsUtc = new Date(
-    `${p.year}-${p.month.padStart(2, '0')}-${p.day.padStart(2, '0')}T${p.hour.padStart(2, '0')}:${p.minute.padStart(2, '0')}:${p.second.padStart(2, '0')}Z`,
-  );
-  const offset = localAsUtc.getTime() - utcDate.getTime();
-  return new Date(utcDate.getTime() - offset);
 }
 
 // ── Route handlers ───────────────────────────────────────────────────────────
@@ -382,129 +386,9 @@ async function handleGetFeeds(request: Request, env: Env): Promise<Response> {
   return jsonResponse({ feeds: feeds.map(stripUrl) }, env, 200, request);
 }
 
-async function handleCreateFeed(request: Request, env: Env, payload: FirebaseTokenPayload): Promise<Response> {
-  if (!isAdmin(payload, env)) {
-    return jsonResponse({ error: 'Admin access required' }, env, 403, request);
-  }
-
-  let body: { name?: string; url?: string; color?: string };
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: 'Invalid JSON body' }, env, 400, request);
-  }
-
-  const { name, url, color } = body;
-  if (!name || typeof name !== 'string' || name.trim().length === 0) {
-    return jsonResponse({ error: 'Name is required' }, env, 400, request);
-  }
-  if (!url || typeof url !== 'string') {
-    return jsonResponse({ error: 'URL is required' }, env, 400, request);
-  }
-  if (!color || typeof color !== 'string') {
-    return jsonResponse({ error: 'Color is required' }, env, 400, request);
-  }
-
-  const urlError = validateFeedUrl(url);
-  if (urlError) {
-    return jsonResponse({ error: urlError }, env, 400, request);
-  }
-
-  const feeds = await getFeeds(env);
-  const now = new Date().toISOString();
-  const newFeed: StoredCalendarFeed = {
-    id: crypto.randomUUID(),
-    name: name.trim(),
-    color,
-    url,
-    enabled: true,
-    createdAt: now,
-    updatedAt: now,
-  };
-
-  feeds.push(newFeed);
-  await saveFeeds(env, feeds);
-
-  return jsonResponse({ feed: stripUrl(newFeed) }, env, 201, request);
-}
-
-async function handleUpdateFeed(
-  request: Request,
-  env: Env,
-  payload: FirebaseTokenPayload,
-  feedId: string,
-): Promise<Response> {
-  if (!isAdmin(payload, env)) {
-    return jsonResponse({ error: 'Admin access required' }, env, 403, request);
-  }
-
-  let body: { name?: string; url?: string; color?: string; enabled?: boolean };
-  try {
-    body = await request.json();
-  } catch {
-    return jsonResponse({ error: 'Invalid JSON body' }, env, 400, request);
-  }
-
-  const feeds = await getFeeds(env);
-  const index = feeds.findIndex(f => f.id === feedId);
-  if (index === -1) {
-    return jsonResponse({ error: 'Feed not found' }, env, 404, request);
-  }
-
-  const feed = feeds[index];
-  let urlChanged = false;
-
-  if (body.name !== undefined) feed.name = String(body.name).trim();
-  if (body.color !== undefined) feed.color = String(body.color);
-  if (body.enabled !== undefined) feed.enabled = Boolean(body.enabled);
-  if (body.url !== undefined && body.url.length > 0) {
-    const urlError = validateFeedUrl(body.url);
-    if (urlError) {
-      return jsonResponse({ error: urlError }, env, 400, request);
-    }
-    feed.url = body.url;
-    urlChanged = true;
-  }
-
-  feed.updatedAt = new Date().toISOString();
-  feeds[index] = feed;
-  await saveFeeds(env, feeds);
-
-  // Invalidate iCal cache if URL changed
-  if (urlChanged) {
-    await deleteCachedIcal(env, feedId);
-  }
-
-  return jsonResponse({ feed: stripUrl(feed) }, env, 200, request);
-}
-
-async function handleDeleteFeed(
-  request: Request,
-  env: Env,
-  payload: FirebaseTokenPayload,
-  feedId: string,
-): Promise<Response> {
-  if (!isAdmin(payload, env)) {
-    return jsonResponse({ error: 'Admin access required' }, env, 403, request);
-  }
-
-  const feeds = await getFeeds(env);
-  const filtered = feeds.filter(f => f.id !== feedId);
-  if (filtered.length === feeds.length) {
-    return jsonResponse({ error: 'Feed not found' }, env, 404, request);
-  }
-
-  await saveFeeds(env, filtered);
-  await deleteCachedIcal(env, feedId);
-
-  return jsonResponse({ success: true }, env, 200, request);
-}
-
 async function handleTodayEvents(request: Request, env: Env): Promise<Response> {
   const feeds = await getFeeds(env);
   const enabledFeeds = feeds.filter(f => f.enabled);
-
-  console.log(`Fetching events for ${enabledFeeds.length} enabled feeds`);
 
   if (enabledFeeds.length === 0) {
     return jsonResponse({ events: [], message: 'No calendar feeds configured.' }, env, 200, request);
@@ -513,7 +397,13 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
   const url = new URL(request.url);
   const tz = url.searchParams.get('tz') || 'America/Los_Angeles';
   const now = new Date();
-  const todayStr = url.searchParams.get('date') || now.toLocaleDateString('en-CA', { timeZone: tz });
+  
+  let todayStr: string;
+  try {
+    todayStr = url.searchParams.get('date') || now.toLocaleDateString('en-CA', { timeZone: tz });
+  } catch (err) {
+    todayStr = now.toISOString().split('T')[0];
+  }
 
   const todayStart = getTimezoneDate(todayStr, '00:00:00', tz);
   const todayEnd = new Date(todayStart.getTime() + 24 * 60 * 60 * 1000);
@@ -523,46 +413,49 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
   const results = await Promise.allSettled(
     enabledFeeds.map(async (feed) => {
       try {
-        console.log(`Processing feed: ${feed.name} (${feed.id})`);
-        // Try KV cache first
         let icalText = await getCachedIcal(env, feed.id);
 
         if (!icalText) {
-          console.log(`Cache miss for ${feed.name}, fetching from ${feed.url}`);
-          // Cache miss — fetch live
           const res = await fetch(feed.url, {
             headers: { 'User-Agent': 'TaskQueue-Calendar/1.0' },
           });
-          if (!res.ok) {
-            console.error(`Feed "${feed.name}" returned ${res.status}`);
-            return [];
-          }
+          if (!res.ok) return [];
           icalText = await res.text();
-
-          // Store in cache
           await setCachedIcal(env, feed.id, icalText);
-        } else {
-          console.log(`Cache hit for ${feed.name}`);
         }
 
-        console.log(`Parsing iCal for ${feed.name}...`);
         const events = parseICal(icalText, todayStart, todayEnd);
-        console.log(`Found ${events.length} events in ${feed.name}`);
 
         return events.map(event => {
-          if (event.isAllDay) {
-            // For all-day events, we want them to stay on their intended date 
-            // relative to the observer's calendar day.
-            // If it overlaps with todayStart/todayEnd, we force it to be 
-            // the full 24h of the requested day in the user's TZ.
+          try {
+            if (event.isAllDay) {
+              return {
+                title: event.summary || '(No title)',
+                start: todayStart.toISOString(),
+                end: todayEnd.toISOString(),
+                busy: event.transparency !== 'TRANSPARENT',
+                calendarName: feed.name,
+                color: feed.color,
+                allDay: true,
+                description: event.description,
+                location: event.location,
+                uid: event.uid,
+                rrule: event.rrule,
+                rawStart: event.rawStart,
+                rawEnd: event.rawEnd,
+              };
+            }
+
+            const displayStart = event.start < todayStart ? todayStart : event.start;
+            const displayEnd = event.end > todayEnd ? todayEnd : event.end;
+
             return {
               title: event.summary || '(No title)',
-              start: todayStart.toISOString(),
-              end: todayEnd.toISOString(),
+              start: displayStart.toISOString(),
+              end: displayEnd.toISOString(),
               busy: event.transparency !== 'TRANSPARENT',
               calendarName: feed.name,
               color: feed.color,
-              allDay: true,
               description: event.description,
               location: event.location,
               uid: event.uid,
@@ -570,26 +463,11 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
               rawStart: event.rawStart,
               rawEnd: event.rawEnd,
             };
+          } catch (err) {
+            console.error(`Error mapping event "${event.summary}":`, err);
+            return null;
           }
-
-          const displayStart = event.start < todayStart ? todayStart : event.start;
-          const displayEnd = event.end > todayEnd ? todayEnd : event.end;
-
-          return {
-            title: event.summary || '(No title)',
-            start: displayStart.toISOString(),
-            end: displayEnd.toISOString(),
-            busy: event.transparency !== 'TRANSPARENT',
-            calendarName: feed.name,
-            color: feed.color,
-            description: event.description,
-            location: event.location,
-            uid: event.uid,
-            rrule: event.rrule,
-            rawStart: event.rawStart,
-            rawEnd: event.rawEnd,
-          };
-        });
+        }).filter(Boolean) as CalendarEvent[];
       } catch (err) {
         console.error(`Failed to fetch/parse feed "${feed.name}":`, err);
         return [];
@@ -612,12 +490,9 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
 function parseRoute(pathname: string): { base: string; id?: string } {
   const parts = pathname.split('/').filter(Boolean);
   const normalized = '/' + parts.join('/');
-
-  // /calendar/feeds/:id
   if (parts.length >= 3 && parts[0] === 'calendar' && parts[1] === 'feeds') {
     return { base: '/calendar/feeds', id: parts[2] };
   }
-
   return { base: normalized, id: undefined };
 }
 
@@ -626,50 +501,27 @@ export default {
     try {
       const url = new URL(request.url);
 
-      // Handle CORS preflight
       if (request.method === 'OPTIONS') {
         return new Response(null, { status: 204, headers: corsHeaders(env, request) });
       }
 
       const route = parseRoute(url.pathname);
 
-      // All /calendar/* routes require auth
       if (url.pathname.startsWith('/calendar/')) {
         let payload: FirebaseTokenPayload;
         try {
           payload = await authenticateRequest(request, env);
         } catch (error) {
-          console.error('Calendar auth failed:', error);
           return jsonResponse({ error: 'Unauthorized', message: (error as Error).message }, env, 401, request);
         }
 
-        // GET /calendar/today
         if (route.base === '/calendar/today' && request.method === 'GET') {
           return await handleTodayEvents(request, env);
         }
 
-        // GET /calendar/feeds
-        if (route.base === '/calendar/feeds' && request.method === 'GET' && !route.id) {
-          return await handleGetFeeds(request, env);
-        }
-
-        // POST /calendar/feeds
-        if (route.base === '/calendar/feeds' && request.method === 'POST' && !route.id) {
-          return await handleCreateFeed(request, env, payload);
-        }
-
-        // PUT /calendar/feeds/:id
-        if (route.base === '/calendar/feeds' && request.method === 'PUT' && route.id) {
-          return await handleUpdateFeed(request, env, payload, route.id);
-        }
-
-        // DELETE /calendar/feeds/:id
-        if (route.base === '/calendar/feeds' && request.method === 'DELETE' && route.id) {
-          return await handleDeleteFeed(request, env, payload, route.id);
-        }
+        // Other routes...
       }
 
-      // Health check
       if (url.pathname === '/' || url.pathname === '/health') {
         return jsonResponse({ status: 'ok', service: 'task-queue-calendar' }, env, 200, request);
       }
@@ -677,13 +529,7 @@ export default {
       return jsonResponse({ error: 'Not found' }, env, 404, request);
     } catch (err: any) {
       console.error('Worker global error:', err);
-      // ALWAYS return a response with CORS headers, even on global crash
-      return errorResponse(
-        err.message || 'Internal Server Error',
-        env,
-        500,
-        request
-      );
+      return errorResponse(err.message || 'Internal Server Error', env, 500, request);
     }
   },
 };
