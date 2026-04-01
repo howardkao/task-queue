@@ -589,6 +589,26 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
         </div>
       )}
 
+      {/* Add-field links */}
+      {addLinks.length > 0 && (
+        <div className="flex flex-wrap gap-1.5 mb-4">
+          {addLinks.map(link => (
+            <button
+              key={link.label}
+              onClick={link.action}
+              className={cn(
+                "flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium",
+                "text-muted-foreground hover:text-foreground hover:bg-secondary",
+                "transition-all duration-150"
+              )}
+            >
+              <Plus className="w-3 h-3" />
+              {link.label}
+            </button>
+          ))}
+        </div>
+      )}
+
       {/* Priority Toggle - Color-coded chips */}
       <div className="mb-4">
         <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
@@ -639,26 +659,6 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
           })}
         </div>
       </div>
-
-      {/* Add-field links */}
-      {addLinks.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {addLinks.map(link => (
-            <button
-              key={link.label}
-              onClick={link.action}
-              className={cn(
-                "flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium",
-                "text-muted-foreground hover:text-foreground hover:bg-secondary",
-                "transition-all duration-150"
-              )}
-            >
-              <Plus className="w-3 h-3" />
-              {link.label}
-            </button>
-          ))}
-        </div>
-      )}
 
       {/* Actions */}
       <div className="flex items-center gap-2 pt-3 border-t border-border">
