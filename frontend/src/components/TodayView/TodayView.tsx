@@ -16,6 +16,7 @@ import { CalendarFeedSettings } from './CalendarFeedSettings';
 
 // Fallback mock events when no iCal feeds configured
 const MOCK_CAL_EVENTS: CalEvent[] = [
+  { id: 'cal-0', title: 'Vacation in Paris', startHour: 0, duration: 24, type: 'meeting', allDay: true, busy: true },
   { id: 'cal-1', title: 'Team standup', startHour: 9, duration: 0.5, type: 'meeting', busy: true },
   { id: 'cal-2', title: 'Design review', startHour: 10, duration: 1, type: 'meeting', busy: true },
   { id: 'cal-3', title: 'Lunch w/ Sam', startHour: 12, duration: 1, type: 'personal', busy: true },
@@ -28,6 +29,11 @@ function icalToCalEvents(events: CalendarEvent[]): CalEvent[] {
     const end = new Date(e.end);
     const startHour = start.getHours() + start.getMinutes() / 60;
     const duration = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
+    
+    // Detect all-day events: they start at midnight and last at least 23.9 hours
+    // (clipped by the worker to exactly 24 hours for the current day)
+    const allDay = startHour === 0 && duration >= 23.9;
+
     return {
       id: `ical-${i}`,
       title: e.title,
@@ -36,6 +42,7 @@ function icalToCalEvents(events: CalendarEvent[]): CalEvent[] {
       type: 'meeting' as const,
       busy: e.busy,
       color: e.color,
+      allDay,
     };
   });
 }
@@ -195,6 +202,10 @@ export function TodayView() {
       return events;
     });
   }, [dateKeys, calendarQueries, allBoulders, allRocks, dueSoonTasks, todayKey]);
+
+  const maxAllDayCount = useMemo(() => {
+    return Math.max(...eventsPerDay.map(dayEvents => dayEvents.filter(e => e.allDay).length), 0);
+  }, [eventsPerDay]);
 
   const handleBoulderDrop = useCallback((boulderId: string, startHour: number, dateKey: string) => {
     const task = [...allBoulders, ...allRocks, ...dueSoonTasks].find(t => t.id === boulderId);
@@ -498,6 +509,7 @@ export function TodayView() {
                 date={formatDateHeader(date, dateKeys[i] === todayKey)}
                 dateKey={dateKeys[i]}
                 events={eventsPerDay[i]}
+                maxAllDayCount={maxAllDayCount}
                 startHour={wakeUpHour}
                 endHour={bedTimeHour}
                 compact

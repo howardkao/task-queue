@@ -6,6 +6,7 @@ export interface CalEvent {
   startHour: number;  // e.g. 9.5 = 9:30am
   duration: number;    // in hours, e.g. 1.5
   type: 'meeting' | 'personal' | 'boulder' | 'rock';
+  allDay?: boolean;
   busy?: boolean;
   projectName?: string;
   color?: string;
@@ -15,6 +16,7 @@ interface DayCalendarProps {
   date: string;
   dateKey: string; // ISO date string (YYYY-MM-DD) identifying this day
   events: CalEvent[];
+  maxAllDayCount?: number;
   startHour?: number;
   endHour?: number;
   compact?: boolean; // narrower layout for multi-day view
@@ -29,13 +31,14 @@ interface DayCalendarProps {
 const SLOT_HEIGHT = 33; // px per half hour
 const SNAP = 0.25; // 15 minutes
 const PX_PER_HOUR = SLOT_HEIGHT * 2; // 66px per hour
+const ALL_DAY_ROW_HEIGHT = 22; // px per all-day event row
 
 function snapToGrid(hour: number): number {
   return Math.round(hour / SNAP) * SNAP;
 }
 
 export function DayCalendar({
-  date, dateKey, events, startHour = 7, endHour = 22, compact = false,
+  date, dateKey, events, maxAllDayCount = 0, startHour = 7, endHour = 22, compact = false,
   showLabels = true, isToday = false,
   onBoulderDrop, onBoulderMove, onBoulderResize, onBoulderRemove,
 }: DayCalendarProps) {
@@ -232,6 +235,13 @@ export function DayCalendar({
     return `${displayHour}:${min.toString().padStart(2, '0')}${ampm}`;
   };
 
+  const { allDayEvents, timedEvents } = useMemo(() => {
+    return {
+      allDayEvents: events.filter(e => e.allDay),
+      timedEvents: events.filter(e => !e.allDay),
+    };
+  }, [events]);
+
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
       <div style={{
@@ -245,6 +255,47 @@ export function DayCalendar({
       }}>
         {date}
       </div>
+
+      {/* All-day events section */}
+      {maxAllDayCount > 0 && (
+        <div style={{
+          padding: '4px 4px',
+          border: '1px solid #E7E3DF',
+          borderTop: 'none',
+          background: '#f9fafa',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '2px',
+          minHeight: `${maxAllDayCount * ALL_DAY_ROW_HEIGHT + 8}px`, // 8px for vertical padding
+        }}>
+          {allDayEvents.map(event => (
+            <div key={event.id} style={{ display: 'flex' }}>
+              <div style={{ width: `${timeColWidth + 8}px`, flexShrink: 0 }} />
+              <div
+                style={{
+                  flex: 1,
+                  fontSize: '11px',
+                  lineHeight: `${ALL_DAY_ROW_HEIGHT - 2}px`,
+                  fontWeight: 500,
+                  padding: '0 8px',
+                  borderRadius: '4px',
+                  background: `${event.color || '#60a5fa'}22`,
+                  borderLeft: `3px solid ${event.color || '#60a5fa'}`,
+                  color: '#4b5563',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  marginRight: '4px',
+                }}
+                title={event.title}
+              >
+                {event.title}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div
         ref={gridRef}
         onDragOver={handleDragOver}
@@ -253,7 +304,7 @@ export function DayCalendar({
         style={{
           border: '1px solid #E7E3DF',
           borderTop: 'none',
-          borderRadius: '0 0 12px 12px',
+          borderRadius: allDayEvents.length > 0 ? '0 0 12px 12px' : '0 0 12px 12px', // remains same
           background: '#fff',
           position: 'relative',
           borderLeft: showLabels ? '1px solid #E7E3DF' : 'none',
@@ -338,7 +389,7 @@ export function DayCalendar({
         )}
 
         {/* Events overlaid */}
-        {events.map((event) => (
+        {timedEvents.map((event) => (
           <div
             key={event.id}
             style={getEventStyle(event)}
