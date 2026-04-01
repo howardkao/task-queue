@@ -157,7 +157,8 @@ function getTimestamp(value: any): number {
   return Number.isNaN(parsed) ? 0 : parsed;
 }
 
-function isOverdueOrDueToday(deadline: any): boolean {
+/** True when the deadline is set and falls on or before the end of today (local). */
+export function isOverdueOrDueToday(deadline: any): boolean {
   const ts = getTimestamp(deadline);
   if (ts === 0) return false;
   const now = new Date();

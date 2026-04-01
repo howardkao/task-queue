@@ -3,12 +3,12 @@ import { DayCalendar } from './DayCalendar';
 import { BoulderSidebar } from './BoulderSidebar';
 import { RockSidebar } from './RockSidebar';
 import { PebbleSidebar } from './PebbleSidebar';
-import { useTodayBoulders, useTodayRocks, useTodayInboxTasks, useCreateTask, useClassifyTask, useUpdateTask, useDueSoonTasks, STANDALONE_PROJECT_FILTER } from '../../hooks/useTasks';
+import { useTodayBoulders, useTodayRocks, useTodayPebbles, useTodayInboxTasks, useCreateTask, useClassifyTask, useUpdateTask, useDueSoonTasks, isOverdueOrDueToday, STANDALONE_PROJECT_FILTER } from '../../hooks/useTasks';
 import { useProjects } from '../../hooks/useProjects';
 import { useIsMobile } from '../../hooks/useViewport';
 import { useEventsForRange } from '../../hooks/useCalendar';
 import type { CalEvent } from './DayCalendar';
-import type { CalendarEvent, Classification, Priority } from '../../types';
+import type { CalendarEvent, Classification, Priority, Task } from '../../types';
 import type { TodayProjectFilter } from '../../hooks/useTasks';
 import { SideDrawer } from '../shared/SideDrawer';
 import { DueSoonSidebar } from './DueSoonSidebar';
@@ -76,6 +76,12 @@ function formatDateHeader(d: Date, isToday: boolean): string {
   return isToday ? `${label} (Today)` : label;
 }
 
+function calendarEventTypeForTask(task: { classification: Classification }): CalEvent['type'] {
+  if (task.classification === 'rock') return 'rock';
+  if (task.classification === 'pebble') return 'pebble';
+  return 'boulder';
+}
+
 export function TodayView() {
   const isMobile = useIsMobile();
   const { data: projects = [] } = useProjects('active');
@@ -88,6 +94,7 @@ export function TodayView() {
   const { data: rocks = [] } = useTodayRocks(projectFilter);
   const { data: allBoulders = [] } = useTodayBoulders(unfilteredProjectFilter);
   const { data: allRocks = [] } = useTodayRocks(unfilteredProjectFilter);
+  const { data: allPebbles = [] } = useTodayPebbles(unfilteredProjectFilter);
   const { data: inboxTasks = [] } = useTodayInboxTasks(projectFilter);
   const createTask = useCreateTask();
   const classifyTask = useClassifyTask();
@@ -174,13 +181,27 @@ export function TodayView() {
   // Derived map for easy lookup
   const placedTasksMap = useMemo(() => {
     const map: Record<string, { date: string; startHour: number; duration: number }> = {};
-    [...allBoulders, ...allRocks, ...dueSoonTasks].forEach(t => {
+    [...allBoulders, ...allRocks, ...allPebbles, ...dueSoonTasks].forEach(t => {
       if (t.placement) {
         map[t.id] = t.placement;
       }
     });
     return map;
-  }, [allBoulders, allRocks, dueSoonTasks]);
+  }, [allBoulders, allRocks, allPebbles, dueSoonTasks]);
+
+  const schedulableCalendarTasks = useMemo(() => {
+    const fromDueSoon = dueSoonTasks.filter(
+      (t) =>
+        t.classification === 'boulder' ||
+        t.classification === 'rock' ||
+        t.classification === 'pebble'
+    );
+    const byId = new Map<string, Task>();
+    for (const t of [...allBoulders, ...allRocks, ...allPebbles, ...fromDueSoon]) {
+      byId.set(t.id, t);
+    }
+    return [...byId.values()];
+  }, [allBoulders, allRocks, allPebbles, dueSoonTasks]);
 
   // Fetch calendar events for range (start date + 4 additional days = 5 total)
   const calendarQuery = useEventsForRange(dateKeys[0], 5, shouldBustCache);
@@ -238,27 +259,24 @@ export function TodayView() {
 
       const events: CalEvent[] = [...baseEvents];
 
-      const schedulableTasks = [...allBoulders, ...allRocks, ...dueSoonTasks.filter(t => t.classification === 'boulder' || t.classification === 'rock')];
-      // Add schedulable tasks for this day
-      for (const task of schedulableTasks) {
+      for (const task of schedulableCalendarTasks) {
+        const calType = calendarEventTypeForTask(task);
         if (task.placement && task.placement.date === dateKey) {
-          // Placed task
           events.push({
             id: `boulder-${task.id}`,
             title: task.title,
             startHour: task.placement.startHour,
             duration: task.placement.duration,
-            type: task.classification === 'rock' ? 'rock' : 'boulder',
+            type: calType,
             projectName: task.projectId ? 'Project' : undefined,
           });
-        } else if (!task.placement && dateKey === todayKey) {
-          // Unplaced task (always show on Today calendar in All Day section)
+        } else if (!task.placement && dateKey === todayKey && isOverdueOrDueToday(task.deadline)) {
           events.push({
             id: `boulder-${task.id}`,
             title: task.title,
             startHour: 0,
             duration: 24,
-            type: task.classification === 'rock' ? 'rock' : 'boulder',
+            type: calType,
             allDay: true,
             projectName: task.projectId ? 'Project' : undefined,
           });
@@ -267,14 +285,14 @@ export function TodayView() {
 
       return events;
     });
-  }, [dateKeys, calendarQuery.data, allBoulders, allRocks, dueSoonTasks, todayKey]);
+  }, [dateKeys, calendarQuery.data, schedulableCalendarTasks, todayKey]);
 
   const maxAllDayCount = useMemo(() => {
     return Math.max(...eventsPerDay.map(dayEvents => dayEvents.filter(e => e.allDay).length), 0);
   }, [eventsPerDay]);
 
   const handleBoulderDrop = useCallback((boulderId: string, startHour: number, dateKey: string) => {
-    const task = [...allBoulders, ...allRocks, ...dueSoonTasks].find(t => t.id === boulderId);
+    const task = [...allBoulders, ...allRocks, ...allPebbles, ...dueSoonTasks].find(t => t.id === boulderId);
     if (!task) return;
     updateTask.mutate({
       id: boulderId,
@@ -286,10 +304,10 @@ export function TodayView() {
         },
       },
     });
-  }, [allBoulders, allRocks, dueSoonTasks, updateTask]);
+  }, [allBoulders, allRocks, allPebbles, dueSoonTasks, updateTask]);
 
   const handleBoulderMove = useCallback((boulderId: string, startHour: number) => {
-    const task = [...allBoulders, ...allRocks, ...dueSoonTasks].find(t => t.id === boulderId);
+    const task = [...allBoulders, ...allRocks, ...allPebbles, ...dueSoonTasks].find(t => t.id === boulderId);
     if (!task || !task.placement) return;
     updateTask.mutate({
       id: boulderId,
@@ -297,10 +315,10 @@ export function TodayView() {
         placement: { ...task.placement, startHour },
       },
     });
-  }, [allBoulders, allRocks, dueSoonTasks, updateTask]);
+  }, [allBoulders, allRocks, allPebbles, dueSoonTasks, updateTask]);
 
   const handleBoulderResize = useCallback((boulderId: string, duration: number) => {
-    const task = [...allBoulders, ...allRocks, ...dueSoonTasks].find(t => t.id === boulderId);
+    const task = [...allBoulders, ...allRocks, ...allPebbles, ...dueSoonTasks].find(t => t.id === boulderId);
     if (!task || !task.placement) return;
     updateTask.mutate({
       id: boulderId,
@@ -308,7 +326,7 @@ export function TodayView() {
         placement: { ...task.placement, duration },
       },
     });
-  }, [allBoulders, allRocks, dueSoonTasks, updateTask]);
+  }, [allBoulders, allRocks, allPebbles, dueSoonTasks, updateTask]);
 
   const handleBoulderRemove = useCallback((boulderId: string) => {
     updateTask.mutate({

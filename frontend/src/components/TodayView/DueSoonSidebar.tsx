@@ -40,8 +40,11 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
   const placedIds = Object.keys(placedTasks);
 
   const handleDragStart = (e: React.DragEvent, task: Task) => {
-    // Only allow calendar dragging for boulders and rocks
-    if (task.classification === 'boulder' || task.classification === 'rock') {
+    if (
+      task.classification === 'boulder' ||
+      task.classification === 'rock' ||
+      task.classification === 'pebble'
+    ) {
       e.dataTransfer.setData('boulder-id', task.id);
       e.dataTransfer.effectAllowed = 'move';
     }
@@ -78,11 +81,13 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
         // Visual style based on classification
         const isBoulder = task.classification === 'boulder';
         const isRock = task.classification === 'rock';
+        const isPebble = task.classification === 'pebble';
+        const calendarDraggable = isBoulder || isRock || isPebble;
 
         return (
           <div key={task.id}>
             <div
-              draggable={isBoulder || isRock}
+              draggable={calendarDraggable}
               onDragStart={(e) => handleDragStart(e, task)}
               style={{
                 ...cardStyle,
@@ -92,7 +97,7 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
               }}
             >
               <div style={cardInner}>
-                {(isBoulder || isRock) && (
+                {calendarDraggable && (
                   <div style={{
                     display: 'flex',
                     flexDirection: 'column',
@@ -114,7 +119,10 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
                   {(projectName || isPlaced || deadlineStr || task.recurrence) && (
                     <div style={metaLine}>
                       {isPlaced && placedTasks[task.id] && (
-                        <span style={{ color: isBoulder ? '#EA6657' : '#c08457', marginRight: '8px' }}>
+                        <span style={{
+                          color: isBoulder ? '#EA6657' : isPebble ? '#64748b' : '#c08457',
+                          marginRight: '8px',
+                        }}>
                           {formatPlacedDate(placedTasks[task.id].date)}
                         </span>
                       )}

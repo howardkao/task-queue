@@ -5,7 +5,7 @@ export interface CalEvent {
   title: string;
   startHour: number;  // e.g. 9.5 = 9:30am
   duration: number;    // in hours, e.g. 1.5
-  type: 'meeting' | 'personal' | 'boulder' | 'rock';
+  type: 'meeting' | 'personal' | 'boulder' | 'rock' | 'pebble';
   allDay?: boolean;
   busy?: boolean;
   projectName?: string;
@@ -41,6 +41,17 @@ const ALL_DAY_ROW_HEIGHT = 22; // px per all-day event row
 
 function snapToGrid(hour: number): number {
   return Math.round(hour / SNAP) * SNAP;
+}
+
+function isPlacedTaskEventType(type: CalEvent['type']): boolean {
+  return type === 'boulder' || type === 'rock' || type === 'pebble';
+}
+
+function taskEventAccent(type: CalEvent['type']): string {
+  if (type === 'rock') return '#c08457';
+  if (type === 'pebble') return '#64748b';
+  if (type === 'boulder') return '#EA6657';
+  return '#60a5fa';
 }
 
 export function DayCalendar({
@@ -203,12 +214,14 @@ export function DayCalendar({
       userSelect: 'none',
     };
 
-    if (event.type === 'boulder' || event.type === 'rock') {
+    if (isPlacedTaskEventType(event.type)) {
+      const accent = taskEventAccent(event.type);
+      const bg = event.type === 'rock' ? '#fff7ed' : event.type === 'pebble' ? '#f1f5f9' : '#FCEDED';
       return {
         ...baseStyle,
-        border: event.type === 'rock' ? '2px dashed #c08457' : '2px dashed #EA6657',
-        background: event.type === 'rock' ? '#fff7ed' : '#FCEDED',
-        borderLeft: event.type === 'rock' ? '4px solid #c08457' : '4px solid #EA6657',
+        border: `2px dashed ${accent}`,
+        background: bg,
+        borderLeft: `4px solid ${accent}`,
         padding: '8px',
         cursor: 'grab',
       };
@@ -266,7 +279,18 @@ export function DayCalendar({
       </div>
 
       {maxAllDayCount > 0 && (
-        <div style={{
+        <div
+          onDragOver={(e) => {
+            if (e.dataTransfer.types.includes('boulder-id')) {
+              e.dataTransfer.dropEffect = 'none';
+            }
+          }}
+          onDrop={(e) => {
+            if (e.dataTransfer.types.includes('boulder-id')) {
+              e.preventDefault();
+            }
+          }}
+          style={{
           padding: '4px 4px',
           border: '1px solid #E7E3DF',
           borderTop: 'none',
@@ -275,46 +299,51 @@ export function DayCalendar({
           flexDirection: 'column',
           gap: '2px',
           minHeight: `${maxAllDayCount * ALL_DAY_ROW_HEIGHT + 8}px`, // 8px for vertical padding
-        }}>
+        }}
+        >
           {allDayEvents.map(event => {
-            const isBoulderOrRock = event.type === 'boulder' || event.type === 'rock';
-            const bgColor = isBoulderOrRock 
-              ? (event.type === 'rock' ? '#fff7ed' : '#FCEDED')
+            const isUserTask = isPlacedTaskEventType(event.type);
+            const bgColor = isUserTask
+              ? (event.type === 'rock' ? '#fff7ed' : event.type === 'pebble' ? '#f1f5f9' : '#FCEDED')
               : `${event.color || '#60a5fa'}22`;
-            const borderColor = isBoulderOrRock
-              ? (event.type === 'rock' ? '#c08457' : '#EA6657')
+            const borderColor = isUserTask
+              ? taskEventAccent(event.type)
               : (event.color || '#60a5fa');
 
             return (
               <div key={event.id} style={{ display: 'flex' }}>
                 <div style={{ width: `${timeColWidth + 8}px`, flexShrink: 0 }} />
                 <div
-                  draggable={isBoulderOrRock}
-                  onDragStart={isBoulderOrRock ? (e) => handlePlacedBoulderDragStart(e, event.id) : undefined}
+                  draggable={isUserTask}
+                  onDragStart={isUserTask ? (e) => handlePlacedBoulderDragStart(e, event.id) : undefined}
                   onClick={() => setSelectedEvent(event)}
                   style={{
                     flex: 1,
                     fontSize: '11px',
                     lineHeight: `${ALL_DAY_ROW_HEIGHT - 2}px`,
-                    fontWeight: isBoulderOrRock ? 600 : 500,
+                    fontWeight: isUserTask ? 600 : 500,
                     padding: '0 8px',
                     borderRadius: '4px',
                     background: bgColor,
                     borderLeft: `3px solid ${borderColor}`,
-                    color: isBoulderOrRock ? '#1D212B' : '#4b5563',
+                    color: isUserTask ? '#1D212B' : '#4b5563',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     marginRight: '4px',
-                    cursor: isBoulderOrRock ? 'grab' : 'pointer',
+                    cursor: isUserTask ? 'grab' : 'pointer',
                     userSelect: 'none',
-                    border: isBoulderOrRock ? `1px solid ${borderColor}33` : 'none',
+                    border: isUserTask ? `1px solid ${borderColor}33` : 'none',
                     borderLeftWidth: '3px',
                     boxSizing: 'border-box',
                   }}
                   title={event.title}
                 >
-                  {isBoulderOrRock && <span style={{ marginRight: '6px' }}>{event.type === 'rock' ? '●' : '■'}</span>}
+                  {isUserTask && (
+                    <span style={{ marginRight: '6px' }}>
+                      {event.type === 'rock' ? '●' : event.type === 'pebble' ? '◇' : '■'}
+                    </span>
+                  )}
                   {event.title}
                 </div>
               </div>
@@ -420,10 +449,10 @@ export function DayCalendar({
           <div
             key={event.id}
             style={getEventStyle(event)}
-            onMouseDown={(event.type === 'boulder' || event.type === 'rock') ? (e) => handleMouseDown(e, event.id, 'move') : undefined}
+            onMouseDown={isPlacedTaskEventType(event.type) ? (e) => handleMouseDown(e, event.id, 'move') : undefined}
             onClick={(event.type === 'meeting' || event.type === 'personal') ? () => setSelectedEvent(event) : undefined}
           >
-            {(event.type === 'boulder' || event.type === 'rock') ? (
+            {isPlacedTaskEventType(event.type) ? (
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
@@ -441,7 +470,7 @@ export function DayCalendar({
                         background: '#fff',
                         cursor: 'grab',
                         fontSize: '12px',
-                        color: event.type === 'rock' ? '#c08457' : '#EA6657',
+                        color: taskEventAccent(event.type),
                         lineHeight: '1',
                         flexShrink: 0,
                       }}
@@ -491,7 +520,7 @@ export function DayCalendar({
                     width: '30px',
                     height: '3px',
                     borderRadius: '2px',
-                    background: event.type === 'rock' ? '#d6a46c' : '#EA6657',
+                    background: event.type === 'rock' ? '#d6a46c' : event.type === 'pebble' ? '#94a3b8' : '#EA6657',
                   }} />
                 </div>
               </>
@@ -647,7 +676,7 @@ export function DayCalendar({
  * Find the first free slot of given duration in hours.
  */
 export function findFreeSlot(events: CalEvent[], durationHours: number = 2, startHour: number = 8, endHour: number = 22): number {
-  const busyEvents = events.filter(e => e.busy !== false && e.type !== 'boulder' && e.type !== 'rock');
+  const busyEvents = events.filter(e => e.busy !== false && !isPlacedTaskEventType(e.type));
   const busy = new Set<number>();
   for (const ev of busyEvents) {
     for (let t = ev.startHour; t < ev.startHour + ev.duration; t += 0.25) {
