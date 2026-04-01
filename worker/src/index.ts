@@ -46,6 +46,7 @@ interface CalendarEvent {
   busy: boolean;
   calendarName: string;
   color: string;
+  allDay?: boolean;
 }
 
 interface FirebaseTokenHeader {
@@ -519,6 +520,22 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
         const events = parseICal(icalText, todayStart, todayEnd);
 
         return events.map(event => {
+          if (event.isAllDay) {
+            // For all-day events, we want them to stay on their intended date 
+            // relative to the observer's calendar day.
+            // If it overlaps with todayStart/todayEnd, we force it to be 
+            // the full 24h of the requested day in the user's TZ.
+            return {
+              title: event.summary || '(No title)',
+              start: todayStart.toISOString(),
+              end: todayEnd.toISOString(),
+              busy: event.transparency !== 'TRANSPARENT',
+              calendarName: feed.name,
+              color: feed.color,
+              allDay: true,
+            };
+          }
+
           const displayStart = event.start < todayStart ? todayStart : event.start;
           const displayEnd = event.end > todayEnd ? todayEnd : event.end;
 

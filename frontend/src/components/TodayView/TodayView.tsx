@@ -30,9 +30,8 @@ function icalToCalEvents(events: CalendarEvent[]): CalEvent[] {
     const startHour = start.getHours() + start.getMinutes() / 60;
     const duration = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
     
-    // Detect all-day events: they start at midnight and last at least 23.9 hours
-    // (clipped by the worker to exactly 24 hours for the current day)
-    const allDay = startHour === 0 && duration >= 23.9;
+    // Prioritize explicit allDay flag from API, fallback to detection
+    const allDay = e.allDay ?? (startHour === 0 && duration >= 23.9);
 
     return {
       id: `ical-${i}`,

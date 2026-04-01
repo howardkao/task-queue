@@ -59,6 +59,7 @@ export interface CalendarEvent {
   busy: boolean;
   calendarName: string;
   color: string;
+  allDay?: boolean;
 }
 
 export interface CalendarFeed {

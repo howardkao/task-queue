@@ -10,6 +10,7 @@ export interface ICalEvent {
   start: Date;
   end: Date;
   transparency: string; // OPAQUE or TRANSPARENT
+  isAllDay: boolean;
 }
 
 /**
@@ -30,6 +31,7 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): ICalE
     const event = new ICAL.Event(vevent);
     const transp = (vevent.getFirstPropertyValue('transp') || 'OPAQUE').toString().toUpperCase();
     const summary = event.summary || '(No title)';
+    const isAllDay = event.startDate.isDate;
 
     if (event.isRecurring()) {
       // Expand recurring event within our date range
@@ -55,6 +57,7 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): ICalE
           start: next.toJSDate(),
           end: occurrenceEnd.toJSDate(),
           transparency: transp,
+          isAllDay: next.isDate,
         });
       }
     } else {
@@ -69,6 +72,7 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): ICalE
         start: dtstart.toJSDate(),
         end: dtend.toJSDate(),
         transparency: transp,
+        isAllDay,
       });
     }
   }
