@@ -62,6 +62,10 @@ export interface CalendarEvent {
   allDay?: boolean;
   description?: string;
   location?: string;
+  uid?: string;
+  rrule?: string;
+  rawStart?: string;
+  rawEnd?: string;
 }
 
 export interface CalendarFeed {

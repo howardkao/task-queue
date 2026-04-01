@@ -13,6 +13,10 @@ export interface ICalEvent {
   isAllDay: boolean;
   description?: string;
   location?: string;
+  uid?: string;
+  rrule?: string;
+  rawStart?: string;
+  rawEnd?: string;
 }
 
 /**
@@ -36,6 +40,10 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): ICalE
     const isAllDay = event.startDate.isDate;
     const description = vevent.getFirstPropertyValue('description') as string | undefined;
     const location = vevent.getFirstPropertyValue('location') as string | undefined;
+    const uid = vevent.getFirstPropertyValue('uid') as string | undefined;
+    const rrule = vevent.getFirstPropertyValue('rrule')?.toString();
+    const rawStart = vevent.getFirstPropertyValue('dtstart')?.toString();
+    const rawEnd = vevent.getFirstPropertyValue('dtend')?.toString();
 
     if (event.isRecurring()) {
       // Expand recurring event within our date range
@@ -64,6 +72,10 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): ICalE
           isAllDay: next.isDate,
           description,
           location,
+          uid,
+          rrule,
+          rawStart,
+          rawEnd,
         });
       }
     } else {
@@ -81,6 +93,10 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): ICalE
         isAllDay,
         description,
         location,
+        uid,
+        rrule,
+        rawStart,
+        rawEnd,
       });
     }
   }

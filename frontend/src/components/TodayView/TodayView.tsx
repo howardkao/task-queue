@@ -44,6 +44,10 @@ function icalToCalEvents(events: CalendarEvent[]): CalEvent[] {
       allDay,
       description: e.description,
       location: e.location,
+      uid: e.uid,
+      rrule: e.rrule,
+      rawStart: e.rawStart,
+      rawEnd: e.rawEnd,
     };
   });
 }

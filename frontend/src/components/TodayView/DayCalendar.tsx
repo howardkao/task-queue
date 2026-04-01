@@ -12,6 +12,10 @@ export interface CalEvent {
   color?: string;
   description?: string;
   location?: string;
+  uid?: string;
+  rrule?: string;
+  rawStart?: string;
+  rawEnd?: string;
 }
 
 interface DayCalendarProps {
@@ -537,10 +541,13 @@ export function DayCalendar({
                 <div style={{ display: 'flex', gap: '12px', alignItems: 'center', color: '#4b5563' }}>
                   <span style={{ fontSize: '18px' }}>🕒</span>
                   <div style={{ fontSize: '14px' }}>
-                    {selectedEvent.allDay ? (
-                      'All Day'
-                    ) : (
-                      `${formatHourMinute(selectedEvent.startHour)} – ${formatHourMinute(selectedEvent.startHour + selectedEvent.duration)}`
+                    <div style={{ fontWeight: 600 }}>
+                      {selectedEvent.allDay ? 'All Day' : `${formatHourMinute(selectedEvent.startHour)} – ${formatHourMinute(selectedEvent.startHour + selectedEvent.duration)}`}
+                    </div>
+                    {selectedEvent.rrule && (
+                      <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
+                        🔄 {selectedEvent.rrule}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -569,6 +576,29 @@ export function DayCalendar({
                     />
                   </div>
                 )}
+
+                {/* Debug Info Section */}
+                <div style={{ borderTop: '1px solid #EFEDEB', paddingTop: '16px', marginTop: '4px' }}>
+                  <div style={{ fontSize: '12px', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 600 }}>
+                    Debug Info
+                  </div>
+                  <div style={{ 
+                    fontSize: '11px', 
+                    color: '#6b7280', 
+                    fontFamily: 'monospace', 
+                    background: '#F9F7F6', 
+                    padding: '8px', 
+                    borderRadius: '8px',
+                    display: 'grid',
+                    gap: '4px'
+                  }}>
+                    <div><span style={{ fontWeight: 600 }}>UID:</span> {selectedEvent.uid || 'N/A'}</div>
+                    <div><span style={{ fontWeight: 600 }}>DTSTART:</span> {selectedEvent.rawStart || 'N/A'}</div>
+                    <div><span style={{ fontWeight: 600 }}>DTEND:</span> {selectedEvent.rawEnd || 'N/A'}</div>
+                    <div><span style={{ fontWeight: 600 }}>RRULE:</span> {selectedEvent.rrule || 'N/A'}</div>
+                    <div><span style={{ fontWeight: 600 }}>ID:</span> {selectedEvent.id}</div>
+                  </div>
+                </div>
               </div>
             </div>
             

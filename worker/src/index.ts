@@ -49,6 +49,10 @@ interface CalendarEvent {
   allDay?: boolean;
   description?: string;
   location?: string;
+  uid?: string;
+  rrule?: string;
+  rawStart?: string;
+  rawEnd?: string;
 }
 
 interface FirebaseTokenHeader {
@@ -561,6 +565,10 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
               allDay: true,
               description: event.description,
               location: event.location,
+              uid: event.uid,
+              rrule: event.rrule,
+              rawStart: event.rawStart,
+              rawEnd: event.rawEnd,
             };
           }
 
@@ -576,6 +584,10 @@ async function handleTodayEvents(request: Request, env: Env): Promise<Response> 
             color: feed.color,
             description: event.description,
             location: event.location,
+            uid: event.uid,
+            rrule: event.rrule,
+            rawStart: event.rawStart,
+            rawEnd: event.rawEnd,
           };
         });
       } catch (err) {
