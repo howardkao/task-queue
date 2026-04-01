@@ -339,54 +339,6 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
         placeholder="Task title..."
       />
 
-      {/* Classification Toggle - Pill style */}
-      <div className="mb-4">
-        <div className="flex rounded-full border border-border bg-card p-0.5 w-fit">
-          {(['boulder', 'rock', 'pebble'] as const).map((type) => {
-            const active = classification === type;
-            return (
-              <button
-                key={type}
-                onClick={() => setClassification(type)}
-                className={cn(
-                  "px-4 py-1.5 text-[13px] font-medium rounded-full transition-all duration-200",
-                  active
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:text-foreground"
-                )}
-              >
-                {type.charAt(0).toUpperCase() + type.slice(1)}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* Priority Toggle - Color-coded chips */}
-      <div className="mb-4">
-        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-          Priority
-        </label>
-        <div className="flex flex-wrap gap-1.5">
-          {(['high', 'med', 'low'] as const).map((p) => {
-            const active = priority === p;
-            const classes = PRIORITY_CLASSES[p];
-            return (
-              <button
-                key={p}
-                onClick={() => setPriority(p)}
-                className={cn(
-                  "px-3 py-1 text-[12px] font-medium rounded-full border transition-all duration-150",
-                  active ? classes.active : classes.inactive
-                )}
-              >
-                {p.charAt(0).toUpperCase() + p.slice(1)}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
       {/* Notes - Progressive */}
       {showNotes && (
         <div className="relative mb-4">
@@ -636,6 +588,57 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
           )}
         </div>
       )}
+
+      {/* Priority Toggle - Color-coded chips */}
+      <div className="mb-4">
+        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+          Priority
+        </label>
+        <div className="flex flex-wrap gap-1.5">
+          {(['high', 'med', 'low'] as const).map((p) => {
+            const active = priority === p;
+            const classes = PRIORITY_CLASSES[p];
+            return (
+              <button
+                key={p}
+                onClick={() => setPriority(p)}
+                className={cn(
+                  "px-3 py-1 text-[12px] font-medium rounded-full border transition-all duration-150",
+                  active ? classes.active : classes.inactive
+                )}
+              >
+                {p.charAt(0).toUpperCase() + p.slice(1)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Classification Toggle - Pill style */}
+      <div className="mb-4">
+        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+          Classification
+        </label>
+        <div className="flex rounded-full border border-border bg-card p-0.5 w-fit">
+          {(['boulder', 'rock', 'pebble'] as const).map((type) => {
+            const active = classification === type;
+            return (
+              <button
+                key={type}
+                onClick={() => setClassification(type)}
+                className={cn(
+                  "px-4 py-1.5 text-[13px] font-medium rounded-full transition-all duration-200",
+                  active
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground"
+                )}
+              >
+                {type.charAt(0).toUpperCase() + type.slice(1)}
+              </button>
+            );
+          })}
+        </div>
+      </div>
 
       {/* Add-field links */}
       {addLinks.length > 0 && (
