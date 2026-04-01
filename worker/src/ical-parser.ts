@@ -54,49 +54,56 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): Parse
       if (rrule?.until && rrule.until.compare(start) < 0) continue;
 
       const iterator = event.iterator();
-      
-      // Fast-forward efficiently if the event has no COUNT.
-      // If it has a COUNT, we MUST start from the beginning to remain accurate.
-      if (!rrule?.count && start.compare(event.startDate) > 0) {
-        iterator.fastForward(start);
-      }
-      
       let next: ICAL.Time | null;
       let iterations = 0;
+      let skipped = 0;
 
-      while ((next = iterator.next())) {
+      // Skip occurrences before our range start
+      // We start from the beginning to ensure accuracy (prevents "anchoring" bugs)
+      while ((next = iterator.next()) && next.compare(start) < 0) {
+        skipped++;
+        // Safety: don't loop forever or use too much CPU skipping
+        if (skipped > 2000) break; 
+      }
+
+      // If we broke early or hit the end, continue to next vevent
+      if (!next) continue;
+
+      // Now process occurrences that fall within our range
+      while (next) {
         iterations++;
-        if (iterations > 1000) {
-          warnings.push(`Event "${event.summary}" (UID: ${vevent.getFirstPropertyValue('uid')}) has too many occurrences; skipping remaining.`);
-          break;
-        }
-
+        
         // Stop if we've gone past the range
         if (next.compare(end) >= 0) break;
 
+        // Overlap Check: occurrenceEnd > start AND next < end
         const duration = event.duration;
         const occurrenceEnd = next.clone();
         occurrenceEnd.addDuration(duration);
-
-        // Overlap Check: occurrenceEnd > start AND next < end
-        // For all-day events, we're a bit more lenient to avoid timezone clipping
-        const overlaps = occurrenceEnd.compare(start) > 0 && next.compare(end) < 0;
         
-        if (!overlaps) continue;
+        if (occurrenceEnd.compare(start) > 0) {
+          events.push({
+            summary: event.summary || '(No title)',
+            start: next.toJSDate(),
+            end: occurrenceEnd.toJSDate(),
+            transparency: (vevent.getFirstPropertyValue('transp') || 'OPAQUE').toString().toUpperCase(),
+            isAllDay: next.isDate,
+            description: vevent.getFirstPropertyValue('description') as string | undefined,
+            location: vevent.getFirstPropertyValue('location') as string | undefined,
+            uid: vevent.getFirstPropertyValue('uid') as string | undefined,
+            rrule: rrule?.toString(),
+            rawStart: vevent.getFirstPropertyValue('dtstart')?.toString(),
+            rawEnd: vevent.getFirstPropertyValue('dtend')?.toString(),
+          });
+        }
 
-        events.push({
-          summary: event.summary || '(No title)',
-          start: next.toJSDate(),
-          end: occurrenceEnd.toJSDate(),
-          transparency: (vevent.getFirstPropertyValue('transp') || 'OPAQUE').toString().toUpperCase(),
-          isAllDay: next.isDate,
-          description: vevent.getFirstPropertyValue('description') as string | undefined,
-          location: vevent.getFirstPropertyValue('location') as string | undefined,
-          uid: vevent.getFirstPropertyValue('uid') as string | undefined,
-          rrule: rrule?.toString(),
-          rawStart: vevent.getFirstPropertyValue('dtstart')?.toString(),
-          rawEnd: vevent.getFirstPropertyValue('dtend')?.toString(),
-        });
+        // CPU spike protection within the range
+        if (iterations > 500) {
+          warnings.push(`Event "${event.summary}" (UID: ${vevent.getFirstPropertyValue('uid')}) has too many occurrences in this range; skipping remaining.`);
+          break;
+        }
+
+        next = iterator.next();
       }
     } else {
       if (event.endDate.compare(start) <= 0 || event.startDate.compare(end) >= 0) continue;
