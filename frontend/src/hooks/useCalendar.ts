@@ -18,11 +18,11 @@ export function useTodayEvents() {
   });
 }
 
-export function useEventsForRange(startDate: string, days: number) {
+export function useEventsForRange(startDate: string, days: number, bust = false) {
   return useQuery({
-    queryKey: ['calendar', 'range', startDate, days],
-    queryFn: () => fetchEventsForRange(startDate, days),
-    staleTime: 5 * 60 * 1000,
+    queryKey: ['calendar', 'range', startDate, days, bust],
+    queryFn: () => fetchEventsForRange(startDate, days, bust),
+    staleTime: bust ? 0 : 5 * 60 * 1000,
     retry: 1,
   });
 }

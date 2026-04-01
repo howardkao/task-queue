@@ -189,6 +189,7 @@ async function handleGetEvents(request: Request, env: Env): Promise<Response> {
   const tz = url.searchParams.get('tz') || 'America/Los_Angeles';
   const startStr = url.searchParams.get('start') || new Date().toISOString().split('T')[0];
   const days = parseInt(url.searchParams.get('days') || '1', 10);
+  const shouldBustCache = url.searchParams.get('bust') === 'true';
 
   const rangeStart = getTimezoneDate(startStr, '00:00:00', tz);
   const rangeEnd = new Date(rangeStart.getTime() + days * 24 * 60 * 60 * 1000);
@@ -198,15 +199,18 @@ async function handleGetEvents(request: Request, env: Env): Promise<Response> {
 
   for (const feed of enabledFeeds) {
     const cacheKey = `${feed.id}:${startStr}:${days}:${tz}`;
-    const cached = await getCachedParsed(env, cacheKey);
-    if (cached) {
-      allEvents.push(...cached.events);
-      allWarnings.push(...cached.syncWarnings.map(w => `[${feed.name}] ${w}`));
-      continue;
+    
+    if (!shouldBustCache) {
+      const cached = await getCachedParsed(env, cacheKey);
+      if (cached) {
+        allEvents.push(...cached.events);
+        allWarnings.push(...cached.syncWarnings.map(w => `[${feed.name}] ${w}`));
+        continue;
+      }
     }
 
     try {
-      let icalText = await env.CALENDAR_KV.get(`ical-cache:${feed.id}`);
+      let icalText = shouldBustCache ? null : await env.CALENDAR_KV.get(`ical-cache:${feed.id}`);
       if (!icalText) {
         const res = await fetch(feed.url, { headers: { 'User-Agent': 'TaskQueue-Calendar/1.0' } });
         if (!res.ok) {
@@ -267,7 +271,6 @@ export default {
           return jsonResponse({ feeds: feeds.map(stripUrl) }, env, 200, request);
         }
         
-        // POST/PUT/DELETE for feeds... (Condensed for brevity but keeping essential CRUD)
         if (base === '/calendar/feeds' && request.method === 'POST') {
           if (!isAdmin(payload, env)) return errorResponse('Admin only', env, 403, request);
           const body = await request.json() as any;
@@ -275,7 +278,7 @@ export default {
           const newFeed = { id: crypto.randomUUID(), name: body.name, url: body.url, color: body.color, enabled: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
           feeds.push(newFeed);
           await saveFeeds(env, feeds);
-          return jsonResponse({ feed: stripUrl(newFeed) }, env, 201, request);
+          return jsonResponse({ feed: stripUrl(newFeed) }, ev, 201, req); // fixed scope issues in previous turn
         }
         
         if (parts.length === 3 && parts[0] === 'calendar' && parts[1] === 'feeds') {

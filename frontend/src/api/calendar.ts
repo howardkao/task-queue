@@ -26,11 +26,14 @@ export async function fetchTodayEvents(): Promise<CalendarResponse | null> {
 }
 
 /** Fetch calendar events for a specific date range. */
-export async function fetchEventsForRange(startDate: string, days: number): Promise<CalendarResponse | null> {
+export async function fetchEventsForRange(startDate: string, days: number, bust = false): Promise<CalendarResponse | null> {
   if (!API_BASE) return null;
 
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const url = `${API_BASE}/calendar/events?start=${encodeURIComponent(startDate)}&days=${days}&tz=${encodeURIComponent(tz)}`;
+  let url = `${API_BASE}/calendar/events?start=${encodeURIComponent(startDate)}&days=${days}&tz=${encodeURIComponent(tz)}`;
+  if (bust) {
+    url += '&bust=true';
+  }
   
   const res = await fetch(url, { headers: await getAuthHeaders() });
   if (res.status === 401 || res.status === 403) return null;

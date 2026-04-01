@@ -144,6 +144,8 @@ export function TodayView() {
     return d;
   });
 
+  const [shouldBustCache, setShouldBustCache] = useState(false);
+
   // Persist filters/settings
   useEffect(() => { localStorage.setItem('today_projectFilter', JSON.stringify(projectFilter)); }, [projectFilter]);
   useEffect(() => { localStorage.setItem('today_priorityFilter', JSON.stringify(priorityFilter)); }, [priorityFilter]);
@@ -181,9 +183,15 @@ export function TodayView() {
   }, [allBoulders, allRocks, dueSoonTasks]);
 
   // Fetch calendar events for range (start date + 4 additional days = 5 total)
-  const calendarQuery = useEventsForRange(dateKeys[0], 5);
+  const calendarQuery = useEventsForRange(dateKeys[0], 5, shouldBustCache);
   const apiConfigured = calendarQuery.data !== null && calendarQuery.data !== undefined;
   const syncWarnings = calendarQuery.data?.syncWarnings || [];
+
+  const handleRefresh = useCallback(() => {
+    setShouldBustCache(true);
+    // Reset the flag after a short delay so subsequent range changes use cache again
+    setTimeout(() => setShouldBustCache(false), 1000);
+  }, []);
 
   // Priority filtering
   const togglePriorityFilter = useCallback((value: Priority) => {
@@ -559,37 +567,48 @@ export function TodayView() {
             
             <div style={{ flex: 1 }} />
 
-            {!isMobile && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <select
-                  value={dayCount}
-                  onChange={(e) => setDayCount(parseInt(e.target.value, 10))}
-                  style={{
-                    padding: '4px 8px',
-                    border: '1px solid #E7E3DF',
-                    borderRadius: '8px',
-                    background: '#fff',
-                    fontSize: '12px',
-                    color: '#1D212B',
-                    fontFamily: 'inherit',
-                    cursor: 'pointer',
-                    outline: 'none',
-                  }}
-                >
-                  {[1, 2, 3, 5].map(count => (
-                    <option key={count} value={count}>{count} Days</option>
-                  ))}
-                </select>
-                
-                <button 
-                  onClick={() => setIsSettingsOpen(true)}
-                  style={{ ...navBtn, padding: '4px 8px', fontSize: '14px' }}
-                  title="Calendar Settings"
-                >
-                  ⚙️
-                </button>
-              </div>
-            )}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <button 
+                onClick={handleRefresh}
+                disabled={calendarQuery.isFetching}
+                style={{ ...navBtn, padding: '4px 8px', fontSize: '14px', opacity: calendarQuery.isFetching ? 0.5 : 1 }}
+                title="Refresh Calendar"
+              >
+                {calendarQuery.isFetching ? '⏳' : '🔄'}
+              </button>
+
+              {!isMobile && (
+                <>
+                  <select
+                    value={dayCount}
+                    onChange={(e) => setDayCount(parseInt(e.target.value, 10))}
+                    style={{
+                      padding: '4px 8px',
+                      border: '1px solid #E7E3DF',
+                      borderRadius: '8px',
+                      background: '#fff',
+                      fontSize: '12px',
+                      color: '#1D212B',
+                      fontFamily: 'inherit',
+                      cursor: 'pointer',
+                      outline: 'none',
+                    }}
+                  >
+                    {[1, 2, 3, 5].map(count => (
+                      <option key={count} value={count}>{count} Days</option>
+                    ))}
+                  </select>
+                  
+                  <button 
+                    onClick={() => setIsSettingsOpen(true)}
+                    style={{ ...navBtn, padding: '4px 8px', fontSize: '14px' }}
+                    title="Calendar Settings"
+                  >
+                    ⚙️
+                  </button>
+                </>
+              )}
+            </div>
             {isMobile && (
               <button onClick={() => setDrawerOpen(true)} style={{ ...navBtn }}>
                 Tasks
