@@ -1,4 +1,5 @@
 import { useMemo, useRef, useCallback, useState } from 'react';
+import { calendarEventCardChrome, calendarEventTitleStyle } from '../shared/listCardStyles';
 
 export interface CalEvent {
   id: string;
@@ -37,7 +38,7 @@ interface DayCalendarProps {
 const SLOT_HEIGHT = 33; // px per half hour
 const SNAP = 0.25; // 15 minutes
 const PX_PER_HOUR = SLOT_HEIGHT * 2; // 66px per hour
-const ALL_DAY_ROW_HEIGHT = 22; // px per all-day event row
+const ALL_DAY_ROW_HEIGHT = 24; // px per all-day row (11px title + padding)
 
 function snapToGrid(hour: number): number {
   return Math.round(hour / SNAP) * SNAP;
@@ -45,13 +46,6 @@ function snapToGrid(hour: number): number {
 
 function isPlacedTaskEventType(type: CalEvent['type']): boolean {
   return type === 'boulder' || type === 'rock' || type === 'pebble';
-}
-
-function taskEventAccent(type: CalEvent['type']): string {
-  if (type === 'rock') return '#c08457';
-  if (type === 'pebble') return '#64748b';
-  if (type === 'boulder') return '#EA6657';
-  return '#60a5fa';
 }
 
 export function DayCalendar({
@@ -197,54 +191,22 @@ export function DayCalendar({
     const displayDuration = isInteracting ? interacting.currentDuration : event.duration;
 
     const top = (displayStartHour - startHour) * PX_PER_HOUR;
-    const height = displayDuration * PX_PER_HOUR - 4;
+    const rawHeight = displayDuration * PX_PER_HOUR - 4;
+    const heightPx = Math.max(rawHeight, 24);
+    const paddingY = heightPx >= 38 ? 10 : 4;
 
-    const baseStyle: React.CSSProperties = {
+    return {
       position: 'absolute',
       top: `${top}px`,
       left: `${timeColWidth + 8}px`,
       right: '4px',
-      height: `${Math.max(height, 24)}px`,
-      borderRadius: '12px',
-      padding: '4px 8px',
-      fontSize: compact ? '10px' : '13px',
+      height: `${heightPx}px`,
+      ...calendarEventCardChrome,
+      padding: `${paddingY}px 12px`,
       overflow: 'hidden',
       zIndex: interacting?.eventId === event.id ? 10 : 1,
-      boxSizing: 'border-box',
       userSelect: 'none',
-    };
-
-    if (isPlacedTaskEventType(event.type)) {
-      const accent = taskEventAccent(event.type);
-      const bg = event.type === 'rock' ? '#fff7ed' : event.type === 'pebble' ? '#f1f5f9' : '#FCEDED';
-      return {
-        ...baseStyle,
-        border: `2px dashed ${accent}`,
-        background: bg,
-        borderLeft: `4px solid ${accent}`,
-        padding: '8px',
-        cursor: 'grab',
-      };
-    }
-
-    if (event.type === 'meeting') {
-      const bgColor = event.color || '#60a5fa';
-      return {
-        ...baseStyle,
-        background: event.busy !== false ? `${bgColor}33` : `${bgColor}11`, // 20% or 6.6% opacity
-        borderLeft: `4px solid ${bgColor}`,
-        color: '#4b5563',
-        cursor: 'pointer',
-      };
-    }
-
-    const bgColor = event.color || '#86efac';
-    return {
-      ...baseStyle,
-      background: event.busy !== false ? `${bgColor}33` : `${bgColor}11`,
-      borderLeft: `4px solid ${bgColor}`,
-      color: '#1D212B',
-      cursor: 'pointer',
+      cursor: isPlacedTaskEventType(event.type) ? 'grab' : 'pointer',
     };
   };
 
@@ -272,7 +234,7 @@ export function DayCalendar({
         color: '#1D212B',
         padding: compact ? '8px 10px' : '12px 16px',
         border: '1px solid #E7E3DF',
-        borderRadius: '12px 12px 0 0',
+        borderRadius: '8px 8px 0 0',
         background: '#fff',
       }}>
         {date}
@@ -298,17 +260,11 @@ export function DayCalendar({
           display: 'flex',
           flexDirection: 'column',
           gap: '2px',
-          minHeight: `${maxAllDayCount * ALL_DAY_ROW_HEIGHT + 8}px`, // 8px for vertical padding
+          minHeight: `${maxAllDayCount * (ALL_DAY_ROW_HEIGHT + 4) + 8}px`,
         }}
         >
           {allDayEvents.map(event => {
             const isUserTask = isPlacedTaskEventType(event.type);
-            const bgColor = isUserTask
-              ? (event.type === 'rock' ? '#fff7ed' : event.type === 'pebble' ? '#f1f5f9' : '#FCEDED')
-              : `${event.color || '#60a5fa'}22`;
-            const borderColor = isUserTask
-              ? taskEventAccent(event.type)
-              : (event.color || '#60a5fa');
 
             return (
               <div key={event.id} style={{ display: 'flex' }}>
@@ -319,28 +275,24 @@ export function DayCalendar({
                   onClick={() => setSelectedEvent(event)}
                   style={{
                     flex: 1,
-                    fontSize: '11px',
-                    lineHeight: `${ALL_DAY_ROW_HEIGHT - 2}px`,
-                    fontWeight: isUserTask ? 600 : 500,
-                    padding: '0 8px',
-                    borderRadius: '4px',
-                    background: bgColor,
-                    borderLeft: `3px solid ${borderColor}`,
-                    color: isUserTask ? '#1D212B' : '#4b5563',
+                    minHeight: `${ALL_DAY_ROW_HEIGHT}px`,
+                    ...calendarEventTitleStyle,
+                    padding: '4px 12px',
+                    ...calendarEventCardChrome,
+                    display: 'flex',
+                    alignItems: 'center',
                     whiteSpace: 'nowrap',
                     overflow: 'hidden',
                     textOverflow: 'ellipsis',
                     marginRight: '4px',
+                    marginBottom: '4px',
                     cursor: isUserTask ? 'grab' : 'pointer',
                     userSelect: 'none',
-                    border: isUserTask ? `1px solid ${borderColor}33` : 'none',
-                    borderLeftWidth: '3px',
-                    boxSizing: 'border-box',
                   }}
                   title={event.title}
                 >
                   {isUserTask && (
-                    <span style={{ marginRight: '6px' }}>
+                    <span style={{ marginRight: '6px', color: '#9ca3af' }}>
                       {event.type === 'rock' ? '●' : event.type === 'pebble' ? '◇' : '■'}
                     </span>
                   )}
@@ -360,7 +312,7 @@ export function DayCalendar({
         style={{
           border: '1px solid #E7E3DF',
           borderTop: 'none',
-          borderRadius: allDayEvents.length > 0 ? '0 0 12px 12px' : '0 0 12px 12px', // remains same
+          borderRadius: '0 0 8px 8px',
           background: '#fff',
           position: 'relative',
           borderLeft: showLabels ? '1px solid #E7E3DF' : 'none',
@@ -456,7 +408,7 @@ export function DayCalendar({
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <div style={{ fontWeight: 500, fontSize: '14px', color: '#1D212B' }}>{event.title}</div>
+                    <div style={calendarEventTitleStyle}>{event.title}</div>
                   </div>
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
                     <div
@@ -470,7 +422,7 @@ export function DayCalendar({
                         background: '#fff',
                         cursor: 'grab',
                         fontSize: '12px',
-                        color: taskEventAccent(event.type),
+                        color: '#9ca3af',
                         lineHeight: '1',
                         flexShrink: 0,
                       }}
@@ -520,13 +472,13 @@ export function DayCalendar({
                     width: '30px',
                     height: '3px',
                     borderRadius: '2px',
-                    background: event.type === 'rock' ? '#d6a46c' : event.type === 'pebble' ? '#94a3b8' : '#EA6657',
+                    background: '#E7E3DF',
                   }} />
                 </div>
               </>
             ) : (
               <>
-                <div style={{ fontWeight: event.busy !== false ? 500 : 400, color: '#1D212B' }}>{event.title}</div>
+                <div style={calendarEventTitleStyle}>{event.title}</div>
                 {event.busy === false && (
                   <div style={{ fontSize: '10px', color: '#9ca3af' }}>available</div>
                 )}
@@ -555,7 +507,7 @@ export function DayCalendar({
             onClick={e => e.stopPropagation()}
             style={{
               background: '#fff',
-              borderRadius: '16px',
+              borderRadius: '8px',
               width: '100%',
               maxWidth: '480px',
               maxHeight: '80vh',
@@ -630,7 +582,7 @@ export function DayCalendar({
                   <div style={{ 
                     fontSize: '11px', 
                     color: '#6b7280', 
-                    fontFamily: 'monospace', 
+                    fontFamily: 'var(--font-mono)',
                     background: '#F9F7F6', 
                     padding: '8px', 
                     borderRadius: '8px',
@@ -647,7 +599,7 @@ export function DayCalendar({
               </div>
             </div>
             
-            <div style={{ padding: '16px 24px', background: '#F9F7F6', borderRadius: '0 0 16px 16px', borderTop: '1px solid #EFEDEB', textAlign: 'right' }}>
+            <div style={{ padding: '16px 24px', background: '#F9F7F6', borderRadius: '0 0 8px 8px', borderTop: '1px solid #EFEDEB', textAlign: 'right' }}>
               <button 
                 onClick={() => setSelectedEvent(null)}
                 style={{

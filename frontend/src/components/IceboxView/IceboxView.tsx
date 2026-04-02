@@ -2,6 +2,11 @@ import { useState } from 'react';
 import { useIceboxedTasks, useReactivateTask, useDeleteTask } from '../../hooks/useTasks';
 import { useProjects } from '../../hooks/useProjects';
 import type { Task, Classification } from '../../types';
+import { listCardTitleStyle } from '../shared/listCardStyles';
+import {
+  collapsedTaskMetaLineStyle,
+  formatCollapsedTaskMetaLine,
+} from '../shared/collapsedTaskMeta';
 
 export function IceboxView() {
   const { data: tasks = [], isLoading } = useIceboxedTasks();
@@ -73,6 +78,15 @@ export function IceboxView() {
   );
 }
 
+function formatIceboxDeadline(deadline: string): string {
+  try {
+    const d = new Date(deadline);
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  } catch {
+    return deadline;
+  }
+}
+
 function IceboxCard({ task, projectMap, onReactivate, onDelete }: {
   task: Task;
   projectMap: Map<string, string>;
@@ -81,16 +95,23 @@ function IceboxCard({ task, projectMap, onReactivate, onDelete }: {
 }) {
   const [confirming, setConfirming] = useState(false);
   const projectName = task.projectId ? projectMap.get(task.projectId) : null;
+  const deadlineLabel = task.deadline ? formatIceboxDeadline(task.deadline) : null;
+  const collapsedMeta = formatCollapsedTaskMetaLine({
+    deadlineLabel,
+    showRecurrence: !!task.recurrence,
+    projectName: projectName ?? null,
+    prevCompletedLabel: null,
+  });
 
   return (
     <div style={cardStyle}>
       <div style={{ flex: 1 }}>
-        <div style={{ fontSize: '14px', fontWeight: 500, color: '#1D212B' }}>{task.title}</div>
-        {projectName && (
-          <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px' }}>{projectName}</div>
+        <div style={listCardTitleStyle}>{task.title}</div>
+        {collapsedMeta && (
+          <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
         )}
         {task.notes && (
-          <div style={{ fontSize: '12px', color: '#9ca3af', marginTop: '2px' }}>{task.notes}</div>
+          <div style={{ ...collapsedTaskMetaLineStyle, marginTop: collapsedMeta ? '2px' : '3px' }}>{task.notes}</div>
         )}
       </div>
       <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
@@ -160,7 +181,7 @@ const cardStyle: React.CSSProperties = {
   padding: '10px 14px',
   background: '#fff',
   border: '1px solid #E7E3DF',
-  borderRadius: '12px',
+  borderRadius: '8px',
   marginBottom: '6px',
   boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
 };

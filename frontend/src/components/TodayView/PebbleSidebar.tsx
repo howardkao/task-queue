@@ -5,6 +5,15 @@ import { useProjects } from '../../hooks/useProjects';
 import { useTodayPebbles, useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
 import { reorderPebbles as reorderPebblesApi } from '../../api/tasks';
 import type { TodayProjectFilter } from '../../hooks/useTasks';
+import {
+  listCardStyle as cardStyle,
+  listCardInnerStyle as cardInner,
+  listCardTitleStyle as titleStyle,
+} from '../shared/listCardStyles';
+import {
+  collapsedTaskMetaLineStyle,
+  formatCollapsedTaskMetaLine,
+} from '../shared/collapsedTaskMeta';
 
 interface PebbleSidebarProps {
   projectFilter?: TodayProjectFilter;
@@ -122,6 +131,15 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
           const projectName = task.projectId ? projectMap.get(task.projectId) : null;
           const deadlineStr = task.deadline ? formatDeadline(task.deadline) : null;
           const ageInDays = task.createdAt ? getAgeDays(task.createdAt) : null;
+          const prevStr = task.lastOccurrenceCompletedAt
+            ? `Prev: ${formatLastCompleted(task.lastOccurrenceCompletedAt)}`
+            : null;
+          const collapsedMeta = formatCollapsedTaskMetaLine({
+            deadlineLabel: deadlineStr,
+            showRecurrence: !!task.recurrence,
+            projectName: projectName ?? null,
+            prevCompletedLabel: prevStr,
+          });
           const showGapBefore = dragFromIndex !== null && dropGapIndex === index && dropGapIndex !== dragFromIndex && dropGapIndex !== dragFromIndex + 1;
 
           return (
@@ -134,10 +152,11 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
                 onDragLeave={handleDragLeave}
                 onDrop={handleDropOnCard}
                 onDragEnd={handleDragEnd}
-                style={{
-                  ...cardStyle,
-                  ...(dragFromIndex === index ? { opacity: 0.4 } : {}),
-                }}
+              style={{
+                ...cardStyle,
+                cursor: 'grab',
+                ...(dragFromIndex === index ? { opacity: 0.4 } : {}),
+              }}
               >
               <div style={cardInner}>
                 {/* Drag handle */}
@@ -169,20 +188,8 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
                       </span>
                     )}
                   </div>
-                  {projectName && (
-                    <div style={metaLine}>{projectName}</div>
-                  )}
-                  {(deadlineStr || task.recurrence || task.lastOccurrenceCompletedAt) && (
-                    <div style={metaLine}>
-                      {deadlineStr && <span style={{ color: '#E14747' }}>△ {deadlineStr}</span>}
-                      {deadlineStr && (task.recurrence || task.lastOccurrenceCompletedAt) && <span style={{ margin: '0 4px' }}></span>}
-                      {task.recurrence && <span style={{ marginRight: '4px' }}>↻</span>}
-                      {task.lastOccurrenceCompletedAt && (
-                        <span style={{ fontSize: '10px', color: '#9ca3af' }}>
-                          Prev: {formatLastCompleted(task.lastOccurrenceCompletedAt)}
-                        </span>
-                      )}
-                    </div>
+                  {collapsedMeta && (
+                    <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
                   )}
                 </div>
               </div>
@@ -233,39 +240,10 @@ const dropIndicatorLine: React.CSSProperties = {
   margin: '2px 0',
 };
 
-const cardStyle: React.CSSProperties = {
-  border: '1px solid #E7E3DF',
-  borderRadius: '12px',
-  marginBottom: '6px',
-  background: '#fff',
-  overflow: 'hidden',
-  cursor: 'grab',
-  transition: 'all 0.15s',
-};
-
-const cardInner: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'flex-start',
-  gap: '10px',
-  padding: '10px 12px',
-};
-
 const dragHandle: React.CSSProperties = {
   color: '#EFEDEB',
   fontSize: '16px',
   userSelect: 'none',
-};
-
-const titleStyle: React.CSSProperties = {
-  fontSize: '14px',
-  color: '#1D212B',
-  fontWeight: 500,
-};
-
-const metaLine: React.CSSProperties = {
-  fontSize: '12px',
-  color: '#9ca3af',
-  marginTop: '3px',
 };
 
 function getAgeDays(createdAt: any): number {

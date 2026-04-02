@@ -87,7 +87,7 @@ function AppContent() {
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
         minHeight: '100vh', background: '#FBFAF9',
-        fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+        fontFamily: "'DM Sans', sans-serif",
         color: '#9ca3af', fontSize: '15px',
       }}>
         Loading...
@@ -106,7 +106,7 @@ function AppContent() {
 
   return (
     <div style={{
-      fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      fontFamily: "'DM Sans', sans-serif",
       background: '#FBFAF9',
       color: '#1D212B',
       minHeight: '100vh',
@@ -202,7 +202,7 @@ function FullPageLoading() {
       justifyContent: 'center',
       minHeight: '100vh',
       background: '#FBFAF9',
-      fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      fontFamily: "'DM Sans', sans-serif",
       color: '#9ca3af',
       fontSize: '15px',
     }}>

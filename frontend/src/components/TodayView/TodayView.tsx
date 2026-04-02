@@ -13,6 +13,11 @@ import type { TodayProjectFilter } from '../../hooks/useTasks';
 import { SideDrawer } from '../shared/SideDrawer';
 import { DueSoonSidebar } from './DueSoonSidebar';
 import { CalendarFeedSettings } from './CalendarFeedSettings';
+import {
+  listCardStyle,
+  listCardInnerStyle,
+  listCardTitleStyle,
+} from '../shared/listCardStyles';
 
 // Fallback mock events when no iCal feeds configured
 const MOCK_CAL_EVENTS: CalEvent[] = [
@@ -389,21 +394,26 @@ export function TodayView() {
         {filteredInboxTasks.length > 0 && (
           <div style={{ marginTop: '8px' }}>
             {filteredInboxTasks.map(task => (
-              <div
-                key={task.id}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '8px',
-                  padding: '8px 0',
-                }}
-              >
-                <div style={{ flex: 1, fontSize: '14px', color: '#1D212B', fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {task.title}
+              <div key={task.id} style={listCardStyle}>
+                <div style={{ ...listCardInnerStyle, alignItems: 'center', flexWrap: 'wrap', rowGap: '8px' }}>
+                  <div
+                    style={{
+                      ...listCardTitleStyle,
+                      flex: 1,
+                      minWidth: '120px',
+                      overflow: 'hidden',
+                      textOverflow: 'ellipsis',
+                      whiteSpace: 'nowrap',
+                    }}
+                  >
+                    {task.title}
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
+                    <button type="button" onClick={() => handleClassify(task.id, 'boulder')} style={classifyBtnStyle}>Boulder</button>
+                    <button type="button" onClick={() => handleClassify(task.id, 'rock')} style={classifyBtnStyle}>Rock</button>
+                    <button type="button" onClick={() => handleClassify(task.id, 'pebble')} style={classifyBtnStyle}>Pebble</button>
+                  </div>
                 </div>
-                <button onClick={() => handleClassify(task.id, 'boulder')} style={classifyBtnStyle}>Boulder</button>
-                <button onClick={() => handleClassify(task.id, 'rock')} style={classifyBtnStyle}>Rock</button>
-                <button onClick={() => handleClassify(task.id, 'pebble')} style={classifyBtnStyle}>Pebble</button>
               </div>
             ))}
           </div>

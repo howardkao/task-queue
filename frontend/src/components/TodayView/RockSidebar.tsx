@@ -4,6 +4,16 @@ import { TaskEditPanel } from '../shared/TaskEditPanel';
 import { useProjects } from '../../hooks/useProjects';
 import { useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
 import { reorderPebbles as reorderTasksApi } from '../../api/tasks';
+import {
+  listCardStyle as cardStyle,
+  listPlacedCardStyle as placedCardStyle,
+  listCardInnerStyle as cardInner,
+  listCardTitleStyle as titleStyle,
+} from '../shared/listCardStyles';
+import {
+  collapsedTaskMetaLineStyle,
+  formatCollapsedTaskMetaLine,
+} from '../shared/collapsedTaskMeta';
 
 interface PlacedTaskInfo {
   startHour: number;
@@ -14,21 +24,6 @@ interface PlacedTaskInfo {
 interface RockSidebarProps {
   rocks: Task[];
   placedBoulders: Record<string, PlacedTaskInfo>;
-}
-
-function formatPlacedDate(dateStr: string): string {
-  try {
-    const d = new Date(dateStr + 'T12:00:00');
-    const today = new Date();
-    today.setHours(12, 0, 0, 0);
-    const diffDays = Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Tomorrow';
-    if (diffDays === -1) return 'Yesterday';
-    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  } catch {
-    return dateStr;
-  }
 }
 
 export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
@@ -115,6 +110,15 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
         const isPlaced = placedIds.includes(rock.id);
         const projectName = rock.projectId ? projectMap.get(rock.projectId) : null;
         const deadlineStr = rock.deadline ? formatDeadline(rock.deadline) : null;
+        const prevStr = rock.lastOccurrenceCompletedAt
+          ? `Prev: ${formatLastCompleted(rock.lastOccurrenceCompletedAt)}`
+          : null;
+        const collapsedMeta = formatCollapsedTaskMetaLine({
+          deadlineLabel: deadlineStr,
+          showRecurrence: !!rock.recurrence,
+          projectName: projectName ?? null,
+          prevCompletedLabel: prevStr,
+        });
         const showGapBefore = dragFromIndex !== null && dropGapIndex === index && dropGapIndex !== dragFromIndex && dropGapIndex !== dragFromIndex + 1;
 
         return (
@@ -129,6 +133,7 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
               onDragEnd={() => { setDragFromIndex(null); setDropGapIndex(null); }}
               style={{
                 ...cardStyle,
+                cursor: 'grab',
                 ...(isPlaced ? placedCardStyle : {}),
                 ...(dragFromIndex === index ? { opacity: 0.4 } : {}),
               }}
@@ -144,31 +149,13 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
                   <span style={{ ...dragHandle, color: isPlaced ? '#E7E3DF' : '#EFEDEB' }}>⠿</span>
                   </div>
                   <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setEditingId(isEditing ? null : rock.id)}>
-                  <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>                    {isPlaced && <span style={{ fontSize: '10px', marginRight: '4px' }}>📅</span>}
-                    {rock.title}
+                    <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>
+                      {rock.title}
+                    </div>
+                    {collapsedMeta && (
+                      <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
+                    )}
                   </div>
-                  {isPlaced && placedBoulders[rock.id] && (
-                    <div style={{ fontSize: '10px', color: '#c08457', marginTop: '1px' }}>
-                      {formatPlacedDate(placedBoulders[rock.id].date)}
-                    </div>
-                  )}
-                  {(projectName || deadlineStr) && (
-                    <div style={metaLine}>
-                      {deadlineStr && <span style={{ color: '#E14747', marginRight: '8px' }}>△ {deadlineStr}</span>}
-                      {projectName && <span>{projectName}</span>}
-                    </div>
-                  )}
-                  {(rock.recurrence || rock.lastOccurrenceCompletedAt) && (
-                    <div style={metaLine}>
-                      {rock.recurrence && <span style={{ marginRight: '4px' }}>↻</span>}
-                      {rock.lastOccurrenceCompletedAt && (
-                        <span style={{ fontSize: '10px', color: '#9ca3af' }}>
-                          Prev: {formatLastCompleted(rock.lastOccurrenceCompletedAt)}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                </div>
               </div>
               {isEditing && (
                 <TaskEditPanel
@@ -210,45 +197,11 @@ const dropIndicatorLine: React.CSSProperties = {
   margin: '2px 0',
 };
 
-const cardStyle: React.CSSProperties = {
-  border: '1px solid #E7E3DF',
-  borderRadius: '12px',
-  marginBottom: '6px',
-  background: '#fff',
-  overflow: 'hidden',
-  cursor: 'grab',
-};
-
-const placedCardStyle: React.CSSProperties = {
-  border: '1px solid #E7E3DF',
-  background: '#F9F7F6',
-  opacity: 0.7,
-};
-
-const cardInner: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'flex-start',
-  gap: '10px',
-  padding: '10px 12px',
-};
-
 const dragHandle: React.CSSProperties = {
   fontSize: '16px',
   userSelect: 'none',
   flexShrink: 0,
   marginTop: '1px',
-};
-
-const titleStyle: React.CSSProperties = {
-  fontSize: '14px',
-  color: '#1D212B',
-  fontWeight: 500,
-};
-
-const metaLine: React.CSSProperties = {
-  fontSize: '12px',
-  color: '#9ca3af',
-  marginTop: '3px',
 };
 
 function formatDeadline(deadline: string): string {

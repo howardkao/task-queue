@@ -5,6 +5,10 @@ import { useProjectActivityLog } from '../../hooks/useActivityLog';
 import { useIsMobile } from '../../hooks/useViewport';
 import type { Task, Classification } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
+import {
+  collapsedTaskMetaLineStyle,
+  formatCollapsedTaskMetaLine,
+} from '../shared/collapsedTaskMeta';
 
 interface ProjectDetailViewProps {
   projectId: string;
@@ -243,7 +247,7 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
                   fontSize: '10px', color: '#fff',
                 }}>✓</div>
                 <div style={{ flex: 1 }}>
-                  <span style={{ fontSize: '14px', textDecoration: 'line-through', color: '#9ca3af' }}>
+                  <span style={{ fontSize: '13px', fontWeight: 500, textDecoration: 'line-through', color: '#9ca3af' }}>
                     {t.title}
                   </span>
                   {t.completedAt && (
@@ -348,6 +352,12 @@ function TaskRow({
 }) {
   const [editing, setEditing] = useState(false);
   const deadlineStr = task.deadline ? formatDeadline(task.deadline) : null;
+  const collapsedMeta = formatCollapsedTaskMetaLine({
+    deadlineLabel: deadlineStr,
+    showRecurrence: !!task.recurrence,
+    projectName: null,
+    prevCompletedLabel: null,
+  });
   const typeStyles = getTaskTypeStyles(task.classification);
 
   const handleDragStart = (e: React.DragEvent) => {
@@ -384,7 +394,7 @@ function TaskRow({
         >
           <div
             style={{
-              fontSize: '14px',
+              fontSize: '13px',
               color: '#1D212B',
               fontWeight: 500,
               borderBottom: editing ? '1px dashed #EA6657' : '1px dashed transparent',
@@ -392,11 +402,8 @@ function TaskRow({
           >
             {task.title}
           </div>
-          {(task.recurrence || deadlineStr) && (
-            <div style={taskRowMetaStyle}>
-              {task.recurrence && <span style={{ marginRight: '4px' }}>↻</span>}
-              {deadlineStr && <span style={{ color: '#E14747' }}>⚑ {deadlineStr}</span>}
-            </div>
+          {collapsedMeta && (
+            <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
           )}
         </div>
       </div>
@@ -465,15 +472,9 @@ const taskDragHandleStyle: React.CSSProperties = {
   marginTop: '1px',
 };
 
-const taskRowMetaStyle: React.CSSProperties = {
-  fontSize: '12px',
-  color: '#9ca3af',
-  marginTop: '2px',
-};
-
 const taskRowCardStyle: React.CSSProperties = {
   border: '2px dashed #E7E3DF',
-  borderRadius: '12px',
+  borderRadius: '8px',
   background: '#fff',
   boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
 };
@@ -486,14 +487,14 @@ const completedTaskStyle: React.CSSProperties = {
   borderBottom: '1px solid #EFEDEB',
   background: '#fff',
   border: '1px solid #E7E3DF',
-  borderRadius: '10px',
+  borderRadius: '8px',
   marginBottom: '6px',
 };
 
 const editorStyle: React.CSSProperties = {
   width: '100%', minHeight: '400px', padding: '16px 20px',
   border: '2px solid #E7E3DF', borderRadius: '16px', background: '#fff',
-  fontFamily: "'SF Mono', 'Fira Code', 'Consolas', monospace",
+  fontFamily: 'var(--font-mono)',
   fontSize: '14px', lineHeight: '1.7', color: '#1D212B',
   resize: 'vertical', outline: 'none', boxSizing: 'border-box',
   boxShadow: '0 1px 3px rgba(0,0,0,0.1)',

@@ -4,6 +4,16 @@ import { TaskEditPanel } from '../shared/TaskEditPanel';
 import { useProjects } from '../../hooks/useProjects';
 import { useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
 import { reorderPebbles as reorderTasksApi } from '../../api/tasks';
+import {
+  listCardStyle as cardStyle,
+  listPlacedCardStyle as placedCardStyle,
+  listCardInnerStyle as cardInner,
+  listCardTitleStyle as titleStyle,
+} from '../shared/listCardStyles';
+import {
+  collapsedTaskMetaLineStyle,
+  formatCollapsedTaskMetaLine,
+} from '../shared/collapsedTaskMeta';
 
 interface PlacedBoulderInfo {
   startHour: number;
@@ -16,21 +26,6 @@ interface BoulderSidebarProps {
   placedBoulders: Record<string, PlacedBoulderInfo>;
   activeProjectCount: number;
   standaloneCount: number;
-}
-
-function formatPlacedDate(dateStr: string): string {
-  try {
-    const d = new Date(dateStr + 'T12:00:00');
-    const today = new Date();
-    today.setHours(12, 0, 0, 0);
-    const diffDays = Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Tomorrow';
-    if (diffDays === -1) return 'Yesterday';
-    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  } catch {
-    return dateStr;
-  }
 }
 
 export function BoulderSidebar({
@@ -143,6 +138,15 @@ export function BoulderSidebar({
         const isPlaced = placedIds.includes(b.id);
         const projectName = b.projectId ? projectMap.get(b.projectId) : null;
         const deadlineStr = b.deadline ? formatDeadline(b.deadline) : null;
+        const prevStr = b.lastOccurrenceCompletedAt
+          ? `Prev: ${formatLastCompleted(b.lastOccurrenceCompletedAt)}`
+          : null;
+        const collapsedMeta = formatCollapsedTaskMetaLine({
+          deadlineLabel: deadlineStr,
+          showRecurrence: !!b.recurrence,
+          projectName: projectName ?? null,
+          prevCompletedLabel: prevStr,
+        });
         const showGapBefore = dragFromIndex !== null && dropGapIndex === index && dropGapIndex !== dragFromIndex && dropGapIndex !== dragFromIndex + 1;
 
         return (
@@ -157,6 +161,7 @@ export function BoulderSidebar({
               onDragEnd={handleDragEnd}
               style={{
                 ...cardStyle,
+                cursor: 'grab',
                 ...(isPlaced ? placedCardStyle : {}),
                 ...(dragFromIndex === index ? { opacity: 0.4 } : {}),
               }}
@@ -179,29 +184,10 @@ export function BoulderSidebar({
                 onClick={() => setEditingId(isEditing ? null : b.id)}
               >
                 <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>
-                  {isPlaced && <span style={{ fontSize: '10px', marginRight: '4px' }}>📅</span>}
                   {b.title}
                 </div>
-                {isPlaced && placedBoulders[b.id] && (
-                  <div style={{ fontSize: '10px', color: '#EA6657', marginTop: '1px' }}>
-                    {formatPlacedDate(placedBoulders[b.id].date)}
-                  </div>
-                )}
-                {(projectName || deadlineStr) && (
-                  <div style={metaLine}>
-                    {deadlineStr && <span style={{ color: '#E14747', marginRight: '8px' }}>△ {deadlineStr}</span>}
-                    {projectName && <span>{projectName}</span>}
-                  </div>
-                )}
-                {(b.recurrence || b.lastOccurrenceCompletedAt) && (
-                  <div style={metaLine}>
-                    {b.recurrence && <span style={{ marginRight: '4px' }}>↻</span>}
-                    {b.lastOccurrenceCompletedAt && (
-                      <span style={{ fontSize: '10px', color: '#9ca3af' }}>
-                        Prev: {formatLastCompleted(b.lastOccurrenceCompletedAt)}
-                      </span>
-                    )}
-                  </div>
+                {collapsedMeta && (
+                  <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
                 )}
               </div>
             </div>
@@ -258,47 +244,12 @@ const dropIndicatorLine: React.CSSProperties = {
   margin: '2px 0',
 };
 
-const cardStyle: React.CSSProperties = {
-  border: '1px solid #E7E3DF',
-  borderRadius: '12px',
-  marginBottom: '6px',
-  background: '#fff',
-  overflow: 'hidden',
-  cursor: 'grab',
-  transition: 'all 0.15s',
-};
-
-const placedCardStyle: React.CSSProperties = {
-  border: '1px solid #E7E3DF',
-  background: '#F9F7F6',
-  opacity: 0.7,
-};
-
-const cardInner: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'flex-start',
-  gap: '10px',
-  padding: '10px 12px',
-};
-
 const dragHandle: React.CSSProperties = {
   color: '#EFEDEB',
   fontSize: '16px',
   userSelect: 'none',
   flexShrink: 0,
   marginTop: '1px',
-};
-
-const titleStyle: React.CSSProperties = {
-  fontSize: '14px',
-  color: '#1D212B',
-  fontWeight: 500,
-};
-
-const metaLine: React.CSSProperties = {
-  fontSize: '12px',
-  color: '#9ca3af',
-  marginTop: '3px',
 };
 
 function formatDeadline(deadline: string): string {

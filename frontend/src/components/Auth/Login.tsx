@@ -110,7 +110,7 @@ export function Login() {
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
       minHeight: '100vh', background: '#FBFAF9',
-      fontFamily: "'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif",
+      fontFamily: "'DM Sans', sans-serif",
     }}>
       <div style={{
         background: '#fff', borderRadius: '16px', padding: '40px 36px',

@@ -145,7 +145,7 @@ export function CalendarFeedSettings() {
               <div
                 style={{ ...colorDotStyle, backgroundColor: feed.color, opacity: feed.enabled ? 1 : 0.4 }}
               />
-              <span style={{ flex: 1, fontSize: '14px', color: feed.enabled ? '#1D212B' : '#9ca3af' }}>
+              <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: feed.enabled ? '#1D212B' : '#9ca3af' }}>
                 {feed.name}
               </span>
               <button

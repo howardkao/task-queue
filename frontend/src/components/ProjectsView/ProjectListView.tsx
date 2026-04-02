@@ -4,6 +4,10 @@ import { useTasks, useUpdateTask, useCompleteTask, useIceboxTask } from '../../h
 import { useIsMobile } from '../../hooks/useViewport';
 import type { Project, Task } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
+import {
+  collapsedTaskMetaLineStyle,
+  formatCollapsedTaskMetaLine,
+} from '../shared/collapsedTaskMeta';
 import { SideDrawer } from '../shared/SideDrawer';
 
 interface ProjectListViewProps {
@@ -311,6 +315,15 @@ function RailTaskCard({
     e.dataTransfer.effectAllowed = 'move';
   };
 
+  const prevMeta = formatLastOccurrenceForMeta(task.lastOccurrenceCompletedAt);
+  const collapsedMeta = formatCollapsedTaskMetaLine({
+    deadlineLabel: task.deadline ? formatDeadline(task.deadline) : null,
+    showRecurrence: !!task.recurrence,
+    projectName: null,
+    prevCompletedLabel: prevMeta ? `Prev: ${prevMeta}` : null,
+    extraTrailing: formatClassification(task.classification),
+  });
+
   return (
     <div style={railTaskCardStyle}>
       <div
@@ -323,10 +336,9 @@ function RailTaskCard({
           <div onClick={onToggleEdit} style={railTaskTitleStyle}>
             {task.title}
           </div>
-          <div style={railTaskMetaStyle}>
-            <span>{formatClassification(task.classification)}</span>
-            {task.deadline && <span style={{ color: '#E14747' }}>⚑ {formatDeadline(task.deadline)}</span>}
-          </div>
+          {collapsedMeta && (
+            <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
+          )}
         </div>
       </div>
 
@@ -357,6 +369,17 @@ function formatDeadline(deadline: string) {
     return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
   } catch {
     return deadline;
+  }
+}
+
+function formatLastOccurrenceForMeta(timestamp: unknown): string | null {
+  if (!timestamp) return null;
+  try {
+    const t = timestamp as { seconds?: number };
+    const d = t.seconds != null ? new Date(t.seconds * 1000) : new Date(timestamp as string);
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase();
+  } catch {
+    return null;
   }
 }
 
@@ -411,7 +434,7 @@ const projectRowDragOverStyle: React.CSSProperties = {
 };
 
 const projectNameStyle: React.CSSProperties = {
-  fontSize: '14px',
+  fontSize: '13px',
   fontWeight: 500,
   color: '#EA6657',
   cursor: 'pointer',
@@ -463,7 +486,7 @@ const railListStyle: React.CSSProperties = {
 
 const railTaskCardStyle: React.CSSProperties = {
   border: '1px solid #ead9ba',
-  borderRadius: '16px',
+  borderRadius: '8px',
   background: '#fff',
 };
 
@@ -483,19 +506,11 @@ const dragHandleStyle: React.CSSProperties = {
 };
 
 const railTaskTitleStyle: React.CSSProperties = {
-  fontSize: '14px',
+  fontSize: '13px',
   fontWeight: 500,
   color: '#1D212B',
   cursor: 'pointer',
   marginBottom: '4px',
-};
-
-const railTaskMetaStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: '8px',
-  flexWrap: 'wrap',
-  fontSize: '12px',
-  color: '#9ca3af',
 };
 
 const summaryStyle: React.CSSProperties = {

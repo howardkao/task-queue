@@ -1,6 +1,11 @@
 import { useState } from 'react';
 import type { Task, RecurrenceRule } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
+import { useProjects } from '../../hooks/useProjects';
+import {
+  collapsedTaskMetaLineStyle,
+  formatCollapsedTaskMetaLine,
+} from '../shared/collapsedTaskMeta';
 
 interface PebbleRowProps {
   task: Task;
@@ -24,6 +29,8 @@ export function PebbleRow({
   isDragOver,
 }: PebbleRowProps) {
   const [editing, setEditing] = useState(false);
+  const { data: projects = [] } = useProjects('active');
+  const projectMap = new Map(projects.map(p => [p.id, p.name]));
 
   const staleThreshold = Math.max(10, Math.floor(totalCount * 0.8));
   const isStale = index >= staleThreshold && task.createdAt;
@@ -32,13 +39,23 @@ export function PebbleRow({
     ? Math.min((ageInDays - 7) / 30, 0.15)
     : 0;
   const deadlineStr = task.deadline ? formatDeadline(task.deadline) : null;
+  const projectName = task.projectId ? projectMap.get(task.projectId) : null;
+  const prevStr = task.lastOccurrenceCompletedAt
+    ? `Prev: ${formatLastCompleted(task.lastOccurrenceCompletedAt)}`
+    : null;
+  const collapsedMeta = formatCollapsedTaskMetaLine({
+    deadlineLabel: deadlineStr,
+    showRecurrence: !!task.recurrence,
+    projectName: projectName ?? null,
+    prevCompletedLabel: prevStr,
+  });
 
   return (
     <div
       style={{
         background: isDragOver ? '#fef3c7' : staleOpacity > 0 ? `rgba(200, 180, 140, ${staleOpacity})` : '#fff',
         border: `1px solid ${isDragOver ? '#EA6657' : '#E7E3DF'}`,
-        borderRadius: '12px',
+        borderRadius: '8px',
         marginBottom: '4px',
         overflow: 'hidden',
         transition: 'transform 0.15s, box-shadow 0.15s',
@@ -54,7 +71,7 @@ export function PebbleRow({
         onDrop={(e) => onDrop(e, index)}
         style={{
           display: 'flex',
-          alignItems: 'center',
+          alignItems: 'flex-start',
           gap: '8px',
           padding: '10px 12px',
           cursor: 'grab',
@@ -78,45 +95,42 @@ export function PebbleRow({
           <button onClick={() => onIcebox(task.id)} title="Icebox" style={btnStyle}>❄</button>
         </span>
 
-        {/* Task name — click to edit */}
-        <span
-          onClick={() => setEditing(!editing)}
-          style={{
-            flex: 1,
-            fontSize: '14px',
-            color: '#1D212B',
-            cursor: 'pointer',
-            borderBottom: editing ? '1px dashed #EA6657' : '1px dashed transparent',
-            transition: 'border-color 0.15s',
-          }}
-          title="Click to edit"
-        >
-          {task.title}
-          {task.recurrence && (
-            <span style={{ fontSize: '10px', color: '#6b7280', marginLeft: '6px' }} title={formatRecurrenceTooltip(task.recurrence)}>
-              ↻ {formatRecurrenceLabel(task.recurrence)}
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px', flexWrap: 'wrap' }}>
+            <span
+              onClick={() => setEditing(!editing)}
+              style={{
+                fontSize: '13px',
+                fontWeight: 500,
+                color: '#1D212B',
+                cursor: 'pointer',
+                borderBottom: editing ? '1px dashed #EA6657' : '1px dashed transparent',
+                transition: 'border-color 0.15s',
+              }}
+              title="Click to edit"
+            >
+              {task.title}
             </span>
+            {ageInDays !== null && ageInDays > 7 && (
+              <span style={{
+                fontSize: '10px',
+                color: ageInDays > 30 ? '#E14747' : ageInDays > 14 ? '#F59F0A' : '#9ca3af',
+                fontStyle: 'italic',
+                flexShrink: 0,
+              }}>
+                {ageInDays}d
+              </span>
+            )}
+          </div>
+          {collapsedMeta && (
+            <div
+              style={collapsedTaskMetaLineStyle}
+              title={task.recurrence ? formatRecurrenceTooltip(task.recurrence) : undefined}
+            >
+              {collapsedMeta}
+            </div>
           )}
-        </span>
-
-        {/* Deadline flag */}
-        {deadlineStr && (
-          <span style={{ fontSize: '12px', color: '#E14747', whiteSpace: 'nowrap' }}>
-            ⚑ {deadlineStr}
-          </span>
-        )}
-
-        {/* Staleness */}
-        {ageInDays !== null && ageInDays > 7 && (
-          <span style={{
-            fontSize: '10px',
-            color: ageInDays > 30 ? '#E14747' : ageInDays > 14 ? '#F59F0A' : '#9ca3af',
-            fontStyle: 'italic',
-            whiteSpace: 'nowrap',
-          }}>
-            {ageInDays}d
-          </span>
-        )}
+        </div>
       </div>
 
       {/* Expandable edit panel */}
@@ -158,31 +172,14 @@ function formatDeadline(deadline: string): string {
   }
 }
 
-const DAY_SHORT: Record<string, string> = {
-  mon: 'Mo', tue: 'Tu', wed: 'We', thu: 'Th', fri: 'Fr', sat: 'Sa', sun: 'Su',
-};
-
-function formatRecurrenceLabel(rec: RecurrenceRule): string {
-  switch (rec.freq) {
-    case 'daily': return 'daily';
-    case 'weekly':
-      if (rec.days && rec.days.length > 0 && rec.days.length < 7) {
-        return rec.days.map(d => DAY_SHORT[d] || d).join('/');
-      }
-      return 'weekly';
-    case 'monthly': return 'monthly';
-    case 'yearly': return 'yearly';
-    case 'periodically':
-      return `every ${rec.interval || 7}d`;
-    case 'custom': {
-      const unit = rec.customUnit === 'monthly' ? 'mo' : 'wk';
-      const label = `every ${rec.interval || 1}${unit}`;
-      if (rec.customUnit === 'weekly' && rec.days && rec.days.length > 0) {
-        return `${label} ${rec.days.map(d => DAY_SHORT[d] || d).join('/')}`;
-      }
-      return label;
-    }
-    default: return rec.freq;
+function formatLastCompleted(timestamp: unknown): string {
+  if (!timestamp) return '';
+  try {
+    const t = timestamp as { seconds?: number };
+    const d = t.seconds != null ? new Date(t.seconds * 1000) : new Date(timestamp as string);
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase();
+  } catch {
+    return '';
   }
 }
 

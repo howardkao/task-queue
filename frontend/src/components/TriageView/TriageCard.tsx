@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import type { Task, Classification, RecurrenceRule } from '../../types';
+import { listCardTitleStyle } from '../shared/listCardStyles';
 import { useProjects, useCreateProject } from '../../hooks/useProjects';
 import { ProjectPicker } from '../shared/ProjectPicker';
 
@@ -135,7 +136,7 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
       style={{
         background: '#fff',
         border: '1px solid #E7E3DF',
-        borderRadius: '16px',
+        borderRadius: '8px',
         padding: removing ? '0 16px' : '16px',
         marginBottom: removing ? '0' : '10px',
         opacity: removing ? 0 : 1,
@@ -146,7 +147,7 @@ export function TriageCard({ task, onClassify, onDelete }: TriageCardProps) {
         boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
       }}
     >
-      <div style={{ fontSize: '14px', fontWeight: 500, color: '#1D212B', marginBottom: '8px' }}>
+      <div style={{ ...listCardTitleStyle, marginBottom: '8px' }}>
         {task.title}
       </div>
 

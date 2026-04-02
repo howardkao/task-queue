@@ -3,6 +3,16 @@ import type { Task } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
 import { useProjects } from '../../hooks/useProjects';
 import { useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
+import {
+  listCardStyle,
+  listPlacedCardStyle,
+  listCardInnerStyle,
+  listCardTitleStyle,
+} from '../shared/listCardStyles';
+import {
+  collapsedTaskMetaLineStyle,
+  formatCollapsedTaskMetaLine,
+} from '../shared/collapsedTaskMeta';
 
 interface PlacedTaskInfo {
   startHour: number;
@@ -13,21 +23,6 @@ interface PlacedTaskInfo {
 interface DueSoonSidebarProps {
   tasks: Task[];
   placedTasks: Record<string, PlacedTaskInfo>;
-}
-
-function formatPlacedDate(dateStr: string): string {
-  try {
-    const d = new Date(dateStr + 'T12:00:00');
-    const today = new Date();
-    today.setHours(12, 0, 0, 0);
-    const diffDays = Math.round((d.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-    if (diffDays === 0) return 'Today';
-    if (diffDays === 1) return 'Tomorrow';
-    if (diffDays === -1) return 'Yesterday';
-    return d.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-  } catch {
-    return dateStr;
-  }
 }
 
 export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
@@ -72,17 +67,25 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
         const isPlaced = placedIds.includes(task.id);
         const projectName = task.projectId ? projectMap.get(task.projectId) : null;
         const deadline = task.deadline ? new Date(task.deadline) : null;
-        const isOverdue = deadline ? deadline < new Date() : false;
-        
-        const deadlineStr = deadline ? deadline.toLocaleDateString('en-US', { 
-          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' 
+
+        const deadlineStr = deadline ? deadline.toLocaleDateString('en-US', {
+          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
         }) : null;
 
-        // Visual style based on classification
-        const isBoulder = task.classification === 'boulder';
-        const isRock = task.classification === 'rock';
-        const isPebble = task.classification === 'pebble';
-        const calendarDraggable = isBoulder || isRock || isPebble;
+        const prevStr = task.lastOccurrenceCompletedAt
+          ? `Prev: ${formatLastCompleted(task.lastOccurrenceCompletedAt)}`
+          : null;
+        const collapsedMeta = formatCollapsedTaskMetaLine({
+          deadlineLabel: deadlineStr,
+          showRecurrence: !!task.recurrence,
+          projectName: projectName ?? null,
+          prevCompletedLabel: prevStr,
+        });
+
+        const calendarDraggable =
+          task.classification === 'boulder' ||
+          task.classification === 'rock' ||
+          task.classification === 'pebble';
 
         return (
           <div key={task.id}>
@@ -90,13 +93,12 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
               draggable={calendarDraggable}
               onDragStart={(e) => handleDragStart(e, task)}
               style={{
-                ...cardStyle,
-                background: isOverdue ? '#FCEDED' : (isPlaced ? '#F9F7F6' : '#fff'),
-                border: `1px solid ${isOverdue ? '#f5c6c6' : '#E7E3DF'}`,
-                ...(isPlaced ? placedCardStyle : {}),
+                ...listCardStyle,
+                cursor: calendarDraggable ? 'grab' : undefined,
+                ...(isPlaced ? listPlacedCardStyle : {}),
               }}
             >
-              <div style={cardInner}>
+              <div style={listCardInnerStyle}>
                 {calendarDraggable && (
                   <div style={{
                     display: 'flex',
@@ -112,24 +114,11 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
                   style={{ flex: 1, cursor: 'pointer' }}
                   onClick={() => setEditingId(isEditing ? null : task.id)}
                 >
-                  <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B', fontWeight: 500 }}>
-                    {isPlaced && <span style={{ fontSize: '10px', marginRight: '4px' }}>📅</span>}
+                  <div style={{ ...listCardTitleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>
                     {task.title}
                   </div>
-                  {(projectName || isPlaced || deadlineStr || task.recurrence) && (
-                    <div style={metaLine}>
-                      {isPlaced && placedTasks[task.id] && (
-                        <span style={{
-                          color: isBoulder ? '#EA6657' : isPebble ? '#64748b' : '#c08457',
-                          marginRight: '8px',
-                        }}>
-                          {formatPlacedDate(placedTasks[task.id].date)}
-                        </span>
-                      )}
-                      {deadlineStr && <span style={{ color: '#E14747', marginRight: '8px' }}>△ {deadlineStr}</span>}
-                      {projectName && <span style={{ marginRight: '8px' }}>{projectName}</span>}
-                      {task.recurrence && <span>↻</span>}
-                    </div>
+                  {collapsedMeta && (
+                    <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
                   )}
                 </div>
               </div>
@@ -150,43 +139,21 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
   );
 }
 
-const cardStyle: React.CSSProperties = {
-  borderRadius: '12px',
-  marginBottom: '8px',
-  background: '#fff',
-  border: '1px solid #E7E3DF',
-  overflow: 'hidden',
-  transition: 'all 0.15s',
-};
-
-const placedCardStyle: React.CSSProperties = {
-  borderStyle: 'solid',
-  borderWidth: '1px',
-  borderColor: '#E7E3DF',
-  background: '#F9F7F6',
-  opacity: 0.7,
-};
-
-const cardInner: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'flex-start',
-  gap: '10px',
-  padding: '10px 12px',
-};
-
 const dragHandle: React.CSSProperties = {
+  color: '#EFEDEB',
   fontSize: '16px',
   userSelect: 'none',
+  flexShrink: 0,
+  marginTop: '1px',
 };
 
-const titleStyle: React.CSSProperties = {
-  fontSize: '14px',
-  color: '#1D212B',
-  fontWeight: 500,
-};
-
-const metaLine: React.CSSProperties = {
-  fontSize: '12px',
-  color: '#9ca3af',
-  marginTop: '3px',
-};
+function formatLastCompleted(timestamp: unknown): string {
+  if (!timestamp) return '';
+  try {
+    const t = timestamp as { seconds?: number };
+    const d = t.seconds ? new Date(t.seconds * 1000) : new Date(timestamp as string);
+    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase();
+  } catch {
+    return '';
+  }
+}
