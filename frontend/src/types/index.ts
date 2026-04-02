@@ -71,6 +71,8 @@ export interface CalendarEvent {
   rrule?: string;
   rawStart?: string;
   rawEnd?: string;
+  /** Firestore mirror document id (client-side calendar sync). */
+  mirrorDocId?: string;
 }
 
 export interface CalendarFeed {

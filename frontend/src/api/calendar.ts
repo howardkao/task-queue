@@ -1,9 +1,9 @@
-import type { CalendarFeed, CalendarFeedInput, CalendarResponse } from '../types';
+import type { CalendarFeed, CalendarFeedInput } from '../types';
 import { auth } from '../firebase';
 
 const API_BASE = import.meta.env.VITE_API_BASE || '';
 
-async function getAuthHeaders(contentType?: string): Promise<Record<string, string>> {
+export async function getAuthHeaders(contentType?: string): Promise<Record<string, string>> {
   const headers: Record<string, string> = {};
 
   if (contentType) {
@@ -19,30 +19,22 @@ async function getAuthHeaders(contentType?: string): Promise<Record<string, stri
   return headers;
 }
 
-/** Returns null when API is not configured, empty array when configured but no events */
-export async function fetchTodayEvents(): Promise<CalendarResponse | null> {
-  const today = new Date().toISOString().split('T')[0];
-  return fetchEventsForRange(today, 1);
+export interface CalendarSyncFeedResult {
+  id: string;
+  status: 'unchanged' | 'updated' | 'error';
+  ical?: string;
+  message?: string;
 }
 
-/** Fetch calendar events for a specific date range. */
-export async function fetchEventsForRange(startDate: string, days: number, bust = false): Promise<CalendarResponse | null> {
-  if (!API_BASE) return null;
+export async function fetchCalendarSync(bust: boolean): Promise<{ feeds: CalendarSyncFeedResult[] }> {
+  if (!API_BASE) throw new Error('API not configured');
 
-  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  let url = `${API_BASE}/calendar/events?start=${encodeURIComponent(startDate)}&days=${days}&tz=${encodeURIComponent(tz)}`;
-  if (bust) {
-    url += '&bust=true';
-  }
-  
-  const res = await fetch(url, { headers: await getAuthHeaders() });
-  if (res.status === 401 || res.status === 403) return null;
-  if (!res.ok) throw new Error('Failed to fetch calendar events');
-  const data = await res.json();
-  return {
-    events: data.events || [],
-    syncWarnings: data.syncWarnings || [],
-  };
+  const res = await fetch(`${API_BASE}/calendar/sync?bust=${bust}`, {
+    headers: await getAuthHeaders(),
+  });
+  if (res.status === 401 || res.status === 403) throw new Error('Unauthorized');
+  if (!res.ok) throw new Error('Calendar sync failed');
+  return res.json();
 }
 
 // ── Feed CRUD ────────────────────────────────────────────────────────────────

@@ -9,8 +9,5 @@
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20241205.0",
     "wrangler": "^4.0.0"
-  },
-  "dependencies": {
-    "ical.js": "^2.2.1"
   }
 }

@@ -1,5 +1,5 @@
 /**
- * iCal parser for Cloudflare Workers using ical.js.
+ * iCal parser (ical.js) for the browser — expands RRULEs for a date range.
  */
 
 import ICAL from 'ical.js';
@@ -23,13 +23,10 @@ export interface ParseResult {
   warnings: string[];
 }
 
-/**
- * Parse iCal text and expand recurring events for a given date range.
- */
+const TIME_LIMIT_MS = 30000;
+
 export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): ParseResult {
   const startTime = Date.now();
-  const TIME_LIMIT_MS = 100; 
-  
   const jcal = ICAL.parse(text);
   const comp = new ICAL.Component(jcal);
   const events: ICalEvent[] = [];
@@ -42,15 +39,15 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): Parse
 
   for (const vevent of vevents) {
     if (Date.now() - startTime > TIME_LIMIT_MS) {
-      warnings.push(`Parsing interrupted: CPU time limit exceeded. Some events might be missing.`);
+      warnings.push('Parsing interrupted: time limit exceeded. Some events might be missing.');
       break;
     }
 
     const event = new ICAL.Event(vevent);
-    
+
     if (event.isRecurring()) {
       const rrule = vevent.getFirstPropertyValue('rrule') as ICAL.Recur | undefined;
-      
+
       if (rrule?.until && rrule.until.compare(start) < 0) continue;
 
       const iterator = event.iterator();
@@ -58,29 +55,22 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): Parse
       let iterations = 0;
       let skipped = 0;
 
-      // Skip occurrences before our range start
-      // We start from the beginning to ensure accuracy (prevents "anchoring" bugs)
       while ((next = iterator.next()) && next.compare(start) < 0) {
         skipped++;
-        // Safety: don't loop forever or use too much CPU skipping
-        if (skipped > 2000) break; 
+        if (skipped > 2000) break;
       }
 
-      // If we broke early or hit the end, continue to next vevent
       if (!next) continue;
 
-      // Now process occurrences that fall within our range
       while (next) {
         iterations++;
-        
-        // Stop if we've gone past the range
+
         if (next.compare(end) >= 0) break;
 
-        // Overlap Check: occurrenceEnd > start AND next < end
         const duration = event.duration;
         const occurrenceEnd = next.clone();
         occurrenceEnd.addDuration(duration);
-        
+
         if (occurrenceEnd.compare(start) > 0) {
           events.push({
             summary: event.summary || '(No title)',
@@ -97,9 +87,10 @@ export function parseICal(text: string, rangeStart: Date, rangeEnd: Date): Parse
           });
         }
 
-        // CPU spike protection within the range
         if (iterations > 500) {
-          warnings.push(`Event "${event.summary}" (UID: ${vevent.getFirstPropertyValue('uid')}) has too many occurrences in this range; skipping remaining.`);
+          warnings.push(
+            `Event "${event.summary}" (UID: ${vevent.getFirstPropertyValue('uid')}) has too many occurrences in this range; skipping remaining.`,
+          );
           break;
         }
 

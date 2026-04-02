@@ -39,7 +39,7 @@ function icalToCalEvents(events: CalendarEvent[]): CalEvent[] {
     const allDay = e.allDay ?? (startHour === 0 && duration >= 23.9);
 
     return {
-      id: `ical-${i}`,
+      id: e.mirrorDocId ? `mirror-${e.mirrorDocId}` : `ical-${i}`,
       title: e.title,
       startHour,
       duration: Math.max(duration, 0.25),
@@ -208,9 +208,8 @@ export function TodayView() {
     return [...byId.values()];
   }, [allBoulders, allRocks, allPebbles, dueSoonTasks]);
 
-  // Fetch calendar events for range (start date + 4 additional days = 5 total)
-  const calendarQuery = useEventsForRange(dateKeys[0], 5, shouldBustCache);
-  const apiConfigured = calendarQuery.data !== null && calendarQuery.data !== undefined;
+  const calendarQuery = useEventsForRange(dateKeys[0], Math.max(dateKeys.length, 1), shouldBustCache);
+  const apiConfigured = calendarQuery.isConfigured;
   const syncWarnings = calendarQuery.data?.syncWarnings || [];
 
   const handleRefresh = useCallback(() => {
@@ -251,8 +250,14 @@ export function TodayView() {
 
     return dateKeys.map((dateKey) => {
       const dayIcalEvents = allRangeEvents.filter(e => {
-        // Match using start string date part
-        const ce = e.id.startsWith('ical-') ? calendarQuery.data?.events[parseInt(e.id.replace('ical-', ''), 10)] : null;
+        let ce: CalendarEvent | undefined;
+        if (e.id.startsWith('mirror-')) {
+          const docId = e.id.slice('mirror-'.length);
+          ce = calendarQuery.data?.events.find((ev) => ev.mirrorDocId === docId);
+        } else if (e.id.startsWith('ical-')) {
+          const idx = parseInt(e.id.replace('ical-', ''), 10);
+          ce = calendarQuery.data?.events[idx];
+        }
         if (!ce) return false;
         return ce.start.startsWith(dateKey);
       });
