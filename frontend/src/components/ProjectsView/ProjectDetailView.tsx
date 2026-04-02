@@ -8,6 +8,7 @@ import { TaskEditPanel } from '../shared/TaskEditPanel';
 import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
+  formatTaskDeadlineForMeta,
 } from '../shared/collapsedTaskMeta';
 
 interface ProjectDetailViewProps {
@@ -351,7 +352,7 @@ function TaskRow({
   onIcebox: (id: string) => void;
 }) {
   const [editing, setEditing] = useState(false);
-  const deadlineStr = task.deadline ? formatDeadline(task.deadline) : null;
+  const deadlineStr = formatTaskDeadlineForMeta(task.deadline);
   const collapsedMeta = formatCollapsedTaskMetaLine({
     deadlineLabel: deadlineStr,
     showRecurrence: !!task.recurrence,
@@ -417,15 +418,6 @@ function TaskRow({
       )}
     </div>
   );
-}
-
-function formatDeadline(deadline: string): string {
-  try {
-    const d = new Date(deadline);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  } catch {
-    return deadline;
-  }
 }
 
 function formatTimestamp(ts: any): string {

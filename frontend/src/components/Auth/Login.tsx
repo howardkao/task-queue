@@ -109,7 +109,7 @@ export function Login() {
   return (
     <div style={{
       display: 'flex', alignItems: 'center', justifyContent: 'center',
-      minHeight: '100vh', background: '#FBFAF9',
+      minHeight: '100vh', background: '#ffffff',
       fontFamily: "'DM Sans', sans-serif",
     }}>
       <div style={{

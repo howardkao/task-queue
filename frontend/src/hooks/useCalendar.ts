@@ -6,7 +6,12 @@ import {
   updateCalendarFeed,
   deleteCalendarFeed,
 } from '../api/calendar';
-import { deleteCalendarMirrorForFeed, runCalendarSync, subscribeCalendarMirror } from '../api/calendarMirror';
+import {
+  deleteCalendarMirrorForFeed,
+  patchMirrorEventsForFeedMetadata,
+  runCalendarSync,
+  subscribeCalendarMirror,
+} from '../api/calendarMirror';
 import type { CalendarFeedInput, CalendarResponse } from '../types';
 import { useAuth } from './useAuth';
 import { auth } from '../firebase';
@@ -92,7 +97,23 @@ export function useUpdateFeed() {
         if (u) await deleteCalendarMirrorForFeed(u.uid, id);
       }
       const u = auth.currentUser;
-      if (u && apiBase) await runCalendarSync(u.uid, true).catch(console.error);
+      if (u && apiBase) {
+        const urlChanged = typeof updates.url === 'string' && updates.url.length > 0;
+        const enabling = updates.enabled === true;
+        const metadataOnly =
+          !urlChanged &&
+          !enabling &&
+          (updates.color !== undefined || updates.name !== undefined);
+
+        if (metadataOnly) {
+          await patchMirrorEventsForFeedMetadata(u.uid, id, {
+            ...(updates.color !== undefined && { color: updates.color }),
+            ...(updates.name !== undefined && { calendarName: updates.name }),
+          }).catch(console.error);
+        } else {
+          await runCalendarSync(u.uid, true).catch(console.error);
+        }
+      }
       qc.invalidateQueries({ queryKey: ['calendar', 'feeds'] });
       qc.invalidateQueries({ queryKey: ['calendar'] });
     },

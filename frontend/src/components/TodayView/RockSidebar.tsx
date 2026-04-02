@@ -13,6 +13,7 @@ import {
 import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
+  formatTaskDeadlineForMeta,
 } from '../shared/collapsedTaskMeta';
 
 interface PlacedTaskInfo {
@@ -109,7 +110,7 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
         const isEditing = editingId === rock.id;
         const isPlaced = placedIds.includes(rock.id);
         const projectName = rock.projectId ? projectMap.get(rock.projectId) : null;
-        const deadlineStr = rock.deadline ? formatDeadline(rock.deadline) : null;
+        const deadlineStr = formatTaskDeadlineForMeta(rock.deadline);
         const prevStr = rock.lastOccurrenceCompletedAt
           ? `Prev: ${formatLastCompleted(rock.lastOccurrenceCompletedAt)}`
           : null;
@@ -203,15 +204,6 @@ const dragHandle: React.CSSProperties = {
   flexShrink: 0,
   marginTop: '1px',
 };
-
-function formatDeadline(deadline: string): string {
-  try {
-    const d = new Date(deadline);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  } catch {
-    return deadline;
-  }
-}
 
 function formatLastCompleted(timestamp: any): string {
   if (!timestamp) return '';

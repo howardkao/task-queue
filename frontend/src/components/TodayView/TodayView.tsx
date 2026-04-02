@@ -590,10 +590,17 @@ export function TodayView() {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start' }}>
-        {/* Day Calendars */}
-        <div style={{ flex: 1, minWidth: 0 }}>
-          {/* Navigation bar moved inside here */}
+      <div style={{ display: 'flex', gap: 0, alignItems: 'flex-start' }}>
+        {/* Day Calendars — off-white panel (nav + grid) */}
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            background: '#FBFAF9',
+            padding: '12px 0',
+            borderRight: '1px solid #E7E3DF',
+          }}
+        >
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -685,7 +692,7 @@ export function TodayView() {
 
         {/* Sidebar */}
         {!isMobile && (
-          <div style={{ width: '600px', flexShrink: 0 }}>
+          <div style={{ width: '600px', flexShrink: 0, padding: '12px 16px' }}>
             {sidebarContent}
           </div>
         )}

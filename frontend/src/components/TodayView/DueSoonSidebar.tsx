@@ -12,6 +12,7 @@ import {
 import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
+  formatTaskDeadlineForMeta,
 } from '../shared/collapsedTaskMeta';
 
 interface PlacedTaskInfo {
@@ -66,11 +67,7 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
         const isEditing = editingId === task.id;
         const isPlaced = placedIds.includes(task.id);
         const projectName = task.projectId ? projectMap.get(task.projectId) : null;
-        const deadline = task.deadline ? new Date(task.deadline) : null;
-
-        const deadlineStr = deadline ? deadline.toLocaleDateString('en-US', {
-          month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit',
-        }) : null;
+        const deadlineStr = formatTaskDeadlineForMeta(task.deadline);
 
         const prevStr = task.lastOccurrenceCompletedAt
           ? `Prev: ${formatLastCompleted(task.lastOccurrenceCompletedAt)}`

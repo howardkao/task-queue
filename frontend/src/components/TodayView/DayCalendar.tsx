@@ -248,7 +248,7 @@ export function DayCalendar({
         color: '#1D212B',
         padding: compact ? '8px 10px' : '12px 16px',
         border: '1px solid #E7E3DF',
-        background: '#fff',
+        background: 'transparent',
       }}>
         {date}
       </div>
@@ -269,7 +269,7 @@ export function DayCalendar({
           padding: '4px 4px',
           border: '1px solid #E7E3DF',
           borderTop: 'none',
-          background: '#f9fafa',
+          background: 'transparent',
           display: 'flex',
           flexDirection: 'column',
           gap: '2px',
@@ -333,7 +333,7 @@ export function DayCalendar({
         style={{
           border: '1px solid #E7E3DF',
           borderTop: 'none',
-          background: '#fff',
+          background: 'transparent',
           position: 'relative',
           borderLeft: showLabels ? '1px solid #E7E3DF' : 'none',
         }}
@@ -407,7 +407,7 @@ export function DayCalendar({
               color: '#EA6657',
               zIndex: 20,
               pointerEvents: 'none',
-              background: '#fff',
+              background: 'transparent',
               padding: '1px 4px',
               borderRadius: '4px',
             }}>

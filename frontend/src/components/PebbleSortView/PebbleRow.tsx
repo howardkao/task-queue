@@ -5,6 +5,7 @@ import { useProjects } from '../../hooks/useProjects';
 import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
+  formatTaskDeadlineForMeta,
 } from '../shared/collapsedTaskMeta';
 
 interface PebbleRowProps {
@@ -38,7 +39,7 @@ export function PebbleRow({
   const staleOpacity = isStale && ageInDays && ageInDays > 7
     ? Math.min((ageInDays - 7) / 30, 0.15)
     : 0;
-  const deadlineStr = task.deadline ? formatDeadline(task.deadline) : null;
+  const deadlineStr = formatTaskDeadlineForMeta(task.deadline);
   const projectName = task.projectId ? projectMap.get(task.projectId) : null;
   const prevStr = task.lastOccurrenceCompletedAt
     ? `Prev: ${formatLastCompleted(task.lastOccurrenceCompletedAt)}`
@@ -161,15 +162,6 @@ function getAgeDays(createdAt: any): number {
     : new Date(createdAt);
   const now = new Date();
   return Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-function formatDeadline(deadline: string): string {
-  try {
-    const d = new Date(deadline);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  } catch {
-    return deadline;
-  }
 }
 
 function formatLastCompleted(timestamp: unknown): string {

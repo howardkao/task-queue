@@ -35,12 +35,39 @@ function recurrenceToMode(rec: RecurrenceRule | null): RecurrenceMode {
   return rec.freq as RecurrenceMode;
 }
 
+/**
+ * Split deadline into date + optional time for the editor.
+ * Date-only tasks use `YYYY-MM-DD` or ISO UTC midnight from Firestore; those must not
+ * infer a bogus local clock time (which made the time field look required).
+ */
 function parseDeadline(deadline: string | null): { date: string; time: string } {
   if (!deadline) return { date: '', time: '' };
+  const s = deadline.trim();
+
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return { date: s, time: '' };
+  }
+
+  const utcMidnight = /^(\d{4}-\d{2}-\d{2})T00:00:00(?:\.000)?Z$/.exec(s);
+  if (utcMidnight) {
+    return { date: utcMidnight[1], time: '' };
+  }
+
   try {
-    const d = new Date(deadline);
-    const date = d.toISOString().slice(0, 10);
-    const time = d.getHours() || d.getMinutes() ? d.toTimeString().slice(0, 5) : '';
+    const d = new Date(s);
+    if (Number.isNaN(d.getTime())) return { date: '', time: '' };
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    const date = `${y}-${m}-${day}`;
+    const h = d.getHours();
+    const min = d.getMinutes();
+    const sec = d.getSeconds();
+    const ms = d.getMilliseconds();
+    if (h === 0 && min === 0 && sec === 0 && ms === 0) {
+      return { date, time: '' };
+    }
+    const time = `${String(h).padStart(2, '0')}:${String(min).padStart(2, '0')}`;
     return { date, time };
   } catch {
     return { date: '', time: '' };
@@ -403,6 +430,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
               <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
               <input
                 type="date"
+                required={false}
                 value={deadlineDate}
                 onChange={e => setDeadlineDate(e.target.value)}
                 className={cn(
@@ -414,22 +442,36 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
               />
             </div>
             {showTime ? (
-              <div className="relative">
-                <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
-                <input
-                  type="time"
-                  value={deadlineTime}
-                  onChange={e => setDeadlineTime(e.target.value)}
-                  className={cn(
-                    "h-8 pl-8 pr-3 text-[13px] rounded-md",
-                    "bg-card border border-input text-foreground",
-                    "focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring",
-                    "transition-all duration-150"
-                  )}
-                />
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <div className="relative">
+                  <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                  <input
+                    type="time"
+                    required={false}
+                    value={deadlineTime}
+                    onChange={e => setDeadlineTime(e.target.value)}
+                    className={cn(
+                      "h-8 pl-8 pr-3 text-[13px] rounded-md",
+                      "bg-card border border-input text-foreground",
+                      "focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring",
+                      "transition-all duration-150"
+                    )}
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeadlineTime('');
+                    setShowTime(false);
+                  }}
+                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-1"
+                >
+                  Date only
+                </button>
               </div>
             ) : (
               <button
+                type="button"
                 onClick={() => setShowTime(true)}
                 className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
               >

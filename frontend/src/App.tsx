@@ -86,7 +86,7 @@ function AppContent() {
     return (
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'center',
-        minHeight: '100vh', background: '#FBFAF9',
+        minHeight: '100vh', background: '#ffffff',
         fontFamily: "'DM Sans', sans-serif",
         color: '#9ca3af', fontSize: '15px',
       }}>
@@ -107,7 +107,7 @@ function AppContent() {
   return (
     <div style={{
       fontFamily: "'DM Sans', sans-serif",
-      background: '#FBFAF9',
+      background: '#ffffff',
       color: '#1D212B',
       minHeight: '100vh',
     }}>
@@ -205,7 +205,7 @@ function FullPageLoading() {
       alignItems: 'center',
       justifyContent: 'center',
       minHeight: '100vh',
-      background: '#FBFAF9',
+      background: '#ffffff',
       fontFamily: "'DM Sans', sans-serif",
       color: '#9ca3af',
       fontSize: '15px',

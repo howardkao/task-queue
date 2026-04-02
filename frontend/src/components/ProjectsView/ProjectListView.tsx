@@ -7,6 +7,7 @@ import { TaskEditPanel } from '../shared/TaskEditPanel';
 import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
+  formatTaskDeadlineForMeta,
 } from '../shared/collapsedTaskMeta';
 import { SideDrawer } from '../shared/SideDrawer';
 
@@ -317,7 +318,7 @@ function RailTaskCard({
 
   const prevMeta = formatLastOccurrenceForMeta(task.lastOccurrenceCompletedAt);
   const collapsedMeta = formatCollapsedTaskMetaLine({
-    deadlineLabel: task.deadline ? formatDeadline(task.deadline) : null,
+    deadlineLabel: formatTaskDeadlineForMeta(task.deadline),
     showRecurrence: !!task.recurrence,
     projectName: null,
     prevCompletedLabel: prevMeta ? `Prev: ${prevMeta}` : null,
@@ -360,15 +361,6 @@ function formatClassification(value: Task['classification']) {
     case 'rock': return 'Rock';
     case 'pebble': return 'Pebble';
     default: return 'Unclassified';
-  }
-}
-
-function formatDeadline(deadline: string) {
-  try {
-    const d = new Date(deadline);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  } catch {
-    return deadline;
   }
 }
 

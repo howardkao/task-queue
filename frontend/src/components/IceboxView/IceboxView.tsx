@@ -6,6 +6,7 @@ import { listCardTitleStyle } from '../shared/listCardStyles';
 import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
+  formatTaskDeadlineForMeta,
 } from '../shared/collapsedTaskMeta';
 
 export function IceboxView() {
@@ -78,15 +79,6 @@ export function IceboxView() {
   );
 }
 
-function formatIceboxDeadline(deadline: string): string {
-  try {
-    const d = new Date(deadline);
-    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-  } catch {
-    return deadline;
-  }
-}
-
 function IceboxCard({ task, projectMap, onReactivate, onDelete }: {
   task: Task;
   projectMap: Map<string, string>;
@@ -95,7 +87,7 @@ function IceboxCard({ task, projectMap, onReactivate, onDelete }: {
 }) {
   const [confirming, setConfirming] = useState(false);
   const projectName = task.projectId ? projectMap.get(task.projectId) : null;
-  const deadlineLabel = task.deadline ? formatIceboxDeadline(task.deadline) : null;
+  const deadlineLabel = formatTaskDeadlineForMeta(task.deadline);
   const collapsedMeta = formatCollapsedTaskMetaLine({
     deadlineLabel,
     showRecurrence: !!task.recurrence,

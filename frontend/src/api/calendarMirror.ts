@@ -2,14 +2,19 @@ import {
   collection,
   deleteDoc,
   doc,
+  documentId,
   getDocs,
+  limit,
   onSnapshot,
   orderBy,
   query,
   serverTimestamp,
   setDoc,
+  startAfter,
   where,
   writeBatch,
+  type QueryDocumentSnapshot,
+  type DocumentData,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { CalendarEvent, CalendarFeed, CalendarResponse } from '../types';
@@ -178,6 +183,46 @@ export async function deleteCalendarMirrorForFeed(ownerUid: string, feedId: stri
     await deleteDoc(doc(db, META, `${ownerUid}_${feedId}`));
   } catch {
     /* missing meta */
+  }
+}
+
+/** Update stored mirror rows when only feed display fields change (avoids full iCal re-fetch). */
+export async function patchMirrorEventsForFeedMetadata(
+  ownerUid: string,
+  feedId: string,
+  patch: { color?: string; calendarName?: string },
+): Promise<void> {
+  if (patch.color === undefined && patch.calendarName === undefined) return;
+
+  const base = [
+    where('ownerUid', '==', ownerUid),
+    where('feedId', '==', feedId),
+    orderBy(documentId()),
+  ];
+
+  let last: QueryDocumentSnapshot<DocumentData> | undefined;
+  for (;;) {
+    const q = last
+      ? query(collection(db, EVENTS), ...base, startAfter(last), limit(450))
+      : query(collection(db, EVENTS), ...base, limit(450));
+    const snap = await getDocs(q);
+    if (snap.empty) break;
+
+    const batch = writeBatch(db);
+    for (const d of snap.docs) {
+      const fields: {
+        updatedAt: ReturnType<typeof serverTimestamp>;
+        color?: string;
+        calendarName?: string;
+      } = { updatedAt: serverTimestamp() };
+      if (patch.color !== undefined) fields.color = patch.color;
+      if (patch.calendarName !== undefined) fields.calendarName = patch.calendarName;
+      batch.update(d.ref, fields);
+    }
+    await batch.commit();
+
+    if (snap.docs.length < 450) break;
+    last = snap.docs[snap.docs.length - 1];
   }
 }
 
