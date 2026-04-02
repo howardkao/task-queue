@@ -111,7 +111,11 @@ function AppContent() {
       color: '#1D212B',
       minHeight: '100vh',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center' }}>
+      <div style={{
+        display: 'flex',
+        alignItems: 'center',
+        borderBottom: '1px solid #E7E3DF',
+      }}>
         <div style={{ flex: 1 }}>
           <TabBar tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
         </div>

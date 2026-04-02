@@ -1,17 +1,14 @@
 import { useState } from 'react';
 import type { CalendarFeed } from '../../types';
 import { useCalendarFeeds, useCreateFeed, useUpdateFeed, useDeleteFeed } from '../../hooks/useCalendar';
+import {
+  CALENDAR_FEED_PICKER_OPTIONS,
+  getCalendarFeedSwatchStyle,
+  normalizeFeedColorId,
+  type CalendarFeedColorId,
+} from '../../theme/calendarFeedPalette';
 
-const PRESET_COLORS = [
-  '#4285f4', // blue
-  '#ea4335', // red
-  '#34a853', // green
-  '#fbbc04', // yellow
-  '#ff6d01', // orange
-  '#a142f4', // purple
-  '#e91e63', // pink
-  '#00bcd4', // teal
-];
+const DEFAULT_FEED_COLOR: CalendarFeedColorId = 'neutral';
 
 export function CalendarFeedSettings() {
   const { data: feeds = [], isLoading } = useCalendarFeeds();
@@ -26,7 +23,7 @@ export function CalendarFeedSettings() {
   // Add form state
   const [addName, setAddName] = useState('');
   const [addUrl, setAddUrl] = useState('');
-  const [addColor, setAddColor] = useState(PRESET_COLORS[0]);
+  const [addColor, setAddColor] = useState<string>(DEFAULT_FEED_COLOR);
 
   // Edit form state
   const [editName, setEditName] = useState('');
@@ -38,7 +35,7 @@ export function CalendarFeedSettings() {
   function resetAddForm() {
     setAddName('');
     setAddUrl('');
-    setAddColor(PRESET_COLORS[0]);
+    setAddColor(DEFAULT_FEED_COLOR);
     setShowAddForm(false);
     setError('');
   }
@@ -63,7 +60,11 @@ export function CalendarFeedSettings() {
     }
     setError('');
     try {
-      await createFeed.mutateAsync({ name: addName.trim(), url: addUrl.trim(), color: addColor });
+      await createFeed.mutateAsync({
+        name: addName.trim(),
+        url: addUrl.trim(),
+        color: normalizeFeedColorId(addColor),
+      });
       resetAddForm();
     } catch (e: any) {
       setError(e.message || 'Failed to add feed');
@@ -76,7 +77,10 @@ export function CalendarFeedSettings() {
       return;
     }
     setError('');
-    const updates: Record<string, string> = { name: editName.trim(), color: editColor };
+    const updates: Record<string, string> = {
+      name: editName.trim(),
+      color: normalizeFeedColorId(editColor),
+    };
     if (editUrl.trim()) updates.url = editUrl.trim();
     try {
       await updateFeed.mutateAsync({ id, updates });
@@ -143,7 +147,11 @@ export function CalendarFeedSettings() {
             // Feed row
             <div style={feedRowStyle}>
               <div
-                style={{ ...colorDotStyle, backgroundColor: feed.color, opacity: feed.enabled ? 1 : 0.4 }}
+                style={{
+                  ...colorDotStyle,
+                  ...getCalendarFeedSwatchStyle(normalizeFeedColorId(feed.color)),
+                  opacity: feed.enabled ? 1 : 0.4,
+                }}
               />
               <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: feed.enabled ? '#1D212B' : '#9ca3af' }}>
                 {feed.name}
@@ -234,23 +242,29 @@ function FeedForm({
         onChange={e => onUrlChange(e.target.value)}
         style={inputStyle}
       />
-      <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
-        {PRESET_COLORS.map(c => (
-          <button
-            key={c}
-            onClick={() => onColorChange(c)}
-            style={{
-              width: '24px',
-              height: '24px',
-              borderRadius: '50%',
-              backgroundColor: c,
-              border: color === c ? '2px solid #1D212B' : '2px solid transparent',
-              cursor: 'pointer',
-              padding: 0,
-              outline: 'none',
-            }}
-          />
-        ))}
+      <div style={{ display: 'flex', gap: '8px', flexWrap: 'wrap', alignItems: 'center' }}>
+        {CALENDAR_FEED_PICKER_OPTIONS.map(opt => {
+          const selected = normalizeFeedColorId(color) === opt.id;
+          return (
+            <button
+              key={opt.id}
+              type="button"
+              title={opt.label}
+              onClick={() => onColorChange(opt.id)}
+              style={{
+                width: '28px',
+                height: '28px',
+                borderRadius: '8px',
+                cursor: 'pointer',
+                padding: 0,
+                outline: 'none',
+                boxSizing: 'border-box',
+                ...getCalendarFeedSwatchStyle(opt.id),
+                boxShadow: selected ? '0 0 0 2px #1D212B' : 'none',
+              }}
+            />
+          );
+        })}
       </div>
     </>
   );

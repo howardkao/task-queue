@@ -569,7 +569,7 @@ export function TodayView() {
   );
 
   return (
-    <div style={{ padding: '12px 16px', maxWidth: '1700px', margin: '0 auto' }}>
+    <div style={{ maxWidth: '1700px', margin: '0 auto' }}>
       {syncWarnings.length > 0 && (
         <div style={{
           background: '#FFF4E5',

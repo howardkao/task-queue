@@ -1,6 +1,6 @@
 import type { CSSProperties } from 'react';
 
-/** Muted secondary line under task card titles (due+↻ as one unit · project · …). */
+/** Muted secondary line under task card titles (due + ↻ as one unit · project · …). */
 export const collapsedTaskMetaLineStyle: CSSProperties = {
   fontSize: '12px',
   color: '#9ca3af',
@@ -9,7 +9,7 @@ export const collapsedTaskMetaLineStyle: CSSProperties = {
 };
 
 export type CollapsedTaskMetaParts = {
-  /** Due date/time text without the △ prefix */
+  /** Due date/time text */
   deadlineLabel?: string | null;
   showRecurrence?: boolean;
   projectName?: string | null;
@@ -19,7 +19,7 @@ export type CollapsedTaskMetaParts = {
   extraTrailing?: string | null;
 };
 
-/** △ due and ↻ are one segment (no dot between them); other parts joined with · */
+/** Due and ↻ are one segment (no dot between them); other parts joined with · */
 export function formatCollapsedTaskMetaLine(parts: CollapsedTaskMetaParts): string | null {
   const segments: string[] = [];
 
@@ -27,7 +27,7 @@ export function formatCollapsedTaskMetaLine(parts: CollapsedTaskMetaParts): stri
   const hasRec = !!parts.showRecurrence;
   if (due || hasRec) {
     let chunk = '';
-    if (due) chunk = `△ ${due}`;
+    if (due) chunk = due;
     if (hasRec) chunk = due ? `${chunk} ↻` : '↻';
     segments.push(chunk);
   }

@@ -1,5 +1,6 @@
 import { useMemo, useRef, useCallback, useState } from 'react';
 import { calendarEventCardChrome, calendarEventTitleStyle } from '../shared/listCardStyles';
+import { getCalendarEventChrome, getPlacedTaskCalendarChrome } from '../../theme/calendarFeedPalette';
 
 export interface CalEvent {
   id: string;
@@ -46,6 +47,11 @@ function snapToGrid(hour: number): number {
 
 function isPlacedTaskEventType(type: CalEvent['type']): boolean {
   return type === 'boulder' || type === 'rock' || type === 'pebble';
+}
+
+function externalCalendarChrome(event: CalEvent) {
+  if (isPlacedTaskEventType(event.type)) return null;
+  return getCalendarEventChrome(event.color);
 }
 
 export function DayCalendar({
@@ -195,6 +201,9 @@ export function DayCalendar({
     const heightPx = Math.max(rawHeight, 24);
     const paddingY = heightPx >= 38 ? 10 : 4;
 
+    const placed = isPlacedTaskEventType(event.type);
+    const taskChrome = placed ? getPlacedTaskCalendarChrome() : null;
+    const extChrome = externalCalendarChrome(event);
     return {
       position: 'absolute',
       top: `${top}px`,
@@ -202,6 +211,11 @@ export function DayCalendar({
       right: '4px',
       height: `${heightPx}px`,
       ...calendarEventCardChrome,
+      ...(taskChrome
+        ? { background: taskChrome.background, border: taskChrome.border }
+        : extChrome
+          ? { background: extChrome.background, border: extChrome.border }
+          : {}),
       padding: `${paddingY}px 12px`,
       overflow: 'hidden',
       zIndex: interacting?.eventId === event.id ? 10 : 1,
@@ -234,7 +248,6 @@ export function DayCalendar({
         color: '#1D212B',
         padding: compact ? '8px 10px' : '12px 16px',
         border: '1px solid #E7E3DF',
-        borderRadius: '8px 8px 0 0',
         background: '#fff',
       }}>
         {date}
@@ -265,6 +278,8 @@ export function DayCalendar({
         >
           {allDayEvents.map(event => {
             const isUserTask = isPlacedTaskEventType(event.type);
+            const taskChrome = isUserTask ? getPlacedTaskCalendarChrome() : null;
+            const extChrome = !isUserTask ? externalCalendarChrome(event) : null;
 
             return (
               <div key={event.id} style={{ display: 'flex' }}>
@@ -277,8 +292,14 @@ export function DayCalendar({
                     flex: 1,
                     minHeight: `${ALL_DAY_ROW_HEIGHT}px`,
                     ...calendarEventTitleStyle,
+                    ...(taskChrome ? { color: taskChrome.titleColor } : extChrome ? { color: extChrome.titleColor } : {}),
                     padding: '4px 12px',
                     ...calendarEventCardChrome,
+                    ...(taskChrome
+                      ? { background: taskChrome.background, border: taskChrome.border }
+                      : extChrome
+                        ? { background: extChrome.background, border: extChrome.border }
+                        : {}),
                     display: 'flex',
                     alignItems: 'center',
                     whiteSpace: 'nowrap',
@@ -291,8 +312,8 @@ export function DayCalendar({
                   }}
                   title={event.title}
                 >
-                  {isUserTask && (
-                    <span style={{ marginRight: '6px', color: '#9ca3af' }}>
+                  {isUserTask && taskChrome && (
+                    <span style={{ marginRight: '6px', color: taskChrome.metaColor }}>
                       {event.type === 'rock' ? '●' : event.type === 'pebble' ? '◇' : '■'}
                     </span>
                   )}
@@ -312,7 +333,6 @@ export function DayCalendar({
         style={{
           border: '1px solid #E7E3DF',
           borderTop: 'none',
-          borderRadius: '0 0 8px 8px',
           background: '#fff',
           position: 'relative',
           borderLeft: showLabels ? '1px solid #E7E3DF' : 'none',
@@ -397,7 +417,10 @@ export function DayCalendar({
         )}
 
         {/* Events overlaid */}
-        {timedEvents.map((event) => (
+        {timedEvents.map((event) => {
+          const extChrome = externalCalendarChrome(event);
+          const taskChrome = isPlacedTaskEventType(event.type) ? getPlacedTaskCalendarChrome() : null;
+          return (
           <div
             key={event.id}
             style={getEventStyle(event)}
@@ -408,7 +431,10 @@ export function DayCalendar({
               <>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
                   <div>
-                    <div style={calendarEventTitleStyle}>{event.title}</div>
+                    <div style={{
+                      ...calendarEventTitleStyle,
+                      ...(taskChrome ? { color: taskChrome.titleColor } : {}),
+                    }}>{event.title}</div>
                   </div>
                   <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
                     <div
@@ -478,14 +504,21 @@ export function DayCalendar({
               </>
             ) : (
               <>
-                <div style={calendarEventTitleStyle}>{event.title}</div>
+                <div style={{
+                  ...calendarEventTitleStyle,
+                  ...(extChrome ? { color: extChrome.titleColor } : {}),
+                }}>{event.title}</div>
                 {event.busy === false && (
-                  <div style={{ fontSize: '10px', color: '#9ca3af' }}>available</div>
+                  <div style={{
+                    fontSize: '10px',
+                    color: extChrome?.metaColor ?? '#9ca3af',
+                  }}>available</div>
                 )}
               </>
             )}
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {/* Event Details Modal */}
