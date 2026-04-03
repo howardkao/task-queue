@@ -154,6 +154,7 @@ export function PebbleSidebar({
             <div key={task.id}>
               {showGapBefore && <div style={dropIndicatorLine} />}
               <div
+                data-task-row-id={task.id}
                 draggable
                 onDragStart={(e) => handleDragStart(e, index)}
                 onDragOver={(e) => handleDragOver(e, index)}

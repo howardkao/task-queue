@@ -68,11 +68,13 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
     <div style={{
       position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.4)',
       display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000,
+      cursor: 'pointer',
     }} onClick={onClose}>
       <div style={{
         background: '#fff', borderRadius: '16px', padding: '28px',
         width: '100%', maxWidth: '420px', maxHeight: '70vh', overflow: 'auto',
         boxShadow: '0 8px 32px rgba(0,0,0,0.15)',
+        cursor: 'default',
       }} onClick={e => e.stopPropagation()}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '20px' }}>
           <h2 style={{ fontSize: '18px', fontWeight: 600, lineHeight: 1.2, color: '#1D212B', margin: 0 }}>

@@ -12,28 +12,29 @@ Task Queue is a single-page React application backed by Firebase Auth + Firestor
 │                                                          │
 │  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
 │  │  Today   │  │  Icebox  │  │ Projects │              │
-│  │  View    │  │  View    │  │ View     │              │
+│  │  View    │  │  (menu)  │  │ View     │              │
 │  └────┬─────┘  └────┬─────┘  └────┬─────┘              │
 │       │              │             │                     │
 │       └──────────┬───┴─────────┬──┘                     │
 │                  │             │                         │
-│            ┌─────┴─────┐ ┌────┴──────┐ ┌──────────────┐│
-│            │ useTasks  │ │useProjects│ │useActivityLog ││
-│            │ (RQ hooks)│ │(RQ hooks) │ │ (RQ hooks)   ││
-│            └─────┬─────┘ └────┬──────┘ └───────┬──────┘│
-│                  │            │                 │        │
-│            ┌─────┴────────────┴─────────────────┴──────┐│
-│            │   Firebase Auth + Firestore SDK (direct)  ││
-│            └───────────────────┬────────────────────────┘│
+│            ┌─────┴─────┐ ┌────┴──────┐ ┌──────────────┐┌─────────────┐│
+│            │ useTasks  │ │useProjects│ │useActivityLog││ useCalendar ││
+│            │ (RQ hooks)│ │(RQ hooks) │ │ (RQ hooks)   ││ (range +   ││
+│            └─────┬─────┘ └────┬──────┘ └───────┬──────┘└──────┬──────┘│
+│                  │            │                 │            │        │
+│            ┌─────┴────────────┴─────────────────┴────────────┴──────┐
+│            │   Firebase Auth + Firestore SDK (direct)               │
+│            └───────────────────┬──────────────────────────────────────┘
 └────────────────────────────────┼─────────────────────────┘
                                  │
          ┌───────────────────────┴──────────────────────┐
          │                                              │
 ┌────────┴─────────┐                         ┌──────────┴──────────┐
 │    Firestore     │                         │  Cloudflare Worker  │
-│ tasks / projects │                         │ calendar proxy      │
-│ activityLog /    │                         │ (Firebase token     │
-│ admins / invites │                         │  verified)          │
+│ tasks / projects │                         │ iCal fetch + sync   │
+│ activityLog      │                         │ verifies Firebase   │
+│ calendar mirror  │                         │ ID token, expands   │
+│ admins / invites │                         │ iCal to mirror docs │
 └────────┬─────────┘                         └──────────┬──────────┘
          ▲                                              │
          │                                              │
@@ -51,8 +52,8 @@ The active production path uses direct Firestore access from the browser for app
 
 Current responsibilities:
 - **Firebase Auth**: email/password sign-in, admin detection, invite-gated signup
-- **Firestore**: owner-scoped app data (`tasks`, `projects`, `activityLog`) plus auth/admin metadata
-- **Cloudflare Worker**: fetches private iCal feeds and verifies Firebase ID tokens before returning calendar data
+- **Firestore**: owner-scoped app data (`tasks`, `projects`, `activityLog`), calendar mirror collections (`calendarMirrorEvents`, `calendarMirrorFeedMeta`), plus auth/admin metadata
+- **Cloudflare Worker**: fetches private iCal feeds and verifies Firebase ID tokens; sync writes expanded events into Firestore for the SPA to subscribe via the Firebase SDK
 - **MCP server**: local stdio bridge for MCP-compatible assistant workflows
 
 ### Tech Stack
@@ -76,28 +77,31 @@ App.tsx
 ├── Auth/
 │   ├── Login (email/password sign-in + invite-gated signup)
 │   └── AdminPanel (invite code management, admin-only)
-├── TabBar (shared) — 3 tabs: Today, Icebox, Projects
+├── TabBar — primary tabs: Today, Projects (`TabId` still includes `icebox` for routing)
+├── Header Menu (`SideDrawer`) — Icebox entry (badge count), Invites (admins), sign out
 ├── TodayView/
-│   ├── DayCalendar (7am–10pm time grid + drag-and-drop boulder/rock placement)
+│   ├── DayCalendar (wake–bed hour grid; drag-and-drop placement for boulders, rocks, pebbles)
+│   │   ├── `dayCalendarOverlapLayout.ts` — side-by-side lanes when timed events overlap (priority: boulder → rock → pebble → iCal)
+│   │   └── DayCalendarEventModal — detail modal for external (iCal) events
+│   ├── DueSoonSidebar (tasks nearing deadline; expandable cards)
 │   ├── Inline Inbox (capture input + boulder/rock/pebble classify buttons)
-│   ├── BoulderSidebar (draggable boulder cards, visual placed/unplaced distinction)
-│   ├── RockSidebar (draggable rock cards, visual placed/unplaced distinction)
-│   └── PebbleSidebar (self-contained: full drag-reorder, bump/drop, complete/icebox)
+│   ├── BoulderSidebar / RockSidebar / PebbleSidebar (single visible column via `sidebarMode`; each supports drag-reorder persisted via `reorderPebbles` batch API)
+│   └── CalendarFeedSettings (feed CRUD when API configured)
 ├── IceboxView/
 │   └── IceboxView (grouped list of iceboxed tasks, reactivate or delete)
 ├── ProjectsView/
 │   ├── ProjectListView (project list + unassociated-task rail/drawer + create)
 │   └── ProjectDetailView (markdown editor + task sections + activity log)
 └── shared/
-    ├── TaskEditPanel (reusable task metadata editor: title, notes, project, deadline, recurrence)
-    ├── SideDrawer (mobile right-edge overlay drawer used by Today and Projects)
+    ├── TaskEditPanel (reusable task metadata editor: title, notes, classification, priority, project, deadline, recurrence)
+    ├── SideDrawer (mobile task drawer on Today; project rail drawer; header Menu on all layouts)
     └── Toast (global error toast system)
 
 Hooks (all in src/hooks/):
 ├── useAuth.ts → Firebase Auth state, admin detection, sign-in/sign-out
-├── useTasks.ts → api/tasks.ts → Firestore
+├── useTasks.ts → api/tasks.ts → Firestore (lists by classification, inbox, icebox, due-soon, mutations)
 ├── useProjects.ts → api/projects.ts → Firestore
-├── useCalendar.ts → api/calendar.ts → Cloudflare Worker
+├── useCalendar.ts → `api/calendar.ts` + `api/calendarMirror.ts` → Worker sync + Firestore mirror subscription (`useEventsForRange`, feed hooks)
 └── useActivityLog.ts → api/activityLog.ts → Firestore
 ```
 
@@ -131,6 +135,7 @@ TodayView task workspace (above the ordered task sections)
 
 **State management:**
 - `useInboxTasks()` → queries `listTasks({ classification: 'unclassified', status: 'active' })`
+- Today View uses `useTodayInboxTasks(projectFilter)` so the inbox list respects the same project filter as boulders/rocks
 - `useCreateTask()` mutation → `createTask({ title })`
 - `useClassifyTask()` mutation → `updateTask(id, { classification })` — assigns `sortOrder` via `getTopSortOrder()` to place at top of list
 
@@ -152,13 +157,13 @@ BoulderSidebar / RockSidebar / PebbleSidebar
     ├── Task title (click to expand → TaskEditPanel)
     ├── Project name (if assigned)
     ├── Deadline flag (⚑) + recurrence indicator (↻)
-    └── Classification-specific metadata (e.g. staleness indicator on pebbles, calendar placement state on boulders/rocks)
+    └── Classification-specific metadata (e.g. staleness indicator on pebbles, placed-on-calendar state when `placement` is set)
 ```
 
 **State management:**
 - `useBoulders()`, `useRocks()`, and `usePebbles()` fetch sorted task lists by classification
-- Local `localOrder` state for optimistic drag reordering
-- On drag end: update local state immediately, then `reorderPebbles.mutate()` with new sort orders
+- Local `localOrder` state for optimistic drag reordering on all three ordered sidebars
+- On drag end: update local state immediately, then `reorderPebbles()` (Firestore `writeBatch` in `api/tasks.ts` — the name is historical) with new `sortOrder` values for the affected list
 - Bump-to-top: assigns `sortOrder = firstPebble.sortOrder - 1000`
 - Drop-by-10: inserts between positions 10 and 11 using fractional indexing
 
@@ -169,64 +174,68 @@ BoulderSidebar / RockSidebar / PebbleSidebar
 - Full drag reorder: assigns fresh integer sortOrders to all items via `writeBatch`
 
 **Persistence:**
-- `reorderPebbles()` uses Firestore `writeBatch` to atomically update all sortOrder values
-- React Query invalidation on `['tasks', 'pebbles']` after batch completes
+- `reorderPebbles()` in `api/tasks.ts` performs a Firestore `writeBatch` of `sortOrder` updates. Boulder, Rock, and Pebble sidebars call it directly after list reorder; the `useReorderPebbles()` hook is available when a mutation-shaped API is preferred (invalidates `['tasks']`).
 
 ---
 
 ### Feature 3: Today View (Daily Planning)
 
-**What it does:** Adjustable day calendar (7am–10pm) showing Google Calendar events plus boulder and rock blocks. On desktop, Today uses a split layout with a right task workspace. On mobile, Today defaults to a single-day calendar and moves the task workspace into a right-edge overlay drawer.
+**What it does:** Adjustable multi-day calendar whose visible time range is driven by per-user **wake** and **bed** hours (defaults 8–22). The grid shows mirrored Google Calendar (iCal) events plus **placed tasks**: boulders, rocks, and pebbles that have a `placement` on the visible day. On desktop, Today uses a split layout with a task workspace column; on mobile, the workspace lives in a right-edge `SideDrawer`. Overlapping timed events render in **side-by-side lanes** within each overlap cluster so blocks stay readable; lane order favors **boulders, then rocks, then pebbles, then iCal-backed meeting/personal** types (`dayCalendarOverlapLayout.ts`).
+
+**Navigation & filters:**
+- Horizontal day strip with previous/next day, “Today,” and configurable **day count** on larger viewports (persisted in `localStorage`, default 3). **Mobile** always shows **one** day (`visibleDayCount` derived from `useIsMobile()`). Scroll position is clamped to a finite past/future window (`calendarLimits.ts`).
+- **Project filter** and **priority filter** (high/med/low) narrow sidebar lists; filters persist in `localStorage`.
+- **Sidebar mode** toggles which ordered list is visible: boulders, rocks, or pebbles (persisted).
+- Optional **CalendarFeedSettings** and refresh when `VITE_API_BASE` is set.
 
 **Component tree:**
 ```
 TodayView
-├── Header controls
-│   └── Day count selector (desktop/tablet: 1/2/3/5 days)
-├── DayCalendar (7am–10pm time grid)
-│   ├── Half-hour slot lines
-│   ├── Drop indicator line (when dragging boulder/rock over)
-│   └── Event overlays (positioned absolutely)
-│       ├── Meeting events (blue, from iCal)
-│       ├── Personal events (green, from iCal)
-│       ├── Boulder blocks (coral dashed border, draggable/resizable)
-│       └── Rock blocks (amber dashed border, draggable/resizable)
-│           ├── Time range + title + project name
-│           ├── → button (remove from calendar)
-│           └── Resize handle (bottom, 8px, ns-resize cursor)
-├── Desktop task workspace (persistent right column)
+├── Header row (date strip, filters, settings, mobile drawer trigger)
+├── DayCalendar × N (one per visible day; compact when N > 1)
+│   ├── Half-hour slot lines (wake–bed)
+│   ├── All-day stacked rows when needed
+│   ├── Drop indicator + “now” line (today only)
+│   └── Timed overlays: external iCal-colored events + placed boulder/rock/pebble blocks
+│       (move, resize, remove; overlap lanes via dayCalendarOverlapLayout.ts)
+├── DayCalendarEventModal — external event details on click
+├── DueSoonSidebar (when due-soon tasks exist)
+├── Desktop column / mobile SideDrawer
 │   ├── Inline Inbox (capture + classify)
-│   ├── BoulderSidebar
-│   ├── RockSidebar
-│   └── PebbleSidebar
-└── Mobile task workspace
-    └── SideDrawer (same content as desktop, overlay instead of reflow)
+│   └── BoulderSidebar | RockSidebar | PebbleSidebar (one visible via sidebarMode)
+└── CalendarFeedSettings (when opened)
 ```
 
-**Boulder placement flow:**
-1. User drags a boulder or rock card from the task workspace onto the calendar
-2. A drop indicator line shows the snap position (15-minute increments)
-3. On drop, the task appears as a dashed block (default 2 hours)
-4. **The task remains in the workspace list** with a visual distinction (opacity/dimmed) — it's "sketched" onto the calendar, not moved
-5. Placed tasks can be moved (mousedown drag) or resized (bottom handle drag) in 15-minute snaps
-6. → button removes the task from the calendar (returns to full opacity in the list)
-7. Task metadata can be edited from the expanded card view (TaskEditPanel)
+**Placement flow (persisted on the task):**
+1. User drags a boulder, rock, or pebble from the workspace onto a day grid (or due-soon tasks that are schedulable).
+2. A drop indicator shows the snapped time (15-minute increments).
+3. On drop, `updateTask` writes `placement: { date, startHour, duration }` (default duration 2h if none). The task **stays in the sidebar** with a dimmed/placed visual state.
+4. Move: pointer drag on the block updates `placement.startHour`. Resize: bottom handle updates `placement.duration`.
+5. → clears `placement` (`null`) on the task document.
+6. Metadata edits use `TaskEditPanel` as elsewhere.
+
+**Overlap lanes:**
+- Timed events partitioned into **overlap-connected components**; each component uses `columnCount` equal-width lanes with a small gap.
+- **Column assignment** processes events in priority order (boulder → rock → pebble → meeting → personal), each taking the lowest free lane that does not intersect an already placed overlapping event — so higher-priority work tends to appear **leftmost**.
+- While moving or resizing a placed task, layout recomputes from preview geometry so lanes update live.
 
 **Snap grid:**
-- `SNAP = 0.25` (15-minute increments)
-- `PX_PER_HOUR = SLOT_HEIGHT * 2` (pixel-to-hour conversion)
-- `yToHour()` converts pixel Y position to snapped hour value
+- `SNAP = 0.25` (15 minutes)
+- `PX_PER_HOUR = SLOT_HEIGHT * 2`
+- `yToHour()` maps pointer Y to snapped hour
 
 **Calendar data:**
-- Real iCal data from Cloudflare Worker when configured (`useTodayEvents()`)
-- Falls back to mock events when no `VITE_API_BASE` configured
-- `icalToCalEvents()` converts CalendarEvent[] to internal CalEvent[] format
+- When `VITE_API_BASE` is set: `useEventsForRange(startDate, days)` subscribes to Firestore calendar mirror updates (`subscribeCalendarMirror` in `api/calendarMirror.ts`) and triggers periodic Worker sync (`runCalendarSync`).
+- When unset: mock events for today only (`MOCK_CAL_EVENTS` in `todayCalendarBridge.ts`).
+- `icalToCalEvents()` maps `CalendarEvent[]` to `CalEvent[]` (includes mirror doc id prefixing for stable keys).
 
-**Client state (TodayView):**
-- `placedBoulders: Record<string, { startHour: number; duration: number }>` — boulder/rock calendar placements (ephemeral, not persisted)
-- `visibleDays` — number of days shown in the calendar on larger screens
-- `isTaskDrawerOpen` — mobile drawer visibility
-- `captureValue: string` — inline inbox input
+**Client state (TodayView) — highlights:**
+- `drawerOpen` — mobile task drawer
+- `sidebarMode` — `'boulders' | 'rocks' | 'pebbles'`
+- `dayCount`, `wakeUpHour`, `bedTimeHour`, `startDate` — calendar scope (several persisted)
+- `projectFilter`, `priorityFilter`, `isFilterExpanded` — sidebar filtering (persisted)
+- `expandedTaskId`, `captureValue`, `isSettingsOpen`, `shouldBustCache`
+- **Placement** itself is **not** ephemeral local state: it lives on each `Task` in Firestore (`placement` field).
 
 ---
 
@@ -240,6 +249,8 @@ IceboxView
 ├── Section header (task count)
 ├── Boulders group
 │   └── IceboxCard[] (title, project name, notes, action buttons)
+├── Rocks group
+│   └── IceboxCard[]
 ├── Pebbles group
 │   └── IceboxCard[]
 └── Unclassified group
@@ -248,7 +259,7 @@ IceboxView
 
 **Actions per card:**
 - 🪨 button → reactivate as boulder (`useReactivateTask`)
-- Pebble button → reactivate as pebble (`useReactivateTask`)
+- Rock / Pebble buttons → reactivate with that classification (`useReactivateTask`)
 - Delete button → confirmation → permanent delete (`useDeleteTask` → Firestore `deleteDoc`)
 
 **State management:**
@@ -281,7 +292,7 @@ ProjectDetailView
 │   │   └── Activity Log (collapsible)
 │   │       └── Log entries with timestamps
 │   └── Right: Task sections
-│       ├── Add task input + boulder/rock/pebble toggle
+│       ├── Add task input + boulder / rock / pebble type toggle
 │       ├── Boulders section (click title → TaskEditPanel)
 │       ├── Rocks section (click title → TaskEditPanel)
 │       ├── Pebbles section (click title → TaskEditPanel)
@@ -311,6 +322,7 @@ ProjectDetailView
 TaskEditPanel
 ├── Title (editable)
 ├── Notes (textarea)
+├── Classification + priority controls
 ├── Project dropdown (active projects)
 ├── Deadline picker
 ├── Recurrence selector (only shown when deadline is set)
@@ -331,6 +343,8 @@ TaskEditPanel
 ### Feature 7: Auth (Login + Admin + Invites)
 
 **What it does:** Email/password authentication with invite-gated signup. First user becomes admin automatically. Admin can generate invite codes for additional users.
+
+**Global chrome:** The signed-in header shows **Today** and **Projects** tabs plus a **Menu** control. **Icebox** and **Invites** (admins only) live in that menu; keyboard shortcuts **`1` / `2` / `3`** still switch **Today / Icebox / Projects** when focus is not in an input.
 
 **Components:**
 - `Login` — sign-in form + invite-code signup flow
@@ -358,11 +372,18 @@ TaskEditPanel
   notes: string;                           // Freeform text, default ''
   classification: 'unclassified' | 'boulder' | 'rock' | 'pebble';
   status: 'active' | 'completed' | 'iceboxed';
+  priority: 'high' | 'med' | 'low';        // Default 'low'; surfaced in Today filters and TaskEditPanel
   deadline: Timestamp | null;              // Firestore Timestamp, converted to ISO string client-side
   recurrence: RecurrenceRule | null;       // See RecurrenceRule below
   projectId: string | null;               // FK to projects collection
   sortOrder: number;                       // Fractional index for boulder, rock, and pebble ordering
+  placement: {                             // Optional time block on Today calendar (persisted)
+    date: string;                          // YYYY-MM-DD
+    startHour: number;                     // e.g. 9.5 for 9:30
+    duration: number;                      // hours
+  } | null;
   completedAt: Timestamp | null;           // Set on completion via serverTimestamp()
+  lastOccurrenceCompletedAt: Timestamp | null; // Used by recurrence / completion flows when applicable
   createdAt: Timestamp;                    // serverTimestamp()
   updatedAt: Timestamp;                    // serverTimestamp(), updated on every write
 }
@@ -465,19 +486,17 @@ Required composite index (defined in `firestore.indexes.json`):
 
 | Query Key | Source | Stale Time |
 |-----------|--------|------------|
-| `['tasks', filters]` | `useTasks(filters)` | 30s (global default) |
-| `['tasks', 'inbox']` | `useInboxTasks()` | 30s |
-| `['tasks', 'boulders']` | `useBoulders()` | 30s |
-| `['tasks', 'rocks']` | `useRocks()` | 30s |
-| `['tasks', 'pebbles']` | `usePebbles()` | 30s |
+| `['tasks', filters]` | `useTasks(filters)` (non–active-all paths) | 30s (global default) |
+| `['tasks', 'active-all']` | Single shared query for all active tasks; `useInboxTasks`, `useBoulders`, `useRocks`, `usePebbles`, and Today-scoped hooks use `select` to slice by classification / project filter | 30s |
 | `['tasks', 'iceboxed']` | `useIceboxedTasks()` | 30s |
 | `['projects']` | `useProjects()` | 30s |
 | `['projects', id]` | `useProject(id)` | 30s |
 | `['activityLog', projectId]` | `useProjectActivityLog(id)` | 30s |
+| `['calendar', 'range', uid, startDate, days]` | `useEventsForRange` + mirror subscription | `staleTime: Infinity` (live updates via `setQueryData`) |
 
 **Invalidation strategy:**
-- All task mutations invalidate `['tasks']` (broad — catches inbox, boulders, rocks, pebbles, iceboxed, and filtered queries)
-- Pebble reorder specifically invalidates `['tasks', 'pebbles']`
+- Task mutations invalidate `['tasks']`, which refreshes the shared `active-all` query and any other task query prefixes the app uses
+- List reorder from sidebars persists via `reorderPebbles()` without always calling `invalidateQueries` (the optimistic `localOrder` holds until the next refetch)
 - Project mutations invalidate `['projects']`
 - Project status toggle also invalidates `['tasks']` (boulder visibility changes)
 
@@ -485,13 +504,18 @@ Required composite index (defined in `firestore.indexes.json`):
 
 | State | Location | Purpose |
 |-------|----------|---------|
-| `activeTab` | App.tsx `useState` | Current view tab (today/icebox/projects) |
+| `activeTab` | App.tsx `useState` | Current primary tab (`today` / `projects`); `icebox` reachable via Menu or keyboard `2` |
 | `openProjectId` | App.tsx `useState` | Project detail navigation |
 | `showAdmin` | App.tsx `useState` | Admin panel modal visibility |
-| `placedBoulders` | TodayView `useState` | Boulder/rock → { startHour, duration } calendar placements (ephemeral) |
-| `visibleDays` | TodayView `useState` | Number of calendar days shown on larger screens |
-| `isTaskDrawerOpen` | TodayView / ProjectListView `useState` | Mobile right-drawer visibility |
+| `showMenu` | App.tsx `useState` | Header Menu drawer (Icebox, Invites, sign out) |
+| `drawerOpen` | TodayView `useState` | Mobile task-workspace drawer |
+| `sidebarMode` | TodayView `useState` | Which ordered list is visible: boulders / rocks / pebbles |
+| `dayCount`, `wakeUpHour`, `bedTimeHour`, `startDate` | TodayView | Calendar scope (several persisted via `localStorage`) |
+| `projectFilter`, `priorityFilter` | TodayView | Sidebar list filters (persisted) |
+| `expandedTaskId` | TodayView `useState` | Which task card shows `TaskEditPanel` inline |
 | `captureValue` | TodayView `useState` | Inline inbox text input |
+| *(placement)* | Firestore on `Task` | `{ date, startHour, duration }` or `null` — not separate React state |
+| `drawerOpen` | ProjectListView `useState` | Mobile unassociated-task rail drawer |
 | `markdown` | ProjectDetailView `useState` | Local editor state (debounced to server) |
 | `localOrder` | Today sidebars `useState` | Optimistic drag reorder for ordered task lists |
 | `showCompleted` | ProjectDetailView `useState` | Toggle completed tasks visibility |
@@ -596,18 +620,18 @@ Required composite index (defined in `firestore.indexes.json`):
 
 ---
 
-### ADR-007: Boulder Calendar Placement as Ephemeral Sketch
+### ADR-007: Calendar Placement Stored on the Task Document
 
-**Decision:** When a boulder or rock is dragged onto the day calendar, it remains in the task list with a visual distinction (dimmed). Placement data is ephemeral client state — not persisted to Firestore.
+**Decision:** When a boulder, rock, or pebble is placed on the day calendar, `placement: { date, startHour, duration }` is written to the task in Firestore via `updateTask`. Removing from the calendar sets `placement` to `null`. The task **remains** in its ordered sidebar list with a dimmed/placed visual distinction.
 
-**Context:** The calendar view is for daily planning ("sketching out when I plan to work on this task"), not for fundamentally moving tasks. Boulders and rocks still live in the task workspace; the calendar placement is a transient visual aid.
+**Context:** Daily planning should survive refresh and multi-device use. Treating the time block as task metadata (like deadline) avoids a separate “calendar-only” store while keeping the mental model: the list is the inventory, the grid is the schedule sketch.
 
 **Consequences:**
-- (+) Ordered task lists always reflect the full todo set, maintaining sort order
-- (+) Task metadata (edit, complete, icebox) accessible from the list even when a task is on calendar
-- (+) No Firestore writes for calendar placement — keeps the interaction lightweight
-- (-) Calendar placements lost on page refresh (acceptable for daily planning)
-- (-) No historical record of time-blocking patterns
+- (+) Placements sync across sessions and devices with normal task sync
+- (+) Ordered lists still show the full set; placement is orthogonal to `sortOrder`
+- (+) One mutation path (`updateTask`) for move, resize, and clear
+- (-) Extra Firestore writes when dragging on the grid (acceptable for explicit user actions)
+- (-) No separate audit trail of placement history beyond `updatedAt`
 
 ---
 
@@ -619,9 +643,23 @@ Required composite index (defined in `firestore.indexes.json`):
 
 **Consequences:**
 - (+) Fewer tabs, faster workflow — capture and classify without leaving the planning view
-- (+) Inbox badge moved to visible position above the boulder/pebble toggle
+- (+) Inbox and capture share the Today task column — no separate triage view
 - (+) TaskEditPanel provides full metadata editing everywhere, so triage-time metadata assignment isn't needed
 - (-) No project/deadline assignment at classification time (must expand card later)
+
+---
+
+### ADR-009: Overlap Columns on the Today Calendar
+
+**Decision:** When two or more timed calendar entries intersect, they render in equal-width horizontal lanes within the same overlap cluster (Google Calendar–style). Lane indices are assigned in **priority order**: boulder, then rock, then pebble, then iCal types (meeting, personal), so higher-priority work tends to occupy the **left** columns.
+
+**Context:** Full-width stacked cards made background events unreadable. Lane layout preserves scanability without hiding lower-priority items entirely.
+
+**Consequences:**
+- (+) Concurrent meetings and placed tasks remain visible side by side
+- (+) Product preference (boulders over rocks over external calendar) is reflected in layout
+- (-) Many simultaneous events produce narrow columns; titles truncate more aggressively
+- (-) Implementation lives in `dayCalendarOverlapLayout.ts` and must stay in sync with `CalEvent` types
 
 ---
 
@@ -643,17 +681,19 @@ Required composite index (defined in `firestore.indexes.json`):
 
 ### Google Calendar / iCal
 
-**Implementation:** Cloudflare Worker fetches private iCal feed URLs from Worker secrets, parses today's events using `ical.js` (with RRULE expansion), and returns them only after verifying the caller's Firebase ID token.
+**Implementation:** The Cloudflare Worker verifies the caller’s Firebase ID token, fetches configured private iCal URLs, parses events with `ical.js` (including RRULE expansion), and **syncs** normalized instances into **Firestore** (mirrored event documents per user). The SPA does not long-poll the Worker for day cells: it uses `subscribeCalendarMirror` (`api/calendarMirror.ts`) so React Query receives realtime updates, and `runCalendarSync` triggers periodic refresh (throttled per user in `useCalendar.ts`).
 
-**Timezone handling:** Worker accepts `?tz=` query parameter. Uses `Intl.DateTimeFormat` with `timeZone` option to correctly determine "today" in the user's timezone.
+**Feed configuration:** Authenticated clients manage feeds through calendar API endpoints reflected in the UI as `CalendarFeedSettings` (create/update/delete feed metadata).
+
+**Timezone handling:** Worker and expansion logic respect user timezone (e.g. `?tz=` / client-supplied context) so “today” and ranges match local planning.
 
 **Requirements:**
 - Multiple calendar feeds (work, personal, etc.)
-- Read TRANSP property for busy/free
-- 30+ minute staleness acceptable (morning planning use case)
+- Read TRANSP (and related) data for busy/free display
+- Staleness on the order of minutes is acceptable; mirror + throttled sync keep UX fresh without hammering origins
 - Never writes back to Google Calendar
 
-**Fallback state:** Today View uses hardcoded mock events if the calendar API is unavailable or not configured.
+**Fallback state:** If `VITE_API_BASE` is unset, Today View uses hardcoded mock events for the current day only.
 
 ### MCP Server (Phase 5 — Built)
 
@@ -661,26 +701,27 @@ Required composite index (defined in `firestore.indexes.json`):
 
 **Connection:** Uses the Firebase Web SDK (same client SDK as the frontend) with hardcoded project config. No service account needed — runs locally with the same Firestore access as the browser.
 
-**17 tools implemented:**
+**18 tools implemented:**
 | Tool | Description |
 |------|-------------|
-| `add_task` | Create task (inbox by default, or specify classification) |
+| `add_task` | Create task (inbox by default, or specify classification, priority, project, deadline) |
 | `list_inbox` | List unclassified tasks for triage |
-| `classify_task` | Classify as boulder/rock/pebble, optionally assign project + deadline |
-| `search_tasks` | Search tasks by title with optional status/classification filters |
+| `classify_task` | Classify as boulder/rock/pebble; optional project + deadline |
+| `search_tasks` | Search by title with optional status/classification filters |
 | `get_task` | Fetch a task's full details |
-| `update_task` | Update task metadata, status, or classification |
+| `update_task` | Update task fields (title, notes, classification, priority, status, project, deadline, sortOrder, etc.) |
+| `reorder_tasks` | Set list order by passing task IDs (rewrites sort orders) |
 | `complete_task` | Complete a task (handles recurrence auto-generation) |
 | `icebox_task` | Icebox a task |
 | `list_boulders` | List active boulders, grouped by project |
 | `list_rocks` | List active rocks |
-| `list_pebbles` | List pebbles in priority order, optional stale filter |
-| `list_projects` | List all projects with status |
-| `get_project` | Full project context: markdown + all tasks (active, completed) |
-| `create_project` | Create new project |
+| `list_pebbles` | List pebbles in order, optional stale-day filter + limit |
+| `list_projects` | List projects with optional status filter |
+| `get_project` | Markdown + active (by classification) + completed tasks |
+| `create_project` | Create project with optional initial markdown |
 | `update_project` | Update project markdown, name, or status |
-| `get_today` | Daily planning snapshot: boulders, rocks, top pebbles, inbox count |
-| `suggest_tasks_for_project` | Full project context formatted for an assistant to suggest next tasks |
+| `get_today` | Planning snapshot: boulders, rocks, top pebbles, inbox count |
+| `suggest_tasks_for_project` | Project doc + tasks (incl. iceboxed) formatted for assistant suggestions |
 
 **Setup:** `cd mcp-server && npm install && npm run build`, then configure it in your MCP-compatible client:
 ```json
@@ -705,8 +746,8 @@ Required composite index (defined in `firestore.indexes.json`):
   - [x] Task data model + Firestore CRUD (`api/tasks.ts`)
   - [x] React Query hooks for tasks (`hooks/useTasks.ts`)
   - [x] TypeScript type definitions (`types/index.ts`)
-  - [x] Triage View — capture input, classification cards, project dropdown, deadline picker
-  - [x] Tab navigation with inbox badge count
+  - [x] Capture + classification (now inline on Today; triage-only view retired)
+  - [x] Tab navigation; icebox count surfaced from Menu drawer
 
 - [x] **Phase 2: Pebble Sorting**
   - [x] Pebble sort order persistence (fractional indexing)
@@ -716,14 +757,13 @@ Required composite index (defined in `firestore.indexes.json`):
   - [x] Batch reorder via Firestore writeBatch
 
 - [x] **Phase 3: Today View**
-  - [x] Day calendar component (7am–10pm time grid)
-  - [x] Event rendering with color coding (meeting/personal/boulder)
-  - [x] Boulder drag-and-drop to calendar with 15-minute snap grid
-  - [x] Boulder move and resize within calendar
-  - [x] Boulders stay in sidebar when placed (visual distinction)
-  - [x] PebbleSidebar (self-contained pebble management)
-  - [x] Sidebar toggle (boulders ↔ pebbles)
-  - [x] iCal feed integration via Cloudflare Worker
+  - [x] Day calendar with configurable wake/bed hours and multi-day strip
+  - [x] Event rendering with feed-driven colors; placed boulder/rock/pebble blocks
+  - [x] Drag-and-drop placement with 15-minute snap grid; move and resize
+  - [x] Tasks stay in sidebar when placed (dimmed distinction); placement persisted on task
+  - [x] Boulder / Rock / Pebble sidebars with mode switch and reorder persistence
+  - [x] Overlap columns for concurrent timed events (priority-ordered lanes)
+  - [x] iCal via Worker + Firestore calendar mirror subscription
 
 - [x] **Phase 4: Projects**
   - [x] Project data model + Firestore CRUD (`api/projects.ts`)
@@ -731,31 +771,31 @@ Required composite index (defined in `firestore.indexes.json`):
   - [x] Project List View (active/on-hold grouping, inline create, status toggle)
   - [x] Project Detail View (markdown editor + task sidebar)
   - [x] Auto-save markdown with 1s debounce
-  - [x] Task creation from project page (boulder/pebble toggle)
+  - [x] Task creation from project page (boulder / rock / pebble toggle)
   - [x] Activity log (auto-generated entries, collapsible display)
   - [x] Completed tasks section with timestamps
 
 - [x] **Phase 5: MCP Server**
   - [x] Set up TypeScript MCP server project with stdio transport
   - [x] Connect to Firestore via Firebase Web SDK (no service account needed)
-  - [x] All 13 tools implemented and tested
+  - [x] 18 tools implemented (tasks, search/reorder, projects, planning composites)
   - [ ] Configure in an MCP-compatible client and test conversationally
 
 - [x] **Phase 6: iCal + Recurring Tasks + Polish**
   - [x] Cloudflare Worker for iCal feed fetching and Firebase-token verification
   - [x] Deploy Worker and configure iCal feed URLs in Worker secrets
-  - [x] Frontend calendar API client + hook (`api/calendar.ts`, `hooks/useCalendar.ts`)
-  - [x] Today View uses real iCal data when available, falls back to mock events
+  - [x] Frontend calendar API + Firestore mirror client (`api/calendar.ts`, `api/calendarMirror.ts`, `hooks/useCalendar.ts`)
+  - [x] Today View uses mirrored events when API configured, falls back to mock events
   - [x] Full recurrence system: 6 types (daily, weekly, monthly, yearly, periodically, custom)
   - [x] Recurrence UI with day-of-week picker, interval controls, custom unit toggle
   - [x] Error handling UI — global toast system
-  - [x] Keyboard shortcuts — `1`/`2`/`3` switches tabs
+  - [x] Keyboard shortcuts — `1`/`2`/`3` switch Today / Icebox / Projects (inputs excluded)
   - [x] Staleness indicators with color escalation
 
 - [x] **Phase 7: UX Consolidation**
   - [x] Triage tab removed — inline inbox in Today sidebar
   - [x] Pebbles tab removed — PebbleSidebar is self-contained
-  - [x] Icebox tab added with reactivate/delete actions
+  - [x] Icebox moved to header Menu (not a main tab); reactivate/delete per classification
   - [x] Shared TaskEditPanel for consistent task editing everywhere
   - [x] Boulder drag-and-drop calendar placement (replaces one-click)
   - [x] Boulders remain in sidebar when placed (sketch model)

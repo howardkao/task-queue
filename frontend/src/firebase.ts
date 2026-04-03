@@ -1,6 +1,10 @@
 import { initializeApp } from 'firebase/app';
 import { initializeAuth, indexedDBLocalPersistence, browserLocalPersistence } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import {
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
+} from 'firebase/firestore';
 
 function requireEnv(name: keyof ImportMetaEnv) {
   const value = import.meta.env[name];
@@ -23,5 +27,8 @@ const app = initializeApp(firebaseConfig);
 export const auth = initializeAuth(app, {
   persistence: [indexedDBLocalPersistence, browserLocalPersistence],
 });
-export const db = getFirestore(app);
+/** IndexedDB-backed cache: revisits and same-day scrolling reuse local data; fewer billed reads when unchanged. */
+export const db = initializeFirestore(app, {
+  localCache: persistentLocalCache({ tabManager: persistentMultipleTabManager() }),
+});
 export default app;

@@ -158,6 +158,7 @@ export function BoulderSidebar({
           <div key={b.id}>
             {showGapBefore && <div style={dropIndicatorLine} />}
             <div
+              data-task-row-id={b.id}
               draggable
               onDragStart={(e) => handleDragStart(e, b, index)}
               onDragOver={(e) => handleDragOver(e, index)}

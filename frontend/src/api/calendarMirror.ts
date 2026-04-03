@@ -26,6 +26,13 @@ import { parseICal } from '../calendar/parseICal';
 const EVENTS = 'calendarMirrorEvents';
 const META = 'calendarMirrorFeedMeta';
 
+function logCalendarFirestore(message: string, data?: Record<string, unknown>) {
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console -- intentional diagnostics for Firestore churn
+    console.debug(`[calendarFirestore] ${message}`, data ?? '');
+  }
+}
+
 function getClientSyncWindowBounds(): { start: Date; end: Date } {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const today = new Date();
@@ -324,16 +331,27 @@ export async function patchMirrorEventsForFeedMetadata(
   }
 }
 
-export function subscribeCalendarMirror(
-  ownerUid: string,
+/** Client-side slice of the mirror for the visible calendar strip (same bounds the old per-range query used). */
+export function filterMirrorEventsForVisibleRange(
+  events: CalendarEvent[],
   startDate: string,
   days: number,
-  onUpdate: (data: CalendarResponse) => void,
-): () => void {
+): CalendarEvent[] {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
   const rangeStart = getTimezoneDate(startDate, '00:00:00', tz);
   const endKey = addDaysToYmd(startDate, days);
   const rangeEnd = getTimezoneDate(endKey, '00:00:00', tz);
+  const startISO = rangeStart.toISOString();
+  const endISO = rangeEnd.toISOString();
+  return events.filter((e) => e.start >= startISO && e.start < endISO);
+}
+
+/**
+ * Single Firestore listener for the full mirror sync window (today ± CALENDAR_RANGE_DAYS).
+ * TodayView filters client-side so scrolling does not swap queries or re-read overlapping docs.
+ */
+export function subscribeCalendarMirror(ownerUid: string, onUpdate: (data: CalendarResponse) => void): () => void {
+  const { start: rangeStart, end: rangeEnd } = getClientSyncWindowBounds();
   const startISO = rangeStart.toISOString();
   const endISO = rangeEnd.toISOString();
 
@@ -360,7 +378,23 @@ export function subscribeCalendarMirror(
 
   const qMeta = query(collection(db, META), where('ownerUid', '==', ownerUid));
 
+  logCalendarFirestore('subscribe sync-window listener', {
+    startISO,
+    endISO,
+    note: 'One listener per session (until local calendar day changes); scroll uses client-side filter.',
+  });
+
   const unsubE = onSnapshot(qEvents, (snap) => {
+    const changes = snap.docChanges();
+    logCalendarFirestore('events snapshot', {
+      docCount: snap.size,
+      fromCache: snap.metadata.fromCache,
+      hasPendingWrites: snap.metadata.hasPendingWrites,
+      docChanges: changes.length,
+      added: changes.filter((c) => c.type === 'added').length,
+      modified: changes.filter((c) => c.type === 'modified').length,
+      removed: changes.filter((c) => c.type === 'removed').length,
+    });
     lastEvents = snap.docs.map((d) => {
       const x = d.data();
       return {
@@ -384,11 +418,16 @@ export function subscribeCalendarMirror(
   });
 
   const unsubM = onSnapshot(qMeta, (snap) => {
+    logCalendarFirestore('meta snapshot', {
+      docCount: snap.size,
+      fromCache: snap.metadata.fromCache,
+    });
     lastWarnings = snap.docs.flatMap((d) => (d.data().syncWarnings as string[]) || []);
     emit();
   });
 
   return () => {
+    logCalendarFirestore('unsubscribe sync-window listener', { startISO, endISO });
     unsubE();
     unsubM();
   };

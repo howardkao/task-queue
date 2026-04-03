@@ -133,6 +133,7 @@ export function RockSidebar({
           <div key={rock.id}>
             {showGapBefore && <div style={dropIndicatorLine} />}
             <div
+              data-task-row-id={rock.id}
               draggable
               onDragStart={(e) => handleDragStart(e, rock, index)}
               onDragOver={(e) => handleDragOver(e, index)}

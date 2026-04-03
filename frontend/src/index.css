@@ -215,4 +215,15 @@
     margin: 0;
     padding: 0;
   }
+
+  /* Click affordance: native buttons default to arrow in many browsers */
+  button:not(:disabled) {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: not-allowed;
+  }
+  select:not(:disabled) {
+    cursor: pointer;
+  }
 }

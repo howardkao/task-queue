@@ -1,3 +1,12 @@
+/** While dragging a placed task, events are driven from preview so the card can move between day columns. */
+export interface PlacedTaskDragPreview {
+  taskId: string;
+  dateKey: string;
+  startHour: number;
+  duration: number;
+  allDay: boolean;
+}
+
 export interface CalEvent {
   id: string;
   title: string;

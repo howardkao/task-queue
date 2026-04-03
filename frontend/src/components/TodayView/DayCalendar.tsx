@@ -1,9 +1,9 @@
 import { useMemo, useRef, useCallback, useState, useEffect } from 'react';
 import { calendarEventCardChrome, calendarEventTitleStyle } from '../shared/listCardStyles';
 import { getPlacedTaskCalendarChrome } from '../../theme/calendarFeedPalette';
-import type { CalEvent } from './dayCalendarTypes';
+import type { CalEvent, PlacedTaskDragPreview } from './dayCalendarTypes';
 import { DayCalendarEventModal } from './DayCalendarEventModal';
-import { ALL_DAY_ROW_HEIGHT, PX_PER_HOUR, SLOT_HEIGHT, SNAP } from './dayCalendarConstants';
+import { ALL_DAY_ROW_HEIGHT, PX_PER_HOUR, SLOT_HEIGHT, SNAP, PLACED_TASK_LONG_PRESS_MS, PLACED_TASK_PRE_DRAG_MOVE_PX } from './dayCalendarConstants';
 import {
   externalCalendarChrome,
   formatHourMinute,
@@ -11,21 +11,37 @@ import {
   isPlacedTaskEventType,
   snapToGrid,
 } from './dayCalendarUtils';
+import { computeTimedEventOverlapLayout } from './dayCalendarOverlapLayout';
+
+const OVERLAP_LANE_GAP_PX = 2;
+const PRE_DRAG_THRESHOLD_SQ = PLACED_TASK_PRE_DRAG_MOVE_PX * PLACED_TASK_PRE_DRAG_MOVE_PX;
 
 export type { CalEvent } from './dayCalendarTypes';
 
 interface DayCalendarProps {
   date: string;
-  dateKey: string; // ISO date string (YYYY-MM-DD) identifying this day
+  dateKey: string;
   events: CalEvent[];
   maxAllDayCount?: number;
   startHour?: number;
   endHour?: number;
-  compact?: boolean; // narrower layout for multi-day view
-  showLabels?: boolean; // show hour labels on the left
-  isToday?: boolean; // show current time indicator
+  compact?: boolean;
+  showLabels?: boolean;
+  isToday?: boolean;
+  registerDayGrid?: (dateKey: string, el: HTMLDivElement | null) => void;
+  onPlacedTaskInList?: (taskId: string) => void;
+  computeTimedDragPlacement?: (
+    clientX: number,
+    clientY: number,
+    prevDateKey: string,
+    duration: number,
+  ) => { dateKey: string; startHour: number } | null;
+  computeAllDayDragDateKey?: (clientX: number, prevDateKey: string) => string;
+  onPlacedTaskDragPreviewChange?: (preview: PlacedTaskDragPreview | null) => void;
+  activePlacedDragTaskId?: string | null;
   onBoulderDrop?: (boulderId: string, startHour: number, dateKey: string) => void;
-  onBoulderMove?: (boulderId: string, startHour: number) => void;
+  onBoulderMove?: (boulderId: string, startHour: number, dateKey: string) => void;
+  onBoulderAllDayMove?: (boulderId: string, dateKey: string) => void;
   onBoulderResize?: (boulderId: string, duration: number) => void;
   onBoulderRemove?: (boulderId: string) => void;
 }
@@ -33,12 +49,37 @@ interface DayCalendarProps {
 export function DayCalendar({
   date, dateKey, events, maxAllDayCount = 0, startHour = 7, endHour = 22, compact = false,
   showLabels = true, isToday = false,
-  onBoulderDrop, onBoulderMove, onBoulderResize, onBoulderRemove,
+  registerDayGrid,
+  onPlacedTaskInList,
+  computeTimedDragPlacement,
+  computeAllDayDragDateKey,
+  onPlacedTaskDragPreviewChange,
+  activePlacedDragTaskId = null,
+  onBoulderDrop, onBoulderMove, onBoulderAllDayMove, onBoulderResize, onBoulderRemove,
 }: DayCalendarProps) {
-  const gridRef = useRef<HTMLDivElement>(null);
+  const gridRef = useRef<HTMLDivElement | null>(null);
   const [dragOverHour, setDragOverHour] = useState<number | null>(null);
   const [now, setNow] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalEvent | null>(null);
+
+  const propsRef = useRef({
+    dateKey,
+    computeTimedDragPlacement,
+    computeAllDayDragDateKey,
+    onPlacedTaskInList,
+    onPlacedTaskDragPreviewChange,
+    onBoulderMove,
+    onBoulderAllDayMove,
+  });
+  propsRef.current = {
+    dateKey,
+    computeTimedDragPlacement,
+    computeAllDayDragDateKey,
+    onPlacedTaskInList,
+    onPlacedTaskDragPreviewChange,
+    onBoulderMove,
+    onBoulderAllDayMove,
+  };
 
   useEffect(() => {
     if (!isToday) return;
@@ -51,7 +92,7 @@ export function DayCalendar({
   }, [now]);
 
   const [interacting, setInteracting] = useState<{
-    type: 'move' | 'resize';
+    type: 'resize';
     eventId: string;
     startY: number;
     currentStartHour: number;
@@ -66,7 +107,6 @@ export function DayCalendar({
     return result;
   }, [startHour, endHour]);
 
-  // Convert a pixel Y offset within the grid to an hour value
   const yToHour = useCallback((clientY: number): number => {
     if (!gridRef.current) return startHour;
     const rect = gridRef.current.getBoundingClientRect();
@@ -75,7 +115,6 @@ export function DayCalendar({
     return snapToGrid(Math.max(startHour, Math.min(hour, endHour)));
   }, [startHour, endHour]);
 
-  // HTML5 drag: boulder dropped from sidebar
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes('boulder-id')) return;
     e.preventDefault();
@@ -96,27 +135,184 @@ export function DayCalendar({
     onBoulderDrop(boulderId, hour, dateKey);
   }, [yToHour, onBoulderDrop, dateKey]);
 
-  const handlePlacedBoulderDragStart = useCallback((e: React.DragEvent, eventId: string) => {
+  const setGridEl = useCallback((el: HTMLDivElement | null) => {
+    gridRef.current = el;
+    registerDayGrid?.(dateKey, el);
+  }, [dateKey, registerDayGrid]);
+
+  const lastPreviewDuringDragRef = useRef<PlacedTaskDragPreview | null>(null);
+  const dragDateKeyRef = useRef(dateKey);
+
+  const attachPlacedTimedPointerSession = useCallback((e: React.PointerEvent, eventId: string, ev: CalEvent) => {
+    if (e.button !== 0) return;
     const boulderId = eventId.replace('boulder-', '');
-    e.dataTransfer.setData('boulder-id', boulderId);
-    e.dataTransfer.effectAllowed = 'move';
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let longPressFired = false;
+    let timerCancelled = false;
+
+    const timer = window.setTimeout(() => {
+      if (timerCancelled) return;
+      longPressFired = true;
+      const pr = propsRef.current;
+      dragDateKeyRef.current = pr.dateKey;
+      const init: PlacedTaskDragPreview = {
+        taskId: boulderId,
+        dateKey: pr.dateKey,
+        startHour: ev.startHour,
+        duration: ev.duration,
+        allDay: false,
+      };
+      lastPreviewDuringDragRef.current = init;
+      pr.onPlacedTaskDragPreviewChange?.(init);
+    }, PLACED_TASK_LONG_PRESS_MS);
+
+    const onMove = (pe: PointerEvent) => {
+      if (pe.pointerId !== e.pointerId) return;
+      const dx = pe.clientX - startX;
+      const dy = pe.clientY - startY;
+      if (!longPressFired && dx * dx + dy * dy > PRE_DRAG_THRESHOLD_SQ) {
+        timerCancelled = true;
+        window.clearTimeout(timer);
+      }
+      if (longPressFired) {
+        const pr = propsRef.current;
+        if (!pr.computeTimedDragPlacement) return;
+        const next = pr.computeTimedDragPlacement(
+          pe.clientX,
+          pe.clientY,
+          dragDateKeyRef.current,
+          ev.duration,
+        );
+        if (next) {
+          dragDateKeyRef.current = next.dateKey;
+          const preview: PlacedTaskDragPreview = {
+            taskId: boulderId,
+            dateKey: next.dateKey,
+            startHour: next.startHour,
+            duration: ev.duration,
+            allDay: false,
+          };
+          lastPreviewDuringDragRef.current = preview;
+          pr.onPlacedTaskDragPreviewChange?.(preview);
+        }
+      }
+    };
+
+    const onUp = (pe: PointerEvent) => {
+      if (pe.pointerId !== e.pointerId) return;
+      window.clearTimeout(timer);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      const pr = propsRef.current;
+      const dx = pe.clientX - startX;
+      const dy = pe.clientY - startY;
+      if (!longPressFired) {
+        if (dx * dx + dy * dy <= PRE_DRAG_THRESHOLD_SQ) {
+          pr.onPlacedTaskInList?.(boulderId);
+        }
+      } else {
+        const p = lastPreviewDuringDragRef.current;
+        lastPreviewDuringDragRef.current = null;
+        pr.onPlacedTaskDragPreviewChange?.(null);
+        if (p) pr.onBoulderMove?.(p.taskId, p.startHour, p.dateKey);
+      }
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
   }, []);
 
-  // Mouse-based: move or resize a placed boulder
-  const handleMouseDown = useCallback((e: React.MouseEvent, eventId: string, action: 'move' | 'resize') => {
+  const attachPlacedAllDayPointerSession = useCallback((e: React.PointerEvent, eventId: string) => {
+    if (e.button !== 0) return;
+    const boulderId = eventId.replace('boulder-', '');
+    const startX = e.clientX;
+    const startY = e.clientY;
+    let longPressFired = false;
+    let timerCancelled = false;
+
+    const timer = window.setTimeout(() => {
+      if (timerCancelled) return;
+      longPressFired = true;
+      const pr = propsRef.current;
+      dragDateKeyRef.current = pr.dateKey;
+      const init: PlacedTaskDragPreview = {
+        taskId: boulderId,
+        dateKey: pr.dateKey,
+        startHour: 0,
+        duration: 24,
+        allDay: true,
+      };
+      lastPreviewDuringDragRef.current = init;
+      pr.onPlacedTaskDragPreviewChange?.(init);
+    }, PLACED_TASK_LONG_PRESS_MS);
+
+    const onMove = (pe: PointerEvent) => {
+      if (pe.pointerId !== e.pointerId) return;
+      const dx = pe.clientX - startX;
+      const dy = pe.clientY - startY;
+      if (!longPressFired && dx * dx + dy * dy > PRE_DRAG_THRESHOLD_SQ) {
+        timerCancelled = true;
+        window.clearTimeout(timer);
+      }
+      if (longPressFired) {
+        const pr = propsRef.current;
+        if (!pr.computeAllDayDragDateKey) return;
+        const nextKey = pr.computeAllDayDragDateKey(pe.clientX, dragDateKeyRef.current);
+        dragDateKeyRef.current = nextKey;
+        const preview: PlacedTaskDragPreview = {
+          taskId: boulderId,
+          dateKey: nextKey,
+          startHour: 0,
+          duration: 24,
+          allDay: true,
+        };
+        lastPreviewDuringDragRef.current = preview;
+        pr.onPlacedTaskDragPreviewChange?.(preview);
+      }
+    };
+
+    const onUp = (pe: PointerEvent) => {
+      if (pe.pointerId !== e.pointerId) return;
+      window.clearTimeout(timer);
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointercancel', onUp);
+      const pr = propsRef.current;
+      const dx = pe.clientX - startX;
+      const dy = pe.clientY - startY;
+      if (!longPressFired) {
+        if (dx * dx + dy * dy <= PRE_DRAG_THRESHOLD_SQ) {
+          pr.onPlacedTaskInList?.(boulderId);
+        }
+      } else {
+        const p = lastPreviewDuringDragRef.current;
+        lastPreviewDuringDragRef.current = null;
+        pr.onPlacedTaskDragPreviewChange?.(null);
+        if (p) pr.onBoulderAllDayMove?.(p.taskId, p.dateKey);
+      }
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointercancel', onUp);
+  }, []);
+
+  const handleResizeMouseDown = useCallback((e: React.MouseEvent, eventId: string) => {
     e.preventDefault();
     e.stopPropagation();
     const event = events.find(ev => ev.id === eventId);
     if (!event) return;
 
-    // Track state in a ref to be accessible in handleMouseUp without closure staleness
     const stateRef = {
       currentStartHour: event.startHour,
-      currentDuration: event.duration
+      currentDuration: event.duration,
     };
 
     setInteracting({
-      type: action,
+      type: 'resize',
       eventId,
       startY: e.clientY,
       currentStartHour: event.startHour,
@@ -126,26 +322,14 @@ export function DayCalendar({
     const handleMouseMove = (me: MouseEvent) => {
       const deltaY = me.clientY - e.clientY;
       const deltaHours = deltaY / PX_PER_HOUR;
-
-      if (action === 'move') {
-        const newStart = snapToGrid(event.startHour + deltaHours);
-        const clamped = Math.max(startHour, Math.min(newStart, endHour - event.duration));
-        stateRef.currentStartHour = clamped;
-        setInteracting(prev => prev ? { ...prev, currentStartHour: clamped } : null);
-      } else {
-        const newDuration = snapToGrid(event.duration + deltaHours);
-        const clamped = Math.max(SNAP, Math.min(newDuration, endHour - event.startHour));
-        stateRef.currentDuration = clamped;
-        setInteracting(prev => prev ? { ...prev, currentDuration: clamped } : null);
-      }
+      const newDuration = snapToGrid(event.duration + deltaHours);
+      const clamped = Math.max(SNAP, Math.min(newDuration, endHour - event.startHour));
+      stateRef.currentDuration = clamped;
+      setInteracting(prev => prev ? { ...prev, currentDuration: clamped } : null);
     };
 
     const handleMouseUp = () => {
-      if (action === 'move') {
-        onBoulderMove?.(eventId.replace('boulder-', ''), stateRef.currentStartHour);
-      } else {
-        onBoulderResize?.(eventId.replace('boulder-', ''), stateRef.currentDuration);
-      }
+      onBoulderResize?.(eventId.replace('boulder-', ''), stateRef.currentDuration);
       setInteracting(null);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
@@ -153,14 +337,35 @@ export function DayCalendar({
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, [events, startHour, endHour, onBoulderMove, onBoulderResize]);
+  }, [events, endHour, onBoulderResize]);
 
   const timeColWidth = showLabels ? (compact ? 40 : 60) : 0;
 
+  const { allDayEvents, timedEvents } = useMemo(() => {
+    return {
+      allDayEvents: events.filter(e => e.allDay),
+      timedEvents: events.filter(e => !e.allDay),
+    };
+  }, [events]);
+
+  const timedEventsForLayout = useMemo(() => {
+    if (!interacting) return timedEvents;
+    return timedEvents.map((ev) =>
+      ev.id === interacting.eventId
+        ? { ...ev, startHour: interacting.currentStartHour, duration: interacting.currentDuration }
+        : ev,
+    );
+  }, [timedEvents, interacting]);
+
+  const overlapLayout = useMemo(
+    () => computeTimedEventOverlapLayout(timedEventsForLayout),
+    [timedEventsForLayout],
+  );
+
   const getEventStyle = (event: CalEvent): React.CSSProperties => {
-    const isInteracting = interacting?.eventId === event.id;
-    const displayStartHour = isInteracting ? interacting.currentStartHour : event.startHour;
-    const displayDuration = isInteracting ? interacting.currentDuration : event.duration;
+    const isInteractingResize = interacting?.eventId === event.id;
+    const displayStartHour = isInteractingResize ? interacting.currentStartHour : event.startHour;
+    const displayDuration = isInteractingResize ? interacting.currentDuration : event.duration;
 
     const top = (displayStartHour - startHour) * PX_PER_HOUR;
     const rawHeight = displayDuration * PX_PER_HOUR - 4;
@@ -170,11 +375,27 @@ export function DayCalendar({
     const placed = isPlacedTaskEventType(event.type);
     const taskChrome = placed ? getPlacedTaskCalendarChrome() : null;
     const extChrome = externalCalendarChrome(event);
+
+    const lane = overlapLayout.get(event.id) ?? { column: 0, columnCount: 1 };
+    const { column: laneCol, columnCount: laneCount } = lane;
+    const innerLeftPx = timeColWidth + 8;
+    const rightMarginPx = 4;
+    const gapTotalPx = (laneCount - 1) * OVERLAP_LANE_GAP_PX;
+    const laneWidthCalc = `calc((100% - ${innerLeftPx + rightMarginPx}px - ${gapTotalPx}px) / ${laneCount})`;
+    const leftExpr =
+      laneCol === 0
+        ? `${innerLeftPx}px`
+        : `calc(${innerLeftPx}px + ${laneCol} * ((100% - ${innerLeftPx + rightMarginPx}px - ${gapTotalPx}px) / ${laneCount} + ${OVERLAP_LANE_GAP_PX}px))`;
+
+    const taskId = event.id.replace('boulder-', '');
+    const isActiveDrag = placed && activePlacedDragTaskId === taskId;
+
     return {
       position: 'absolute',
       top: `${top}px`,
-      left: `${timeColWidth + 8}px`,
-      right: '4px',
+      left: leftExpr,
+      width: laneWidthCalc,
+      right: 'auto',
       height: `${heightPx}px`,
       ...calendarEventCardChrome,
       ...(taskChrome
@@ -182,20 +403,14 @@ export function DayCalendar({
         : extChrome
           ? { background: extChrome.background, border: extChrome.border }
           : {}),
-      padding: `${paddingY}px 12px`,
+      padding: `${paddingY}px ${laneCount > 1 ? 6 : 12}px`,
       overflow: 'hidden',
-      zIndex: interacting?.eventId === event.id ? 10 : 1,
+      zIndex: isActiveDrag ? 12 : 1,
       userSelect: 'none',
-      cursor: isPlacedTaskEventType(event.type) ? 'grab' : 'pointer',
+      touchAction: isActiveDrag ? 'none' : undefined,
+      cursor: placed ? 'default' : 'pointer',
     };
   };
-
-  const { allDayEvents, timedEvents } = useMemo(() => {
-    return {
-      allDayEvents: events.filter(e => e.allDay),
-      timedEvents: events.filter(e => !e.allDay),
-    };
-  }, [events]);
 
   return (
     <div style={{ flex: 1, minWidth: 0 }}>
@@ -212,14 +427,14 @@ export function DayCalendar({
 
       {maxAllDayCount > 0 && (
         <div
-          onDragOver={(e) => {
-            if (e.dataTransfer.types.includes('boulder-id')) {
-              e.dataTransfer.dropEffect = 'none';
+          onDragOver={(ev) => {
+            if (ev.dataTransfer.types.includes('boulder-id')) {
+              ev.dataTransfer.dropEffect = 'none';
             }
           }}
-          onDrop={(e) => {
-            if (e.dataTransfer.types.includes('boulder-id')) {
-              e.preventDefault();
+          onDrop={(ev) => {
+            if (ev.dataTransfer.types.includes('boulder-id')) {
+              ev.preventDefault();
             }
           }}
           style={{
@@ -237,14 +452,16 @@ export function DayCalendar({
             const isUserTask = isPlacedTaskEventType(event.type);
             const taskChrome = isUserTask ? getPlacedTaskCalendarChrome() : null;
             const extChrome = !isUserTask ? externalCalendarChrome(event) : null;
+            const taskId = event.id.replace('boulder-', '');
+            const isActiveAllDayDrag = isUserTask && activePlacedDragTaskId === taskId;
 
             return (
               <div key={event.id} style={{ display: 'flex' }}>
                 <div style={{ width: `${timeColWidth + 8}px`, flexShrink: 0 }} />
                 <div
-                  draggable={isUserTask}
-                  onDragStart={isUserTask ? (e) => handlePlacedBoulderDragStart(e, event.id) : undefined}
-                  onClick={() => setSelectedEvent(event)}
+                  onClick={!isUserTask ? () => setSelectedEvent(event) : undefined}
+                  onPointerDown={isUserTask ? (ev) => attachPlacedAllDayPointerSession(ev, event.id) : undefined}
+                  onContextMenu={isUserTask ? (ev) => ev.preventDefault() : undefined}
                   style={{
                     flex: 1,
                     minHeight: `${ALL_DAY_ROW_HEIGHT}px`,
@@ -264,17 +481,46 @@ export function DayCalendar({
                     textOverflow: 'ellipsis',
                     marginRight: '4px',
                     marginBottom: '4px',
-                    cursor: isUserTask ? 'grab' : 'pointer',
+                    cursor: isUserTask ? 'default' : 'pointer',
                     userSelect: 'none',
+                    touchAction: isUserTask ? 'manipulation' : undefined,
+                    zIndex: isActiveAllDayDrag ? 12 : undefined,
+                    position: 'relative',
                   }}
                   title={event.title}
                 >
                   {isUserTask && taskChrome && (
-                    <span style={{ marginRight: '6px', color: taskChrome.metaColor }}>
+                    <span style={{ marginRight: '6px', color: taskChrome.metaColor, flexShrink: 0 }}>
                       {event.type === 'rock' ? '●' : event.type === 'pebble' ? '◇' : '■'}
                     </span>
                   )}
-                  {event.title}
+                  <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
+                    {event.title}
+                  </span>
+                  {isUserTask && onBoulderRemove && (
+                    <button
+                      type="button"
+                      onClick={(ev) => { ev.stopPropagation(); onBoulderRemove(taskId); }}
+                      onPointerDown={(ev) => ev.stopPropagation()}
+                      style={{
+                        marginLeft: '8px',
+                        padding: '0 6px',
+                        border: '1px solid #E7E3DF',
+                        borderRadius: '6px',
+                        background: '#fff',
+                        cursor: 'pointer',
+                        fontSize: '14px',
+                        fontFamily: 'inherit',
+                        color: '#9ca3af',
+                        lineHeight: '1.2',
+                        flexShrink: 0,
+                      }}
+                      title="Remove from calendar"
+                      aria-label="Remove from calendar"
+                    >
+                      ×
+                    </button>
+                  )}
                 </div>
               </div>
             );
@@ -283,7 +529,7 @@ export function DayCalendar({
       )}
 
       <div
-        ref={gridRef}
+        ref={setGridEl}
         onDragOver={handleDragOver}
         onDragLeave={handleDragLeave}
         onDrop={handleDrop}
@@ -295,7 +541,6 @@ export function DayCalendar({
           borderLeft: showLabels ? '1px solid #E7E3DF' : 'none',
         }}
       >
-        {/* Time grid */}
         {slots.map((time) => (
           <div key={time} style={{
             display: 'flex',
@@ -318,7 +563,6 @@ export function DayCalendar({
           </div>
         ))}
 
-        {/* Current time indicator */}
         {isToday && currentHour >= startHour && currentHour <= endHour && (
           <div style={{
             position: 'absolute',
@@ -342,7 +586,6 @@ export function DayCalendar({
           </div>
         )}
 
-        {/* Drop indicator line */}
         {dragOverHour !== null && (
           <>
             <div style={{
@@ -373,72 +616,56 @@ export function DayCalendar({
           </>
         )}
 
-        {/* Events overlaid */}
         {timedEvents.map((event) => {
           const extChrome = externalCalendarChrome(event);
           const taskChrome = isPlacedTaskEventType(event.type) ? getPlacedTaskCalendarChrome() : null;
+          const taskId = event.id.replace('boulder-', '');
           return (
           <div
             key={event.id}
             style={getEventStyle(event)}
-            onMouseDown={isPlacedTaskEventType(event.type) ? (e) => handleMouseDown(e, event.id, 'move') : undefined}
+            onPointerDown={isPlacedTaskEventType(event.type)
+              ? (ev) => attachPlacedTimedPointerSession(ev, event.id, event)
+              : undefined}
+            onContextMenu={isPlacedTaskEventType(event.type) ? (ev) => ev.preventDefault() : undefined}
             onClick={(event.type === 'meeting' || event.type === 'personal') ? () => setSelectedEvent(event) : undefined}
           >
             {isPlacedTaskEventType(event.type) ? (
               <>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-                  <div>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: '6px' }}>
+                  <div style={{ minWidth: 0 }}>
                     <div style={{
                       ...calendarEventTitleStyle,
                       ...(taskChrome ? { color: taskChrome.titleColor } : {}),
                     }}>{event.title}</div>
                   </div>
-                  <div style={{ display: 'flex', gap: '6px', alignItems: 'flex-start' }}>
-                    <div
-                      draggable
-                      onDragStart={(e) => handlePlacedBoulderDragStart(e, event.id)}
-                      onMouseDown={(e) => e.stopPropagation()}
-                      style={{
-                        padding: '2px 6px',
-                        border: '1px solid #E7E3DF',
-                        borderRadius: '6px',
-                        background: '#fff',
-                        cursor: 'grab',
-                        fontSize: '12px',
-                        color: '#9ca3af',
-                        lineHeight: '1',
-                        flexShrink: 0,
-                      }}
-                      title="Drag to another day or time"
-                    >
-                      ⠿
-                    </div>
                   {onBoulderRemove && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); onBoulderRemove(event.id.replace('boulder-', '')); }}
-                      onMouseDown={(e) => e.stopPropagation()}
+                      type="button"
+                      onClick={(ev) => { ev.stopPropagation(); onBoulderRemove(taskId); }}
+                      onPointerDown={(ev) => ev.stopPropagation()}
                       style={{
-                        padding: '2px 6px',
+                        padding: '0 6px',
                         border: '1px solid #E7E3DF',
                         borderRadius: '6px',
                         background: '#fff',
                         cursor: 'pointer',
-                        fontSize: '12px',
+                        fontSize: '14px',
                         fontFamily: 'inherit',
                         color: '#9ca3af',
-                        lineHeight: '1',
+                        lineHeight: '1.2',
                         flexShrink: 0,
                       }}
                       title="Remove from calendar"
+                      aria-label="Remove from calendar"
                     >
-                      →
+                      ×
                     </button>
                   )}
-                  </div>
                 </div>
-                {/* Resize handle */}
                 <div
-                  onMouseDown={(e) => handleMouseDown(e, event.id, 'resize')}
+                  onPointerDown={(ev) => ev.stopPropagation()}
+                  onMouseDown={(ev) => handleResizeMouseDown(ev, event.id)}
                   style={{
                     position: 'absolute',
                     bottom: 0,

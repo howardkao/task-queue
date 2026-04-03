@@ -93,6 +93,7 @@ export function DueSoonSidebar({
         return (
           <div key={task.id}>
             <div
+              data-task-row-id={task.id}
               draggable={calendarDraggable}
               onDragStart={(e) => handleDragStart(e, task)}
               style={{

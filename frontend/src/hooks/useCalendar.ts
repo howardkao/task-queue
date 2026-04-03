@@ -1,4 +1,4 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQuery, useQueryClient, useMutation } from '@tanstack/react-query';
 import {
   getCalendarFeeds,
@@ -8,6 +8,7 @@ import {
 } from '../api/calendar';
 import {
   deleteCalendarMirrorForFeed,
+  filterMirrorEventsForVisibleRange,
   patchMirrorEventsForFeedMetadata,
   runCalendarSync,
   subscribeCalendarMirror,
@@ -29,19 +30,43 @@ function localYmd(d: Date): string {
   return `${y}-${m}-${day}`;
 }
 
-export function useTodayEvents() {
-  const today = useMemo(() => localYmd(new Date()), []);
-  return useEventsForRange(today, 1, false);
+/** Local calendar day; bumps after midnight / resume so the mirror window listener can realign with sync. */
+function useLocalCalendarYmd(): string {
+  const [ymd, setYmd] = useState(() => localYmd(new Date()));
+  useEffect(() => {
+    const refresh = () => {
+      const next = localYmd(new Date());
+      setYmd((prev) => (prev === next ? prev : next));
+    };
+    const id = setInterval(refresh, 60_000);
+    const onFocus = () => refresh();
+    const onVis = () => {
+      if (document.visibilityState === 'visible') refresh();
+    };
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, []);
+  return ymd;
 }
 
-export function useEventsForRange(startDate: string, days: number, bust = false) {
+function useEventsForRangeImpl(
+  syncAnchorYmd: string,
+  startDate: string,
+  days: number,
+  bust: boolean,
+) {
   const { user } = useAuth();
   const qc = useQueryClient();
 
-  const queryKey = ['calendar', 'range', user?.uid ?? '', startDate, days] as const;
+  const mirrorQueryKey = ['calendar', 'mirror', user?.uid ?? ''] as const;
 
   const query = useQuery<CalendarResponse>({
-    queryKey,
+    queryKey: mirrorQueryKey,
     queryFn: async () => ({ events: [], syncWarnings: [] }),
     enabled: !!user && !!apiBase,
     staleTime: Infinity,
@@ -50,10 +75,10 @@ export function useEventsForRange(startDate: string, days: number, bust = false)
 
   useEffect(() => {
     if (!user || !apiBase) return;
-    return subscribeCalendarMirror(user.uid, startDate, days, (data) => {
-      qc.setQueryData(queryKey, data);
+    return subscribeCalendarMirror(user.uid, (data) => {
+      qc.setQueryData(mirrorQueryKey, data);
     });
-  }, [user?.uid, apiBase, startDate, days, qc]);
+  }, [user?.uid, apiBase, syncAnchorYmd, qc]);
 
   useEffect(() => {
     if (!user || !apiBase) return;
@@ -61,7 +86,20 @@ export function useEventsForRange(startDate: string, days: number, bust = false)
     const now = Date.now();
     if (!bust) {
       const last = lastCalendarAutoSyncByUid.get(uid) ?? 0;
-      if (now - last < CALENDAR_AUTO_SYNC_MIN_INTERVAL_MS) return;
+      if (now - last < CALENDAR_AUTO_SYNC_MIN_INTERVAL_MS) {
+        if (import.meta.env.DEV) {
+          // eslint-disable-next-line no-console -- intentional diagnostics
+          console.debug('[calendarFirestore] runCalendarSync skipped (throttle)', {
+            msSinceLast: now - last,
+            minIntervalMs: CALENDAR_AUTO_SYNC_MIN_INTERVAL_MS,
+          });
+        }
+        return;
+      }
+    }
+    if (import.meta.env.DEV) {
+      // eslint-disable-next-line no-console -- intentional diagnostics
+      console.debug('[calendarFirestore] runCalendarSync invoking', { bust });
     }
     void runCalendarSync(uid, bust)
       .then(() => {
@@ -70,10 +108,29 @@ export function useEventsForRange(startDate: string, days: number, bust = false)
       .catch(console.error);
   }, [user?.uid, apiBase, bust]);
 
-  const data: CalendarResponse | null | undefined = !apiBase ? null : query.data;
+  const dataForRange = useMemo((): CalendarResponse | null | undefined => {
+    if (!apiBase) return null;
+    const raw = query.data;
+    if (!raw) return raw;
+    return {
+      events: filterMirrorEventsForVisibleRange(raw.events, startDate, days),
+      syncWarnings: raw.syncWarnings,
+    };
+  }, [apiBase, query.data, startDate, days]);
+
   const isConfigured = !!apiBase;
 
-  return { ...query, data, isConfigured };
+  return { ...query, data: dataForRange, isConfigured };
+}
+
+export function useTodayEvents() {
+  const ymd = useLocalCalendarYmd();
+  return useEventsForRangeImpl(ymd, ymd, 1, false);
+}
+
+export function useEventsForRange(startDate: string, days: number, bust = false) {
+  const syncAnchorYmd = useLocalCalendarYmd();
+  return useEventsForRangeImpl(syncAnchorYmd, startDate, days, bust);
 }
 
 // ── Feed management hooks ────────────────────────────────────────────────────

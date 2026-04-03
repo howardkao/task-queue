@@ -17,7 +17,7 @@ export function SideDrawer({ open, onClose, title, children }: SideDrawerProps) 
       {/* Backdrop */}
       <div
         onClick={onClose}
-        className="fixed inset-0 bg-foreground/10 z-40 animate-in fade-in duration-200"
+        className="fixed inset-0 z-40 cursor-pointer bg-foreground/10 animate-in fade-in duration-200"
         aria-hidden="true"
       />
 
@@ -42,9 +42,10 @@ export function SideDrawer({ open, onClose, title, children }: SideDrawerProps) 
             {title}
           </h2>
           <button
+            type="button"
             onClick={onClose}
             className={cn(
-              "flex items-center justify-center w-7 h-7 rounded-md",
+              "flex cursor-pointer items-center justify-center w-7 h-7 rounded-md",
               "text-muted-foreground hover:text-foreground hover:bg-secondary",
               "transition-all duration-150",
               "focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
