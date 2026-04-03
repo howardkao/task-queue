@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { Task } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
 import {
@@ -16,14 +15,18 @@ const PROJECT_DETAIL_TASK_DRAG_TYPE = 'project-detail-task';
 
 export function ProjectDetailTaskRow({
   task,
+  expandedTaskId,
+  onExpandedTaskIdChange,
   onComplete,
   onIcebox,
 }: {
   task: Task;
+  expandedTaskId: string | null;
+  onExpandedTaskIdChange: (taskId: string | null) => void;
   onComplete: (id: string) => void;
   onIcebox: (id: string) => void;
 }) {
-  const [editing, setEditing] = useState(false);
+  const editing = expandedTaskId === task.id;
   const deadlineStr = formatTaskDeadlineForMeta(task.deadline);
   const collapsedMeta = formatCollapsedTaskMetaLine({
     deadlineLabel: deadlineStr,
@@ -61,7 +64,10 @@ export function ProjectDetailTaskRow({
         >
           ⠿
         </span>
-        <div style={{ flex: 1, minWidth: 0, cursor: 'pointer' }} onClick={() => setEditing((prev) => !prev)}>
+        <div
+          style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
+          onClick={() => onExpandedTaskIdChange(editing ? null : task.id)}
+        >
           <div
             style={{
               fontSize: '13px',
@@ -76,7 +82,12 @@ export function ProjectDetailTaskRow({
         </div>
       </div>
       {editing && (
-        <TaskEditPanel task={task} onClose={() => setEditing(false)} onComplete={onComplete} onIcebox={onIcebox} />
+        <TaskEditPanel
+          task={task}
+          onClose={() => onExpandedTaskIdChange(null)}
+          onComplete={onComplete}
+          onIcebox={onIcebox}
+        />
       )}
     </div>
   );

@@ -19,14 +19,12 @@ import {
 import { db } from '../firebase';
 import type { CalendarEvent, CalendarFeed, CalendarResponse } from '../types';
 import { fetchCalendarSync, getCalendarFeeds } from './calendar';
+import { CALENDAR_RANGE_DAYS } from '../calendar/calendarLimits';
 import { addDaysToYmd, getTimezoneDate } from '../calendar/getTimezoneDate';
 import { parseICal } from '../calendar/parseICal';
 
 const EVENTS = 'calendarMirrorEvents';
 const META = 'calendarMirrorFeedMeta';
-
-const SYNC_BACK_DAYS = 30;
-const SYNC_FORWARD_DAYS = 180;
 
 function getClientSyncWindowBounds(): { start: Date; end: Date } {
   const tz = Intl.DateTimeFormat().resolvedOptions().timeZone;
@@ -35,8 +33,8 @@ function getClientSyncWindowBounds(): { start: Date; end: Date } {
   const m = String(today.getMonth() + 1).padStart(2, '0');
   const d = String(today.getDate()).padStart(2, '0');
   const todayKey = `${y}-${m}-${d}`;
-  const startKey = addDaysToYmd(todayKey, -SYNC_BACK_DAYS);
-  const endKey = addDaysToYmd(todayKey, SYNC_FORWARD_DAYS);
+  const startKey = addDaysToYmd(todayKey, -CALENDAR_RANGE_DAYS);
+  const endKey = addDaysToYmd(todayKey, CALENDAR_RANGE_DAYS);
   return {
     start: getTimezoneDate(startKey, '00:00:00', tz),
     end: getTimezoneDate(endKey, '00:00:00', tz),
@@ -70,6 +68,82 @@ async function deleteMirrorEventsForFeed(ownerUid: string, feedId: string): Prom
   }
 }
 
+const MIRROR_COMPARE_KEYS = [
+  'ownerUid',
+  'feedId',
+  'title',
+  'start',
+  'end',
+  'busy',
+  'calendarName',
+  'color',
+  'allDay',
+  'description',
+  'location',
+  'uid',
+  'rrule',
+  'rawStart',
+  'rawEnd',
+] as const;
+
+function buildMirrorBody(ownerUid: string, feedId: string, ev: CalendarEvent): Record<string, unknown> {
+  return {
+    ownerUid,
+    feedId,
+    title: ev.title,
+    start: ev.start,
+    end: ev.end,
+    busy: ev.busy,
+    calendarName: ev.calendarName,
+    color: ev.color,
+    allDay: ev.allDay ?? false,
+    description: ev.description ?? null,
+    location: ev.location ?? null,
+    uid: ev.uid ?? null,
+    rrule: ev.rrule ?? null,
+    rawStart: ev.rawStart ?? null,
+    rawEnd: ev.rawEnd ?? null,
+  };
+}
+
+function mirrorFieldsEqual(existing: DocumentData, body: Record<string, unknown>): boolean {
+  for (const k of MIRROR_COMPARE_KEYS) {
+    const a = existing[k];
+    const b = body[k];
+    if (a === b) continue;
+    const an = a === undefined ? null : a;
+    const bn = b === undefined ? null : b;
+    if (an !== bn) return false;
+  }
+  return true;
+}
+
+async function fetchExistingMirrorDocsById(
+  ownerUid: string,
+  feedId: string,
+): Promise<Map<string, DocumentData>> {
+  const base = [
+    where('ownerUid', '==', ownerUid),
+    where('feedId', '==', feedId),
+    orderBy(documentId()),
+  ];
+  const map = new Map<string, DocumentData>();
+  let last: QueryDocumentSnapshot<DocumentData> | undefined;
+  for (;;) {
+    const q = last
+      ? query(collection(db, EVENTS), ...base, startAfter(last), limit(450))
+      : query(collection(db, EVENTS), ...base, limit(450));
+    const snap = await getDocs(q);
+    if (snap.empty) break;
+    for (const d of snap.docs) {
+      map.set(d.id, d.data());
+    }
+    if (snap.docs.length < 450) break;
+    last = snap.docs[snap.docs.length - 1];
+  }
+  return map;
+}
+
 async function setMirrorFeedMeta(ownerUid: string, feedId: string, syncWarnings: string[]): Promise<void> {
   await setDoc(
     doc(db, META, `${ownerUid}_${feedId}`),
@@ -83,44 +157,68 @@ async function setMirrorFeedMeta(ownerUid: string, feedId: string, syncWarnings:
   );
 }
 
-async function replaceFeedMirrorEvents(
+/** Upsert/delete only what changed vs existing mirror rows (same doc id scheme as before). */
+async function syncFeedMirrorEvents(
   ownerUid: string,
   feedId: string,
   events: CalendarEvent[],
   warnings: string[],
 ): Promise<void> {
-  await deleteMirrorEventsForFeed(ownerUid, feedId);
+  const existing = await fetchExistingMirrorDocsById(ownerUid, feedId);
 
-  const withIds = await Promise.all(
-    events.map(async (ev) => ({ ev, id: await mirrorEventDocId(feedId, ev) })),
+  const idList = await Promise.all(
+    events.map(async (ev) => ({ id: await mirrorEventDocId(feedId, ev), ev })),
   );
+  const desiredById = new Map<string, CalendarEvent>();
+  for (const { id, ev } of idList) {
+    desiredById.set(id, ev);
+  }
+  const desiredIds = new Set(desiredById.keys());
 
-  for (let i = 0; i < withIds.length; i += 450) {
-    const batch = writeBatch(db);
-    const chunk = withIds.slice(i, i + 450);
-    for (const { ev, id } of chunk) {
-      const ref = doc(db, EVENTS, id);
-      batch.set(ref, {
-        ownerUid,
-        feedId,
-        title: ev.title,
-        start: ev.start,
-        end: ev.end,
-        busy: ev.busy,
-        calendarName: ev.calendarName,
-        color: ev.color,
-        allDay: ev.allDay ?? false,
-        description: ev.description ?? null,
-        location: ev.location ?? null,
-        uid: ev.uid ?? null,
-        rrule: ev.rrule ?? null,
-        rawStart: ev.rawStart ?? null,
-        rawEnd: ev.rawEnd ?? null,
-        updatedAt: serverTimestamp(),
+  type MirrorOp =
+    | { kind: 'delete'; ref: ReturnType<typeof doc> }
+    | { kind: 'set'; ref: ReturnType<typeof doc>; data: Record<string, unknown> };
+
+  const ops: MirrorOp[] = [];
+
+  for (const id of existing.keys()) {
+    if (!desiredIds.has(id)) {
+      ops.push({ kind: 'delete', ref: doc(db, EVENTS, id) });
+    }
+  }
+
+  for (const [id, ev] of desiredById) {
+    const body = buildMirrorBody(ownerUid, feedId, ev);
+    const prev = existing.get(id);
+    if (!prev || !mirrorFieldsEqual(prev, body)) {
+      ops.push({
+        kind: 'set',
+        ref: doc(db, EVENTS, id),
+        data: { ...body, updatedAt: serverTimestamp() },
       });
     }
-    await batch.commit();
   }
+
+  const MAX_OPS = 450;
+  let batch = writeBatch(db);
+  let count = 0;
+  const flush = async () => {
+    if (count === 0) return;
+    await batch.commit();
+    batch = writeBatch(db);
+    count = 0;
+  };
+
+  for (const op of ops) {
+    if (count >= MAX_OPS) await flush();
+    if (op.kind === 'delete') {
+      batch.delete(op.ref);
+    } else {
+      batch.set(op.ref, op.data);
+    }
+    count++;
+  }
+  await flush();
 
   await setMirrorFeedMeta(ownerUid, feedId, warnings);
 }
@@ -170,7 +268,7 @@ export async function runCalendarSync(ownerUid: string, bust: boolean): Promise<
         rawStart: e.rawStart,
         rawEnd: e.rawEnd,
       }));
-      await replaceFeedMirrorEvents(ownerUid, item.id, calendarEvents, warnings);
+      await syncFeedMirrorEvents(ownerUid, item.id, calendarEvents, warnings);
     }
   }
 

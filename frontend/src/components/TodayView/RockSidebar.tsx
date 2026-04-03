@@ -26,11 +26,17 @@ interface PlacedTaskInfo {
 interface RockSidebarProps {
   rocks: Task[];
   placedBoulders: Record<string, PlacedTaskInfo>;
+  expandedTaskId: string | null;
+  onExpandedTaskIdChange: (taskId: string | null) => void;
 }
 
-export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
+export function RockSidebar({
+  rocks,
+  placedBoulders,
+  expandedTaskId,
+  onExpandedTaskIdChange,
+}: RockSidebarProps) {
   const placedIds = Object.keys(placedBoulders);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const { data: projects = [] } = useProjects('active');
   const completeTask = useCompleteTask();
   const iceboxTask = useIceboxTask();
@@ -108,7 +114,7 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
       )}
 
       {displayRocks.map((rock, index) => {
-        const isEditing = editingId === rock.id;
+        const isEditing = expandedTaskId === rock.id;
         const isPlaced = placedIds.includes(rock.id);
         const projectName = rock.projectId ? projectMap.get(rock.projectId) : null;
         const deadlineStr = formatTaskDeadlineForMeta(rock.deadline);
@@ -150,7 +156,10 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
                 }}>
                   <span style={{ ...dragHandle, color: isPlaced ? '#E7E3DF' : '#EFEDEB' }}>⠿</span>
                   </div>
-                  <div style={{ flex: 1, cursor: 'pointer' }} onClick={() => setEditingId(isEditing ? null : rock.id)}>
+                  <div
+                    style={{ flex: 1, cursor: 'pointer' }}
+                    onClick={() => onExpandedTaskIdChange(isEditing ? null : rock.id)}
+                  >
                     <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>
                       {rock.title}
                     </div>
@@ -162,7 +171,7 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
               {isEditing && (
                 <TaskEditPanel
                   task={rock}
-                  onClose={() => setEditingId(null)}
+                  onClose={() => onExpandedTaskIdChange(null)}
                   onComplete={(id) => completeTask.mutate(id)}
                   onIcebox={(id) => iceboxTask.mutate(id)}
                 />

@@ -20,9 +20,16 @@ import { formatLastCompletedLabel, getAgeDaysFromCreated } from '@/lib/firestore
 interface PebbleSidebarProps {
   projectFilter?: TodayProjectFilter;
   priorityFilter?: Priority[];
+  expandedTaskId: string | null;
+  onExpandedTaskIdChange: (taskId: string | null) => void;
 }
 
-export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: PebbleSidebarProps) {
+export function PebbleSidebar({
+  projectFilter = [],
+  priorityFilter = [],
+  expandedTaskId,
+  onExpandedTaskIdChange,
+}: PebbleSidebarProps) {
   const { data: allPebbles = [] } = useTodayPebbles(projectFilter);
   const pebbles = priorityFilter.length === 0
     ? allPebbles
@@ -33,7 +40,6 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
 
   const projectMap = new Map(projects.map(p => [p.id, p.name]));
 
-  const [editingId, setEditingId] = useState<string | null>(null);
   const [dropGapIndex, setDropGapIndex] = useState<number | null>(null);
   const [dragFromIndex, setDragFromIndex] = useState<number | null>(null);
   const [localOrder, setLocalOrder] = useState<Task[] | null>(null);
@@ -129,7 +135,7 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
 
       <div style={{ maxHeight: 'calc(100vh - 160px)', overflowY: 'auto' }}>
         {displayPebbles.map((task, index) => {
-          const isEditing = editingId === task.id;
+          const isEditing = expandedTaskId === task.id;
           const projectName = task.projectId ? projectMap.get(task.projectId) : null;
           const deadlineStr = formatTaskDeadlineForMeta(task.deadline);
           const ageInDays = task.createdAt ? getAgeDaysFromCreated(task.createdAt) : null;
@@ -175,7 +181,7 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
                 {/* Content area — click to expand */}
                 <div
                   style={{ flex: 1, cursor: 'pointer' }}
-                  onClick={() => setEditingId(isEditing ? null : task.id)}
+                  onClick={() => onExpandedTaskIdChange(isEditing ? null : task.id)}
                 >
                   <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
                     <span style={titleStyle}>{task.title}</span>
@@ -199,7 +205,7 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
               {isEditing && (
                 <TaskEditPanel
                   task={task}
-                  onClose={() => setEditingId(null)}
+                  onClose={() => onExpandedTaskIdChange(null)}
                   onComplete={handleComplete}
                   onIcebox={handleIcebox}
                 />

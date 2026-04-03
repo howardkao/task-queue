@@ -24,6 +24,8 @@ export function ProjectDetailTaskRail({
   showCompleted,
   setShowCompleted,
   completedTasks,
+  expandedTaskId,
+  onExpandedTaskIdChange,
 }: {
   isMobile: boolean;
   newTaskTitle: string;
@@ -40,6 +42,8 @@ export function ProjectDetailTaskRail({
   showCompleted: boolean;
   setShowCompleted: (v: boolean) => void;
   completedTasks: Task[];
+  expandedTaskId: string | null;
+  onExpandedTaskIdChange: (taskId: string | null) => void;
 }) {
   return (
     <div style={{ width: isMobile ? '100%' : '320px', flexShrink: 0 }}>
@@ -91,7 +95,14 @@ export function ProjectDetailTaskRail({
         <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Boulders</h2>
         {boulders.length === 0 && <div style={emptyTaskStyle}>No boulders yet</div>}
         {boulders.map((t) => (
-          <ProjectDetailTaskRow key={t.id} task={t} onComplete={onCompleteTask} onIcebox={onIceboxTask} />
+          <ProjectDetailTaskRow
+            key={t.id}
+            task={t}
+            expandedTaskId={expandedTaskId}
+            onExpandedTaskIdChange={onExpandedTaskIdChange}
+            onComplete={onCompleteTask}
+            onIcebox={onIceboxTask}
+          />
         ))}
       </div>
 
@@ -99,7 +110,14 @@ export function ProjectDetailTaskRail({
         <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Rocks</h2>
         {rocks.length === 0 && <div style={emptyTaskStyle}>No rocks yet</div>}
         {rocks.map((t) => (
-          <ProjectDetailTaskRow key={t.id} task={t} onComplete={onCompleteTask} onIcebox={onIceboxTask} />
+          <ProjectDetailTaskRow
+            key={t.id}
+            task={t}
+            expandedTaskId={expandedTaskId}
+            onExpandedTaskIdChange={onExpandedTaskIdChange}
+            onComplete={onCompleteTask}
+            onIcebox={onIceboxTask}
+          />
         ))}
       </div>
 
@@ -107,7 +125,14 @@ export function ProjectDetailTaskRail({
         <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Pebbles</h2>
         {pebbles.length === 0 && <div style={emptyTaskStyle}>No pebbles yet</div>}
         {pebbles.map((t) => (
-          <ProjectDetailTaskRow key={t.id} task={t} onComplete={onCompleteTask} onIcebox={onIceboxTask} />
+          <ProjectDetailTaskRow
+            key={t.id}
+            task={t}
+            expandedTaskId={expandedTaskId}
+            onExpandedTaskIdChange={onExpandedTaskIdChange}
+            onComplete={onCompleteTask}
+            onIcebox={onIceboxTask}
+          />
         ))}
       </div>
 
@@ -115,7 +140,14 @@ export function ProjectDetailTaskRail({
         <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Unclassified</h2>
         {unclassified.length === 0 && <div style={emptyTaskStyle}>No unclassified tasks</div>}
         {unclassified.map((t) => (
-          <ProjectDetailTaskRow key={t.id} task={t} onComplete={onCompleteTask} onIcebox={onIceboxTask} />
+          <ProjectDetailTaskRow
+            key={t.id}
+            task={t}
+            expandedTaskId={expandedTaskId}
+            onExpandedTaskIdChange={onExpandedTaskIdChange}
+            onComplete={onCompleteTask}
+            onIcebox={onIceboxTask}
+          />
         ))}
       </div>
 

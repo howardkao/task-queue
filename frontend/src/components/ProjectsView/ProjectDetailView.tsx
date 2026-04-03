@@ -34,6 +34,7 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskType, setNewTaskType] = useState<Classification>('pebble');
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nameSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -43,6 +44,10 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
       setProjectName(project.name);
     }
   }, [project?.id]);
+
+  useEffect(() => {
+    setExpandedTaskId(null);
+  }, [projectId]);
 
   const handleMarkdownChange = useCallback(
     (value: string) => {
@@ -178,6 +183,8 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
           showCompleted={showCompleted}
           setShowCompleted={setShowCompleted}
           completedTasks={completedTasks}
+          expandedTaskId={expandedTaskId}
+          onExpandedTaskIdChange={setExpandedTaskId}
         />
       </div>
 

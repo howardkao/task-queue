@@ -28,14 +28,17 @@ interface BoulderSidebarProps {
   placedBoulders: Record<string, PlacedBoulderInfo>;
   activeProjectCount: number;
   standaloneCount: number;
+  expandedTaskId: string | null;
+  onExpandedTaskIdChange: (taskId: string | null) => void;
 }
 
 export function BoulderSidebar({
   boulders, placedBoulders,
   activeProjectCount, standaloneCount,
+  expandedTaskId,
+  onExpandedTaskIdChange,
 }: BoulderSidebarProps) {
   const placedIds = Object.keys(placedBoulders);
-  const [editingId, setEditingId] = useState<string | null>(null);
   const { data: projects = [] } = useProjects('active');
   const completeTask = useCompleteTask();
   const iceboxTask = useIceboxTask();
@@ -136,7 +139,7 @@ export function BoulderSidebar({
       )}
 
       {displayBoulders.map((b, index) => {
-        const isEditing = editingId === b.id;
+        const isEditing = expandedTaskId === b.id;
         const isPlaced = placedIds.includes(b.id);
         const projectName = b.projectId ? projectMap.get(b.projectId) : null;
         const deadlineStr = formatTaskDeadlineForMeta(b.deadline);
@@ -183,7 +186,7 @@ export function BoulderSidebar({
               {/* Content area — click to expand */}
               <div
                 style={{ flex: 1, cursor: 'pointer' }}
-                onClick={() => setEditingId(isEditing ? null : b.id)}
+                onClick={() => onExpandedTaskIdChange(isEditing ? null : b.id)}
               >
                 <div style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>
                   {b.title}
@@ -196,7 +199,7 @@ export function BoulderSidebar({
             {isEditing && (
               <TaskEditPanel
                 task={b}
-                onClose={() => setEditingId(null)}
+                onClose={() => onExpandedTaskIdChange(null)}
                 onComplete={(id) => completeTask.mutate(id)}
                 onIcebox={(id) => iceboxTask.mutate(id)}
               />

@@ -18,6 +18,11 @@ import {
   listCardInnerStyle,
   listCardTitleStyle,
 } from '../shared/listCardStyles';
+import {
+  clampStartDateForCalendarScroll,
+  isCalendarScrollAtFutureLimit,
+  isCalendarScrollAtPastLimit,
+} from '../../calendar/calendarLimits';
 import { addDays, formatDateHeader, toDateKey } from './todayDateUtils';
 import {
   calendarEventTypeForTask,
@@ -75,6 +80,7 @@ export function TodayView() {
     const saved = localStorage.getItem('today_sidebarMode');
     return (saved as SidebarMode) || 'boulders';
   });
+  const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const [dayCount, setDayCount] = useState(() => {
     const saved = localStorage.getItem('today_dayCount');
     return saved ? parseInt(saved, 10) : 3;
@@ -103,11 +109,27 @@ export function TodayView() {
   useEffect(() => { localStorage.setItem('today_priorityFilter', JSON.stringify(priorityFilter)); }, [priorityFilter]);
   useEffect(() => { localStorage.setItem('today_isFilterExpanded', String(isFilterExpanded)); }, [isFilterExpanded]);
   useEffect(() => { localStorage.setItem('today_sidebarMode', sidebarMode); }, [sidebarMode]);
+  useEffect(() => {
+    setExpandedTaskId(null);
+  }, [sidebarMode]);
   useEffect(() => { localStorage.setItem('today_dayCount', dayCount.toString()); }, [dayCount]);
   useEffect(() => { localStorage.setItem('today_wakeUpHour', wakeUpHour.toString()); }, [wakeUpHour]);
   useEffect(() => { localStorage.setItem('today_bedTimeHour', bedTimeHour.toString()); }, [bedTimeHour]);
 
   const visibleDayCount = isMobile ? 1 : dayCount;
+
+  const calendarAtPastLimit = useMemo(
+    () => isCalendarScrollAtPastLimit(startDate, visibleDayCount),
+    [startDate, visibleDayCount],
+  );
+  const calendarAtFutureLimit = useMemo(
+    () => isCalendarScrollAtFutureLimit(startDate, visibleDayCount),
+    [startDate, visibleDayCount],
+  );
+
+  useEffect(() => {
+    setStartDate((prev) => clampStartDateForCalendarScroll(prev, visibleDayCount));
+  }, [visibleDayCount]);
 
   // Compute visible dates
   const visibleDates = useMemo(() => {
@@ -295,12 +317,14 @@ export function TodayView() {
     classifyTask.mutate({ id, classification });
   }, [classifyTask]);
 
-  const navigateBack = () => setStartDate(prev => addDays(prev, -1));
-  const navigateForward = () => setStartDate(prev => addDays(prev, 1));
+  const navigateBack = () =>
+    setStartDate((prev) => clampStartDateForCalendarScroll(addDays(prev, -1), visibleDayCount));
+  const navigateForward = () =>
+    setStartDate((prev) => clampStartDateForCalendarScroll(addDays(prev, 1), visibleDayCount));
   const goToToday = () => {
     const d = new Date();
     d.setHours(0, 0, 0, 0);
-    setStartDate(d);
+    setStartDate(clampStartDateForCalendarScroll(d, visibleDayCount));
   };
 
   const standaloneCount = filteredBoulders.filter(b => !b.projectId).length;
@@ -310,7 +334,12 @@ export function TodayView() {
   const sidebarContent = (
     <>
       {dueSoonTasks.length > 0 && (
-        <DueSoonSidebar tasks={dueSoonTasks} placedTasks={placedTasksMap} />
+        <DueSoonSidebar
+          tasks={dueSoonTasks}
+          placedTasks={placedTasksMap}
+          expandedTaskId={expandedTaskId}
+          onExpandedTaskIdChange={setExpandedTaskId}
+        />
       )}
 
       {/* Capture + Inbox */}
@@ -497,13 +526,25 @@ export function TodayView() {
           placedBoulders={placedTasksMap}
           activeProjectCount={activeProjectCount}
           standaloneCount={standaloneCount}
+          expandedTaskId={expandedTaskId}
+          onExpandedTaskIdChange={setExpandedTaskId}
         />
       )}
       {sidebarMode === 'rocks' && (
-        <RockSidebar rocks={filteredRocks} placedBoulders={placedTasksMap} />
+        <RockSidebar
+          rocks={filteredRocks}
+          placedBoulders={placedTasksMap}
+          expandedTaskId={expandedTaskId}
+          onExpandedTaskIdChange={setExpandedTaskId}
+        />
       )}
       {sidebarMode === 'pebbles' && (
-        <PebbleSidebar projectFilter={projectFilter} priorityFilter={priorityFilter} />
+        <PebbleSidebar
+          projectFilter={projectFilter}
+          priorityFilter={priorityFilter}
+          expandedTaskId={expandedTaskId}
+          onExpandedTaskIdChange={setExpandedTaskId}
+        />
       )}
     </>
   );
@@ -550,10 +591,30 @@ export function TodayView() {
             <button onClick={goToToday} style={{ ...navBtn, fontSize: '12px', padding: '4px 12px' }}>
               Today
             </button>
-            <button onClick={navigateBack} style={navBtn} title="Previous day">
+            <button
+              type="button"
+              onClick={navigateBack}
+              disabled={calendarAtPastLimit}
+              style={{
+                ...navBtn,
+                ...(calendarAtPastLimit ? navBtnDisabled : {}),
+              }}
+              title={calendarAtPastLimit ? 'At earliest date in range' : 'Previous day'}
+              aria-label={calendarAtPastLimit ? 'Previous day (disabled, at range start)' : 'Previous day'}
+            >
               ←
             </button>
-            <button onClick={navigateForward} style={navBtn} title="Next day">
+            <button
+              type="button"
+              onClick={navigateForward}
+              disabled={calendarAtFutureLimit}
+              style={{
+                ...navBtn,
+                ...(calendarAtFutureLimit ? navBtnDisabled : {}),
+              }}
+              title={calendarAtFutureLimit ? 'At latest date in range' : 'Next day'}
+              aria-label={calendarAtFutureLimit ? 'Next day (disabled, at range end)' : 'Next day'}
+            >
               →
             </button>
             
@@ -700,6 +761,11 @@ const navBtn: React.CSSProperties = {
   color: '#1D212B',
   fontFamily: 'inherit',
   transition: 'all 0.15s ease',
+};
+
+const navBtnDisabled: React.CSSProperties = {
+  opacity: 0.35,
+  cursor: 'not-allowed',
 };
 
 const classifyBtnStyle: React.CSSProperties = {

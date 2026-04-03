@@ -611,19 +611,18 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
           {saveState === 'error' && <span className="text-destructive">Save failed</span>}
         </div>
 
-        <div className="flex-1" />
+        <div className="flex-1 min-w-[8px]" />
 
         <button
           type="button"
           onClick={handleClose}
           className={cn(
-            'flex items-center justify-center w-8 h-8 rounded-md',
-            'text-muted-foreground hover:text-foreground hover:bg-secondary',
-            'transition-all duration-150',
+            'shrink-0 px-3 py-1.5 rounded-md text-[13px] font-medium',
+            'border border-border bg-background text-foreground',
+            'hover:bg-secondary transition-all duration-150',
           )}
-          title="Close"
         >
-          <X className="w-4 h-4" />
+          Done
         </button>
       </div>
     </div>

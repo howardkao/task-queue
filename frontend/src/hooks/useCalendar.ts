@@ -18,7 +18,7 @@ import { auth } from '../firebase';
 
 const apiBase = import.meta.env.VITE_API_BASE || '';
 
-/** Limits Firestore writes/deletes from calendar mirror: each sync can delete+rewrite hundreds of docs per feed. */
+/** Limits Firestore churn from calendar auto-sync (diff-based mirror + narrower date window still benefit from spacing). */
 const lastCalendarAutoSyncByUid = new Map<string, number>();
 const CALENDAR_AUTO_SYNC_MIN_INTERVAL_MS = 4 * 60 * 1000;
 

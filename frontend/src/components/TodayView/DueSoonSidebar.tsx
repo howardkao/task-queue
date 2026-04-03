@@ -1,4 +1,3 @@
-import { useState } from 'react';
 import type { Task } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
 import { useProjects } from '../../hooks/useProjects';
@@ -25,10 +24,16 @@ interface PlacedTaskInfo {
 interface DueSoonSidebarProps {
   tasks: Task[];
   placedTasks: Record<string, PlacedTaskInfo>;
+  expandedTaskId: string | null;
+  onExpandedTaskIdChange: (taskId: string | null) => void;
 }
 
-export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
-  const [editingId, setEditingId] = useState<string | null>(null);
+export function DueSoonSidebar({
+  tasks,
+  placedTasks,
+  expandedTaskId,
+  onExpandedTaskIdChange,
+}: DueSoonSidebarProps) {
   const { data: projects = [] } = useProjects('active');
   const completeTask = useCompleteTask();
   const iceboxTask = useIceboxTask();
@@ -65,7 +70,7 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
         <span style={{ fontSize: '12px' }}>⏱</span> Overdue & Today
       </div>
       {tasks.map((task) => {
-        const isEditing = editingId === task.id;
+        const isEditing = expandedTaskId === task.id;
         const isPlaced = placedIds.includes(task.id);
         const projectName = task.projectId ? projectMap.get(task.projectId) : null;
         const deadlineStr = formatTaskDeadlineForMeta(task.deadline);
@@ -110,7 +115,7 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
                 )}
                 <div
                   style={{ flex: 1, cursor: 'pointer' }}
-                  onClick={() => setEditingId(isEditing ? null : task.id)}
+                  onClick={() => onExpandedTaskIdChange(isEditing ? null : task.id)}
                 >
                   <div style={{ ...listCardTitleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>
                     {task.title}
@@ -124,7 +129,7 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
               {isEditing && (
                 <TaskEditPanel
                   task={task}
-                  onClose={() => setEditingId(null)}
+                  onClose={() => onExpandedTaskIdChange(null)}
                   onComplete={(id) => completeTask.mutate(id)}
                   onIcebox={(id) => iceboxTask.mutate(id)}
                 />
