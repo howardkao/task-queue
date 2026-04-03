@@ -18,6 +18,10 @@ import { auth } from '../firebase';
 
 const apiBase = import.meta.env.VITE_API_BASE || '';
 
+/** Limits Firestore writes/deletes from calendar mirror: each sync can delete+rewrite hundreds of docs per feed. */
+const lastCalendarAutoSyncByUid = new Map<string, number>();
+const CALENDAR_AUTO_SYNC_MIN_INTERVAL_MS = 4 * 60 * 1000;
+
 function localYmd(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -53,7 +57,17 @@ export function useEventsForRange(startDate: string, days: number, bust = false)
 
   useEffect(() => {
     if (!user || !apiBase) return;
-    runCalendarSync(user.uid, bust).catch(console.error);
+    const uid = user.uid;
+    const now = Date.now();
+    if (!bust) {
+      const last = lastCalendarAutoSyncByUid.get(uid) ?? 0;
+      if (now - last < CALENDAR_AUTO_SYNC_MIN_INTERVAL_MS) return;
+    }
+    void runCalendarSync(uid, bust)
+      .then(() => {
+        lastCalendarAutoSyncByUid.set(uid, Date.now());
+      })
+      .catch(console.error);
   }, [user?.uid, apiBase, bust]);
 
   const data: CalendarResponse | null | undefined = !apiBase ? null : query.data;

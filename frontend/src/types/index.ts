@@ -1,7 +1,29 @@
+import type { RecurrenceRule } from '@task-queue/shared';
+
+/**
+ * Timestamp shapes from Firestore reads, optimistic writes, or normalized strings.
+ * `number` is treated as epoch milliseconds where relevant (e.g. sorting).
+ */
+export type FirestoreTimestampLike =
+  | {
+      seconds?: number;
+      nanoseconds?: number;
+      _seconds?: number;
+      _nanoseconds?: number;
+      toDate?: () => Date;
+    }
+  | string
+  | Date
+  | number
+  | null
+  | undefined;
+
 export type Classification = 'unclassified' | 'boulder' | 'rock' | 'pebble';
 export type TaskStatus = 'active' | 'completed' | 'iceboxed';
 export type Priority = 'high' | 'med' | 'low';
 export type ProjectStatus = 'active' | 'on_hold';
+
+export type { RecurrenceRule };
 
 export interface Task {
   id: string;
@@ -19,18 +41,10 @@ export interface Task {
     startHour: number;  // e.g. 9.5
     duration: number;   // in hours
   } | null;
-  completedAt: any;
-  lastOccurrenceCompletedAt?: any; // Completion time of previous occurrence
-  createdAt: any;
-  updatedAt: any;
-}
-
-export interface RecurrenceRule {
-  freq: 'daily' | 'weekly' | 'monthly' | 'yearly' | 'periodically' | 'custom';
-  interval?: number;        // repeat every N (days for periodically, weeks/months for custom)
-  days?: string[];          // for weekly/custom-weekly: ['mon','tue','wed','thu','fri','sat','sun']
-  customUnit?: 'weekly' | 'monthly'; // for custom: which unit the interval applies to
-  periodUnit?: 'hours' | 'days' | 'weeks'; // for periodically: which unit the interval applies to
+  completedAt: FirestoreTimestampLike | null;
+  lastOccurrenceCompletedAt?: FirestoreTimestampLike | null;
+  createdAt: FirestoreTimestampLike;
+  updatedAt: FirestoreTimestampLike;
 }
 
 export interface Project {
@@ -39,8 +53,8 @@ export interface Project {
   markdown: string;
   status: ProjectStatus;
   visibility: 'personal' | 'shared';
-  createdAt: any;
-  updatedAt: any;
+  createdAt: FirestoreTimestampLike;
+  updatedAt: FirestoreTimestampLike;
 }
 
 export interface ActivityLogEntry {
@@ -49,7 +63,7 @@ export interface ActivityLogEntry {
   action: 'task_created' | 'task_completed' | 'task_iceboxed' | 'task_classified' | 'project_created' | 'project_status_changed';
   description: string;
   taskId?: string;
-  timestamp: any;
+  timestamp: FirestoreTimestampLike;
 }
 
 export interface CalendarResponse {

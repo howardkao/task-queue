@@ -15,6 +15,7 @@ import {
   formatCollapsedTaskMetaLine,
   formatTaskDeadlineForMeta,
 } from '../shared/collapsedTaskMeta';
+import { formatLastCompletedLabel } from '@/lib/firestoreTime';
 
 interface PlacedTaskInfo {
   startHour: number;
@@ -112,7 +113,7 @@ export function RockSidebar({ rocks, placedBoulders }: RockSidebarProps) {
         const projectName = rock.projectId ? projectMap.get(rock.projectId) : null;
         const deadlineStr = formatTaskDeadlineForMeta(rock.deadline);
         const prevStr = rock.lastOccurrenceCompletedAt
-          ? `Prev: ${formatLastCompleted(rock.lastOccurrenceCompletedAt)}`
+          ? `Prev: ${formatLastCompletedLabel(rock.lastOccurrenceCompletedAt)}`
           : null;
         const collapsedMeta = formatCollapsedTaskMetaLine({
           deadlineLabel: deadlineStr,
@@ -204,16 +205,6 @@ const dragHandle: React.CSSProperties = {
   flexShrink: 0,
   marginTop: '1px',
 };
-
-function formatLastCompleted(timestamp: any): string {
-  if (!timestamp) return '';
-  try {
-    const d = timestamp.seconds ? new Date(timestamp.seconds * 1000) : new Date(timestamp);
-    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase();
-  } catch {
-    return '';
-  }
-}
 
 function haveSameTaskIds(source: Task[], ordered: Task[]): boolean {
   if (source.length !== ordered.length) return false;

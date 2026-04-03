@@ -15,6 +15,7 @@ import {
   formatCollapsedTaskMetaLine,
   formatTaskDeadlineForMeta,
 } from '../shared/collapsedTaskMeta';
+import { formatLastCompletedLabel, getAgeDaysFromCreated } from '@/lib/firestoreTime';
 
 interface PebbleSidebarProps {
   projectFilter?: TodayProjectFilter;
@@ -131,9 +132,9 @@ export function PebbleSidebar({ projectFilter = [], priorityFilter = [] }: Pebbl
           const isEditing = editingId === task.id;
           const projectName = task.projectId ? projectMap.get(task.projectId) : null;
           const deadlineStr = formatTaskDeadlineForMeta(task.deadline);
-          const ageInDays = task.createdAt ? getAgeDays(task.createdAt) : null;
+          const ageInDays = task.createdAt ? getAgeDaysFromCreated(task.createdAt) : null;
           const prevStr = task.lastOccurrenceCompletedAt
-            ? `Prev: ${formatLastCompleted(task.lastOccurrenceCompletedAt)}`
+            ? `Prev: ${formatLastCompletedLabel(task.lastOccurrenceCompletedAt)}`
             : null;
           const collapsedMeta = formatCollapsedTaskMetaLine({
             deadlineLabel: deadlineStr,
@@ -246,25 +247,6 @@ const dragHandle: React.CSSProperties = {
   fontSize: '16px',
   userSelect: 'none',
 };
-
-function getAgeDays(createdAt: any): number {
-  if (!createdAt) return 0;
-  const created = createdAt.seconds
-    ? new Date(createdAt.seconds * 1000)
-    : new Date(createdAt);
-  const now = new Date();
-  return Math.floor((now.getTime() - created.getTime()) / (1000 * 60 * 60 * 24));
-}
-
-function formatLastCompleted(timestamp: any): string {
-  if (!timestamp) return '';
-  try {
-    const d = timestamp.seconds ? new Date(timestamp.seconds * 1000) : new Date(timestamp);
-    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase();
-  } catch {
-    return '';
-  }
-}
 
 function haveSameTaskIds(source: Task[], ordered: Task[]): boolean {
   if (source.length !== ordered.length) return false;

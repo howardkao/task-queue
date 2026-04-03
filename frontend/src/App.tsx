@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from 'react';
+import { useState, useEffect, lazy, Suspense, useCallback } from 'react';
 import { QueryClient, QueryClientProvider, MutationCache, QueryCache } from '@tanstack/react-query';
 import { TabBar } from './components/shared/TabBar';
 import type { TabId } from './components/shared/TabBar';
@@ -15,8 +15,8 @@ const ProjectDetailView = lazy(() => import('./components/ProjectsView/ProjectDe
 const Login = lazy(() => import('./components/Auth/Login').then(module => ({ default: module.Login })));
 const AdminPanel = lazy(() => import('./components/Auth/AdminPanel').then(module => ({ default: module.AdminPanel })));
 
-// Global error handler ref — set by AppContent once toast is available
-let globalErrorHandler: ((error: Error) => void) | null = null;
+/** React Query errors routed here; set from AppContent so toasts use current showToast. */
+const queryErrorSink: { current: ((error: Error) => void) | null } = { current: null };
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -27,22 +27,32 @@ const queryClient = new QueryClient({
   },
   queryCache: new QueryCache({
     onError: (error) => {
-      // Only show error for critical queries if needed, but let's show all for now
-      globalErrorHandler?.(error as Error);
+      queryErrorSink.current?.(error as Error);
     },
   }),
   mutationCache: new MutationCache({
     onError: (error) => {
-      globalErrorHandler?.(error as Error);
+      queryErrorSink.current?.(error as Error);
     },
   }),
 });
 
 function AppContent() {
   const { showToast } = useToast();
-  globalErrorHandler = (error: Error) => {
-    showToast(error.message || 'Something went wrong');
-  };
+
+  const notifyQueryError = useCallback(
+    (error: Error) => {
+      showToast(error.message || 'Something went wrong');
+    },
+    [showToast],
+  );
+
+  useEffect(() => {
+    queryErrorSink.current = notifyQueryError;
+    return () => {
+      queryErrorSink.current = null;
+    };
+  }, [notifyQueryError]);
 
   const { user, loading: authLoading, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<TabId>('today');
@@ -57,11 +67,11 @@ function AppContent() {
     { id: 'projects' as TabId, label: 'Projects' },
   ];
 
-  const handleTabChange = (tab: TabId) => {
+  const handleTabChange = useCallback((tab: TabId) => {
     setActiveTab(tab);
     if (tab !== 'projects') setOpenProjectId(null);
     setShowMenu(false);
-  };
+  }, []);
 
   const handleSignOut = () => {
     setShowMenu(false);
@@ -79,7 +89,7 @@ function AppContent() {
     };
     window.addEventListener('keydown', handler);
     return () => window.removeEventListener('keydown', handler);
-  }, []);
+  }, [handleTabChange]);
 
   // Auth loading spinner
   if (authLoading && !user) {

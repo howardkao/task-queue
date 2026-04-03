@@ -1,13 +1,16 @@
 import {
   collection, doc, addDoc, getDocs, getDoc, updateDoc, deleteDoc, query, where, orderBy,
   Timestamp, serverTimestamp, writeBatch,
+  type DocumentData,
+  type QueryConstraint,
 } from 'firebase/firestore';
+import { calculateNextOccurrence, ORDERED_CLASSIFICATIONS, sortTasksForList } from '@task-queue/shared';
 import { auth, db } from '../firebase';
-import type { Task, Classification } from '../types';
+import type { Task, Classification, RecurrenceRule, FirestoreTimestampLike } from '../types';
 import { addLogEntry } from './activityLog';
+import { firestoreTimeToMs } from '../lib/firestoreTime';
 
 const tasksRef = collection(db, 'tasks');
-const ORDERED_CLASSIFICATIONS = new Set<Classification>(['boulder', 'rock', 'pebble', 'unclassified']);
 
 function requireUser() {
   const user = auth.currentUser;
@@ -17,7 +20,7 @@ function requireUser() {
   return user;
 }
 
-function toTask(id: string, data: any): Task {
+function toTask(id: string, data: DocumentData): Task {
   return {
     id,
     title: data.title || '',
@@ -44,8 +47,8 @@ export async function createTask(data: {
   priority?: 'high' | 'med' | 'low';
   deadline?: string;
   projectId?: string;
-  recurrence?: any;
-  lastOccurrenceCompletedAt?: any;
+  recurrence?: RecurrenceRule | null;
+  lastOccurrenceCompletedAt?: FirestoreTimestampLike | null;
 }): Promise<Task> {
   const user = requireUser();
   const classification = data.classification || 'unclassified';
@@ -91,7 +94,7 @@ export async function listTasks(filters?: {
   const user = requireUser();
   // Query with at most one where clause to avoid composite index requirements.
   // Apply remaining filters client-side.
-  const constraints: any[] = [where('ownerUid', '==', user.uid)];
+  const constraints: QueryConstraint[] = [where('ownerUid', '==', user.uid)];
 
   if (filters?.status) {
     constraints.push(where('status', '==', filters.status));
@@ -110,17 +113,7 @@ export async function listTasks(filters?: {
     tasks = tasks.filter(t => t.projectId === filters.projectId);
   }
 
-  // Sort ordered task classes by sortOrder, fallback to createdAt
-  tasks.sort((a, b) => {
-    if (a.classification === b.classification && ORDERED_CLASSIFICATIONS.has(a.classification)) {
-      return (a.sortOrder || 0) - (b.sortOrder || 0);
-    }
-    const aTime = a.createdAt?.seconds || 0;
-    const bTime = b.createdAt?.seconds || 0;
-    return aTime - bTime;
-  });
-
-  return tasks;
+  return sortTasksForList(tasks, (t) => firestoreTimeToMs(t.createdAt));
 }
 
 export async function getTask(id: string): Promise<Task> {
@@ -261,95 +254,3 @@ async function getTopSortOrder(classification: string): Promise<number> {
   }
 }
 
-const DAY_INDEX: Record<string, number> = {
-  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
-};
-
-function findNextDayOfWeek(from: Date, days: string[]): Date {
-  const targetDays = days.map(d => DAY_INDEX[d]).filter(d => d !== undefined).sort((a, b) => a - b);
-  if (targetDays.length === 0) {
-    const next = new Date(from);
-    next.setDate(next.getDate() + 7);
-    return next;
-  }
-  const currentDay = from.getDay();
-  // Find the next target day after the current day
-  let nextDay = targetDays.find(d => d > currentDay);
-  const daysToAdd = nextDay !== undefined
-    ? nextDay - currentDay
-    : 7 - currentDay + targetDays[0]; // wrap to next week
-  const next = new Date(from);
-  next.setDate(next.getDate() + daysToAdd);
-  return next;
-}
-
-function calculateNextOccurrence(recurrence: any, currentDeadline: string | null): string | null {
-  if (!recurrence || !recurrence.freq) return null;
-
-  const now = new Date();
-
-  switch (recurrence.freq) {
-    case 'daily': {
-      const base = currentDeadline ? new Date(currentDeadline) : now;
-      const next = new Date(base);
-      next.setDate(next.getDate() + (recurrence.interval || 1));
-      return next.toISOString();
-    }
-    case 'weekly': {
-      const base = currentDeadline ? new Date(currentDeadline) : now;
-      if (recurrence.days && recurrence.days.length > 0) {
-        return findNextDayOfWeek(base, recurrence.days).toISOString();
-      }
-      const next = new Date(base);
-      next.setDate(next.getDate() + 7);
-      return next.toISOString();
-    }
-    case 'monthly': {
-      const base = currentDeadline ? new Date(currentDeadline) : now;
-      const next = new Date(base);
-      next.setMonth(next.getMonth() + (recurrence.interval || 1));
-      return next.toISOString();
-    }
-    case 'yearly': {
-      const base = currentDeadline ? new Date(currentDeadline) : now;
-      const next = new Date(base);
-      next.setFullYear(next.getFullYear() + (recurrence.interval || 1));
-      return next.toISOString();
-    }
-    case 'periodically': {
-      // Always relative to completion (now), not deadline
-      const next = new Date(now);
-      const interval = recurrence.interval || 1;
-      const unit = recurrence.periodUnit || 'days';
-      if (unit === 'hours') {
-        next.setHours(next.getHours() + interval);
-      } else if (unit === 'weeks') {
-        next.setDate(next.getDate() + interval * 7);
-      } else {
-        next.setDate(next.getDate() + interval);
-      }
-      return next.toISOString();
-    }
-    case 'custom': {
-      const base = currentDeadline ? new Date(currentDeadline) : now;
-      const interval = recurrence.interval || 1;
-      if (recurrence.customUnit === 'monthly') {
-        const next = new Date(base);
-        next.setMonth(next.getMonth() + interval);
-        return next.toISOString();
-      }
-      // weekly custom
-      if (recurrence.days && recurrence.days.length > 0) {
-        // Jump forward by (interval - 1) weeks, then find the next matching day
-        const jumped = new Date(base);
-        jumped.setDate(jumped.getDate() + 7 * (interval - 1));
-        return findNextDayOfWeek(jumped, recurrence.days).toISOString();
-      }
-      const next = new Date(base);
-      next.setDate(next.getDate() + 7 * interval);
-      return next.toISOString();
-    }
-    default:
-      return null;
-  }
-}

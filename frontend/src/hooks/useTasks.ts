@@ -3,46 +3,67 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { listTasks, createTask, updateTask, completeTask, iceboxTask, reorderPebbles, deleteTask } from '../api/tasks';
 import { useProjects } from './useProjects';
 import type { Classification, Task, RecurrenceRule } from '../types';
+import { firestoreTimeToMs } from '@/lib/firestoreTime';
 
 export const STANDALONE_PROJECT_FILTER = '__standalone__';
 export type TodayProjectFilter = string[];
+
+/** One Firestore fetch for all active tasks; inbox/boulders/rocks/pebbles/due-soon derive via `select`. */
+const ACTIVE_TASKS_QUERY_KEY = ['tasks', 'active-all'] as const;
+
+function isActiveTasksOnly(filters: {
+  classification?: Classification;
+  status?: string;
+  projectId?: string;
+}): boolean {
+  return (
+    filters.status === 'active' &&
+    filters.classification === undefined &&
+    filters.projectId === undefined
+  );
+}
 
 export function useTasks(filters: {
   classification?: Classification;
   status?: string;
   projectId?: string;
 }) {
+  const activeOnly = isActiveTasksOnly(filters);
   return useQuery({
-    queryKey: ['tasks', filters],
+    queryKey: activeOnly ? ACTIVE_TASKS_QUERY_KEY : (['tasks', filters] as const),
     queryFn: () => listTasks(filters),
   });
 }
 
 export function useInboxTasks() {
   return useQuery({
-    queryKey: ['tasks', 'inbox'],
-    queryFn: () => listTasks({ classification: 'unclassified', status: 'active' }),
+    queryKey: ACTIVE_TASKS_QUERY_KEY,
+    queryFn: () => listTasks({ status: 'active' }),
+    select: (tasks) => tasks.filter(t => t.classification === 'unclassified'),
   });
 }
 
 export function useBoulders() {
   return useQuery({
-    queryKey: ['tasks', 'boulders'],
-    queryFn: () => listTasks({ classification: 'boulder', status: 'active' }),
+    queryKey: ACTIVE_TASKS_QUERY_KEY,
+    queryFn: () => listTasks({ status: 'active' }),
+    select: (tasks) => tasks.filter(t => t.classification === 'boulder'),
   });
 }
 
 export function useRocks() {
   return useQuery({
-    queryKey: ['tasks', 'rocks'],
-    queryFn: () => listTasks({ classification: 'rock', status: 'active' }),
+    queryKey: ACTIVE_TASKS_QUERY_KEY,
+    queryFn: () => listTasks({ status: 'active' }),
+    select: (tasks) => tasks.filter(t => t.classification === 'rock'),
   });
 }
 
 export function usePebbles() {
   return useQuery({
-    queryKey: ['tasks', 'pebbles'],
-    queryFn: () => listTasks({ classification: 'pebble', status: 'active' }),
+    queryKey: ACTIVE_TASKS_QUERY_KEY,
+    queryFn: () => listTasks({ status: 'active' }),
+    select: (tasks) => tasks.filter(t => t.classification === 'pebble'),
   });
 }
 
@@ -140,7 +161,7 @@ export function useReorderPebbles() {
   return useMutation({
     mutationFn: reorderPebbles,
     onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tasks', 'pebbles'] });
+      qc.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 }
@@ -149,25 +170,17 @@ function filterOutOnHoldProjectTasks(tasks: Task[], activeProjectIds: Set<string
   return tasks.filter(task => !task.projectId || activeProjectIds.has(task.projectId));
 }
 
-function getTimestamp(value: any): number {
-  if (!value) return 0;
-  if (typeof value === 'object' && value.seconds) return value.seconds * 1000;
-  if (typeof value === 'object' && typeof value.toDate === 'function') return value.toDate().getTime();
-  const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? 0 : parsed;
-}
-
 /** True when the deadline is set and falls on or before the end of today (local). */
-export function isOverdueOrDueToday(deadline: any): boolean {
-  const ts = getTimestamp(deadline);
+export function isOverdueOrDueToday(deadline: Task['deadline'] | undefined): boolean {
+  const ts = firestoreTimeToMs(deadline);
   if (ts === 0) return false;
   const now = new Date();
   now.setHours(23, 59, 59, 999); // End of today
   return ts <= now.getTime();
 }
 
-function isDueLater(deadline: any): boolean {
-  const ts = getTimestamp(deadline);
+function isDueLater(deadline: Task['deadline'] | undefined): boolean {
+  const ts = firestoreTimeToMs(deadline);
   if (ts === 0) return false;
   const now = new Date();
   now.setHours(23, 59, 59, 999); // End of today
@@ -207,7 +220,7 @@ function getRecurrenceCadenceHours(rule: RecurrenceRule): number {
 
 function isFutureRecurring(task: Task): boolean {
   if (!task.recurrence) return false;
-  const ts = getTimestamp(task.deadline);
+  const ts = firestoreTimeToMs(task.deadline);
   if (ts === 0) return false;
   
   const now = Date.now();
@@ -263,7 +276,7 @@ function sortTodayTasks(tasks: Task[]) {
     if (aOrder !== bOrder) return aOrder - bOrder;
 
     // Secondary: Created time (newest first for same sort order)
-    return getTimestamp(b.createdAt) - getTimestamp(a.createdAt);
+    return firestoreTimeToMs(b.createdAt) - firestoreTimeToMs(a.createdAt);
   });
 }
 
@@ -290,7 +303,7 @@ export function useDueSoonTasks() {
   
   return useMemo(() => {
     const dueSoon = allTasks.filter(t => isOverdueOrDueToday(t.deadline) && !isFutureRecurring(t));
-    return dueSoon.sort((a, b) => getTimestamp(a.deadline) - getTimestamp(b.deadline));
+    return dueSoon.sort((a, b) => firestoreTimeToMs(a.deadline) - firestoreTimeToMs(b.deadline));
   }, [allTasks]);
 }
 

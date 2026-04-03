@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Check, ChevronDown, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { firestoreTimeToMs } from '@/lib/firestoreTime';
+import type { FirestoreTimestampLike } from '@/types';
 
 export interface ProjectPickerProject {
   id: string;
   name: string;
   status?: 'active' | 'on_hold';
-  updatedAt?: any;
+  updatedAt?: FirestoreTimestampLike;
 }
 
 interface ProjectPickerProps {
@@ -43,15 +45,6 @@ function rememberProject(id: string) {
   if (!id) return;
   const next = [id, ...readRecentProjectIds().filter(existing => existing !== id)];
   writeRecentProjectIds(next);
-}
-
-function getTimestamp(value: any): number {
-  if (!value) return 0;
-  if (typeof value === 'number') return value;
-  if (value.seconds) return value.seconds * 1000;
-  if (value.toDate) return value.toDate().getTime();
-  const parsed = new Date(value).getTime();
-  return Number.isNaN(parsed) ? 0 : parsed;
 }
 
 function sortProjects(projects: ProjectPickerProject[]) {
@@ -95,7 +88,7 @@ export function ProjectPicker({ projects, value, onChange, onCreateProject }: Pr
 
     const fallback = [...inactiveMap.values()]
       .filter(project => !recentIds.includes(project.id))
-      .sort((a, b) => getTimestamp(b.updatedAt) - getTimestamp(a.updatedAt));
+      .sort((a, b) => firestoreTimeToMs(b.updatedAt) - firestoreTimeToMs(a.updatedAt));
 
     return [...orderedRecent, ...fallback].slice(0, RECENT_INACTIVE_LIMIT);
   }, [allProjects]);

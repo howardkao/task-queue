@@ -7,7 +7,7 @@ import { useTodayBoulders, useTodayRocks, useTodayPebbles, useTodayInboxTasks, u
 import { useProjects } from '../../hooks/useProjects';
 import { useIsMobile } from '../../hooks/useViewport';
 import { useEventsForRange } from '../../hooks/useCalendar';
-import type { CalEvent } from './DayCalendar';
+import type { CalEvent } from './dayCalendarTypes';
 import type { CalendarEvent, Classification, Priority, Task } from '../../types';
 import type { TodayProjectFilter } from '../../hooks/useTasks';
 import { SideDrawer } from '../shared/SideDrawer';
@@ -18,74 +18,14 @@ import {
   listCardInnerStyle,
   listCardTitleStyle,
 } from '../shared/listCardStyles';
-
-// Fallback mock events when no iCal feeds configured
-const MOCK_CAL_EVENTS: CalEvent[] = [
-  { id: 'cal-0', title: 'Vacation in Paris', startHour: 0, duration: 24, type: 'meeting', allDay: true, busy: true },
-  { id: 'cal-1', title: 'Team standup', startHour: 9, duration: 0.5, type: 'meeting', busy: true },
-  { id: 'cal-2', title: 'Design review', startHour: 10, duration: 1, type: 'meeting', busy: true },
-  { id: 'cal-3', title: 'Lunch w/ Sam', startHour: 12, duration: 1, type: 'personal', busy: true },
-  { id: 'cal-4', title: 'Pickup kids', startHour: 16, duration: 0.5, type: 'personal', busy: true },
-];
-
-function icalToCalEvents(events: CalendarEvent[]): CalEvent[] {
-  return events.map((e, i) => {
-    const start = new Date(e.start);
-    const end = new Date(e.end);
-    const startHour = start.getHours() + start.getMinutes() / 60;
-    const duration = (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-    
-    // Prioritize explicit allDay flag from API, fallback to detection
-    const allDay = e.allDay ?? (startHour === 0 && duration >= 23.9);
-
-    return {
-      id: e.mirrorDocId ? `mirror-${e.mirrorDocId}` : `ical-${i}`,
-      title: e.title,
-      startHour,
-      duration: Math.max(duration, 0.25),
-      type: 'meeting' as const,
-      busy: e.busy,
-      color: e.color,
-      allDay,
-      description: e.description,
-      location: e.location,
-      uid: e.uid,
-      rrule: e.rrule,
-      rawStart: e.rawStart,
-      rawEnd: e.rawEnd,
-    };
-  });
-}
+import { addDays, formatDateHeader, toDateKey } from './todayDateUtils';
+import {
+  calendarEventTypeForTask,
+  icalToCalEvents,
+  MOCK_CAL_EVENTS,
+} from './todayCalendarBridge';
 
 type SidebarMode = 'boulders' | 'rocks' | 'pebbles';
-
-function toDateKey(d: Date): string {
-  const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
-  return `${year}-${month}-${day}`;
-}
-
-function addDays(d: Date, n: number): Date {
-  const result = new Date(d);
-  result.setDate(result.getDate() + n);
-  return result;
-}
-
-function formatDateHeader(d: Date, isToday: boolean): string {
-  const label = d.toLocaleDateString('en-US', {
-    weekday: 'short',
-    month: 'short',
-    day: 'numeric',
-  });
-  return isToday ? `${label} (Today)` : label;
-}
-
-function calendarEventTypeForTask(task: { classification: Classification }): CalEvent['type'] {
-  if (task.classification === 'rock') return 'rock';
-  if (task.classification === 'pebble') return 'pebble';
-  return 'boulder';
-}
 
 export function TodayView() {
   const isMobile = useIsMobile();

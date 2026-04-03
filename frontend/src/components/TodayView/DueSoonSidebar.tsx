@@ -14,6 +14,7 @@ import {
   formatCollapsedTaskMetaLine,
   formatTaskDeadlineForMeta,
 } from '../shared/collapsedTaskMeta';
+import { formatLastCompletedLabel } from '@/lib/firestoreTime';
 
 interface PlacedTaskInfo {
   startHour: number;
@@ -70,7 +71,7 @@ export function DueSoonSidebar({ tasks, placedTasks }: DueSoonSidebarProps) {
         const deadlineStr = formatTaskDeadlineForMeta(task.deadline);
 
         const prevStr = task.lastOccurrenceCompletedAt
-          ? `Prev: ${formatLastCompleted(task.lastOccurrenceCompletedAt)}`
+          ? `Prev: ${formatLastCompletedLabel(task.lastOccurrenceCompletedAt)}`
           : null;
         const collapsedMeta = formatCollapsedTaskMetaLine({
           deadlineLabel: deadlineStr,
@@ -143,14 +144,3 @@ const dragHandle: React.CSSProperties = {
   flexShrink: 0,
   marginTop: '1px',
 };
-
-function formatLastCompleted(timestamp: unknown): string {
-  if (!timestamp) return '';
-  try {
-    const t = timestamp as { seconds?: number };
-    const d = t.seconds ? new Date(t.seconds * 1000) : new Date(timestamp as string);
-    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase();
-  } catch {
-    return '';
-  }
-}

@@ -5,11 +5,12 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc -b && vite build",
+    "build": "npm run build --prefix ../packages/shared && tsc -b && vite build",
     "lint": "eslint .",
     "preview": "vite preview"
   },
   "dependencies": {
+    "@task-queue/shared": "file:../packages/shared",
     "@fontsource/dm-sans": "^5.2.8",
     "@fontsource/geist-mono": "^5.2.7",
     "@tailwindcss/vite": "^4.2.2",

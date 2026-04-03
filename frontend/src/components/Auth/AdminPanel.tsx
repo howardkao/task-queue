@@ -1,14 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
 import { collection, getDocs, deleteDoc, doc, Timestamp, setDoc } from 'firebase/firestore';
 import { db } from '../../firebase';
+import type { FirestoreTimestampLike } from '../../types';
+import { firestoreTimeToMs } from '@/lib/firestoreTime';
 
 interface InviteCode {
   id: string;
   code: string;
   used: boolean;
   usedBy?: string;
-  createdAt: any;
-  expiresAt: any;
+  createdAt: FirestoreTimestampLike;
+  expiresAt: FirestoreTimestampLike;
 }
 
 interface AdminPanelProps {
@@ -32,7 +34,7 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
   const loadCodes = useCallback(async () => {
     const snap = await getDocs(collection(db, 'inviteCodes'));
     const list = snap.docs.map(d => ({ id: d.id, ...d.data() } as InviteCode));
-    list.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+    list.sort((a, b) => firestoreTimeToMs(b.createdAt) - firestoreTimeToMs(a.createdAt));
     setCodes(list);
     setLoading(false);
   }, []);
@@ -100,7 +102,9 @@ export function AdminPanel({ onClose }: AdminPanelProps) {
         )}
 
         {codes.map(c => {
-          const expired = c.expiresAt && c.expiresAt.toDate() < new Date();
+          const expiresMs = firestoreTimeToMs(c.expiresAt);
+          // eslint-disable-next-line react-hooks/purity -- invite row needs wall-clock expiry
+          const expired = expiresMs > 0 && expiresMs < Date.now();
           const status = c.used ? 'Used' : expired ? 'Expired' : 'Active';
           const statusColor = c.used ? '#9ca3af' : expired ? '#F59F0A' : '#10b981';
 

@@ -1,24 +1,18 @@
-import { useMemo, useRef, useCallback, useState } from 'react';
+import { useMemo, useRef, useCallback, useState, useEffect } from 'react';
 import { calendarEventCardChrome, calendarEventTitleStyle } from '../shared/listCardStyles';
-import { getCalendarEventChrome, getPlacedTaskCalendarChrome } from '../../theme/calendarFeedPalette';
+import { getPlacedTaskCalendarChrome } from '../../theme/calendarFeedPalette';
+import type { CalEvent } from './dayCalendarTypes';
+import { DayCalendarEventModal } from './DayCalendarEventModal';
+import { ALL_DAY_ROW_HEIGHT, PX_PER_HOUR, SLOT_HEIGHT, SNAP } from './dayCalendarConstants';
+import {
+  externalCalendarChrome,
+  formatHourMinute,
+  formatTimeLabel,
+  isPlacedTaskEventType,
+  snapToGrid,
+} from './dayCalendarUtils';
 
-export interface CalEvent {
-  id: string;
-  title: string;
-  startHour: number;  // e.g. 9.5 = 9:30am
-  duration: number;    // in hours, e.g. 1.5
-  type: 'meeting' | 'personal' | 'boulder' | 'rock' | 'pebble';
-  allDay?: boolean;
-  busy?: boolean;
-  projectName?: string;
-  color?: string;
-  description?: string;
-  location?: string;
-  uid?: string;
-  rrule?: string;
-  rawStart?: string;
-  rawEnd?: string;
-}
+export type { CalEvent } from './dayCalendarTypes';
 
 interface DayCalendarProps {
   date: string;
@@ -36,24 +30,6 @@ interface DayCalendarProps {
   onBoulderRemove?: (boulderId: string) => void;
 }
 
-const SLOT_HEIGHT = 33; // px per half hour
-const SNAP = 0.25; // 15 minutes
-const PX_PER_HOUR = SLOT_HEIGHT * 2; // 66px per hour
-const ALL_DAY_ROW_HEIGHT = 24; // px per all-day row (11px title + padding)
-
-function snapToGrid(hour: number): number {
-  return Math.round(hour / SNAP) * SNAP;
-}
-
-function isPlacedTaskEventType(type: CalEvent['type']): boolean {
-  return type === 'boulder' || type === 'rock' || type === 'pebble';
-}
-
-function externalCalendarChrome(event: CalEvent) {
-  if (isPlacedTaskEventType(event.type)) return null;
-  return getCalendarEventChrome(event.color);
-}
-
 export function DayCalendar({
   date, dateKey, events, maxAllDayCount = 0, startHour = 7, endHour = 22, compact = false,
   showLabels = true, isToday = false,
@@ -64,8 +40,7 @@ export function DayCalendar({
   const [now, setNow] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalEvent | null>(null);
 
-  // Update current time every minute if it's today
-  useMemo(() => {
+  useEffect(() => {
     if (!isToday) return;
     const timer = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(timer);
@@ -90,15 +65,6 @@ export function DayCalendar({
     }
     return result;
   }, [startHour, endHour]);
-
-  const formatTime = (h: number) => {
-    const hour = Math.floor(h);
-    const isHalf = h % 1 !== 0;
-    if (isHalf) return '';
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    const ampm = hour >= 12 ? 'pm' : 'am';
-    return `${displayHour}:00${ampm}`;
-  };
 
   // Convert a pixel Y offset within the grid to an hour value
   const yToHour = useCallback((clientY: number): number => {
@@ -224,15 +190,6 @@ export function DayCalendar({
     };
   };
 
-  // Format hour for tooltip / drop indicator
-  const formatHourMinute = (h: number): string => {
-    const hour = Math.floor(h);
-    const min = Math.round((h - hour) * 60);
-    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
-    const ampm = hour >= 12 ? 'pm' : 'am';
-    return `${displayHour}:${min.toString().padStart(2, '0')}${ampm}`;
-  };
-
   const { allDayEvents, timedEvents } = useMemo(() => {
     return {
       allDayEvents: events.filter(e => e.allDay),
@@ -355,7 +312,7 @@ export function DayCalendar({
                 flexShrink: 0,
                 borderRight: '1px solid #EFEDEB',
               }}>
-                {formatTime(time)}
+                {formatTimeLabel(time)}
               </div>
             )}
           </div>
@@ -521,162 +478,11 @@ export function DayCalendar({
         })}
       </div>
 
-      {/* Event Details Modal */}
       {selectedEvent && (
-        <div 
-          onClick={() => setSelectedEvent(null)}
-          style={{
-            position: 'fixed',
-            top: 0, left: 0, right: 0, bottom: 0,
-            background: 'rgba(0,0,0,0.4)',
-            zIndex: 1000,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            padding: '20px',
-          }}
-        >
-          <div 
-            onClick={e => e.stopPropagation()}
-            style={{
-              background: '#fff',
-              borderRadius: '8px',
-              width: '100%',
-              maxWidth: '480px',
-              maxHeight: '80vh',
-              overflow: 'auto',
-              boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.1)',
-            }}
-          >
-            <div style={{ padding: '24px' }}>
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: '16px' }}>
-                <h3 style={{ margin: 0, fontSize: '20px', fontWeight: 700, color: '#1D212B' }}>{selectedEvent.title}</h3>
-                <button 
-                  onClick={() => setSelectedEvent(null)}
-                  style={{
-                    background: 'none',
-                    border: 'none',
-                    fontSize: '24px',
-                    cursor: 'pointer',
-                    color: '#9ca3af',
-                    lineHeight: 1,
-                    padding: 0,
-                  }}
-                >
-                  ×
-                </button>
-              </div>
-
-              <div style={{ display: 'grid', gap: '16px' }}>
-                <div style={{ display: 'flex', gap: '12px', alignItems: 'center', color: '#4b5563' }}>
-                  <span style={{ fontSize: '18px' }}>🕒</span>
-                  <div style={{ fontSize: '14px' }}>
-                    <div style={{ fontWeight: 600 }}>
-                      {selectedEvent.allDay ? 'All Day' : `${formatHourMinute(selectedEvent.startHour)} – ${formatHourMinute(selectedEvent.startHour + selectedEvent.duration)}`}
-                    </div>
-                    {selectedEvent.rrule && (
-                      <div style={{ fontSize: '12px', color: '#6b7280', marginTop: '2px' }}>
-                        🔄 {selectedEvent.rrule}
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                {selectedEvent.location && (
-                  <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-start', color: '#4b5563' }}>
-                    <span style={{ fontSize: '18px' }}>📍</span>
-                    <div style={{ fontSize: '14px', wordBreak: 'break-word' }}>{selectedEvent.location}</div>
-                  </div>
-                )}
-
-                {selectedEvent.description && (
-                  <div style={{ borderTop: '1px solid #EFEDEB', paddingTop: '16px', marginTop: '4px' }}>
-                    <div style={{ fontSize: '12px', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 600 }}>
-                      Description
-                    </div>
-                    <div 
-                      style={{ 
-                        fontSize: '14px', 
-                        color: '#1D212B', 
-                        lineHeight: 1.6,
-                        whiteSpace: 'pre-wrap',
-                        wordBreak: 'break-word',
-                      }}
-                      dangerouslySetInnerHTML={{ __html: selectedEvent.description }}
-                    />
-                  </div>
-                )}
-
-                {/* Debug Info Section */}
-                <div style={{ borderTop: '1px solid #EFEDEB', paddingTop: '16px', marginTop: '4px' }}>
-                  <div style={{ fontSize: '12px', color: '#9ca3af', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: '8px', fontWeight: 600 }}>
-                    Debug Info
-                  </div>
-                  <div style={{ 
-                    fontSize: '11px', 
-                    color: '#6b7280', 
-                    fontFamily: 'var(--font-mono)',
-                    background: '#F9F7F6', 
-                    padding: '8px', 
-                    borderRadius: '8px',
-                    display: 'grid',
-                    gap: '4px'
-                  }}>
-                    <div><span style={{ fontWeight: 600 }}>UID:</span> {selectedEvent.uid || 'N/A'}</div>
-                    <div><span style={{ fontWeight: 600 }}>DTSTART:</span> {selectedEvent.rawStart || 'N/A'}</div>
-                    <div><span style={{ fontWeight: 600 }}>DTEND:</span> {selectedEvent.rawEnd || 'N/A'}</div>
-                    <div><span style={{ fontWeight: 600 }}>RRULE:</span> {selectedEvent.rrule || 'N/A'}</div>
-                    <div><span style={{ fontWeight: 600 }}>ID:</span> {selectedEvent.id}</div>
-                  </div>
-                </div>
-              </div>
-            </div>
-            
-            <div style={{ padding: '16px 24px', background: '#F9F7F6', borderRadius: '0 0 8px 8px', borderTop: '1px solid #EFEDEB', textAlign: 'right' }}>
-              <button 
-                onClick={() => setSelectedEvent(null)}
-                style={{
-                  padding: '8px 20px',
-                  borderRadius: '10px',
-                  border: '1px solid #E7E3DF',
-                  background: '#fff',
-                  fontSize: '14px',
-                  fontWeight: 600,
-                  cursor: 'pointer',
-                  color: '#1D212B',
-                }}
-              >
-                Close
-              </button>
-            </div>
-          </div>
-        </div>
+        <DayCalendarEventModal event={selectedEvent} onClose={() => setSelectedEvent(null)} />
       )}
     </div>
   );
 }
 
-
-/**
- * Find the first free slot of given duration in hours.
- */
-export function findFreeSlot(events: CalEvent[], durationHours: number = 2, startHour: number = 8, endHour: number = 22): number {
-  const busyEvents = events.filter(e => e.busy !== false && !isPlacedTaskEventType(e.type));
-  const busy = new Set<number>();
-  for (const ev of busyEvents) {
-    for (let t = ev.startHour; t < ev.startHour + ev.duration; t += 0.25) {
-      busy.add(Math.round(t * 4) / 4);
-    }
-  }
-
-  const slotsNeeded = durationHours * 4;
-  for (let t = startHour; t <= endHour - durationHours; t += 0.25) {
-    let free = true;
-    for (let i = 0; i < slotsNeeded; i++) {
-      if (busy.has(Math.round((t + i * 0.25) * 4) / 4)) { free = false; break; }
-    }
-    if (free) return t;
-  }
-
-  return 13;
-}
+export { findFreeSlot } from './dayCalendarUtils';

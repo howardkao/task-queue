@@ -15,6 +15,7 @@ import {
   formatCollapsedTaskMetaLine,
   formatTaskDeadlineForMeta,
 } from '../shared/collapsedTaskMeta';
+import { formatLastCompletedLabel } from '@/lib/firestoreTime';
 
 interface PlacedBoulderInfo {
   startHour: number;
@@ -130,7 +131,7 @@ export function BoulderSidebar({
 
       {displayBoulders.length === 0 && (
         <div style={emptyStyle}>
-          No boulders available. Classify some tasks as boulders in Triage.
+          No boulders available. Classify inbox tasks as boulders from the task editor.
         </div>
       )}
 
@@ -140,7 +141,7 @@ export function BoulderSidebar({
         const projectName = b.projectId ? projectMap.get(b.projectId) : null;
         const deadlineStr = formatTaskDeadlineForMeta(b.deadline);
         const prevStr = b.lastOccurrenceCompletedAt
-          ? `Prev: ${formatLastCompleted(b.lastOccurrenceCompletedAt)}`
+          ? `Prev: ${formatLastCompletedLabel(b.lastOccurrenceCompletedAt)}`
           : null;
         const collapsedMeta = formatCollapsedTaskMetaLine({
           deadlineLabel: deadlineStr,
@@ -252,16 +253,6 @@ const dragHandle: React.CSSProperties = {
   flexShrink: 0,
   marginTop: '1px',
 };
-
-function formatLastCompleted(timestamp: any): string {
-  if (!timestamp) return '';
-  try {
-    const d = timestamp.seconds ? new Date(timestamp.seconds * 1000) : new Date(timestamp);
-    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase();
-  } catch {
-    return '';
-  }
-}
 
 function haveSameTaskIds(source: Task[], ordered: Task[]): boolean {
   if (source.length !== ordered.length) return false;

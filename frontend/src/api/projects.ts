@@ -9,6 +9,8 @@ import {
   where,
   serverTimestamp,
   writeBatch,
+  type DocumentData,
+  type QueryConstraint,
 } from 'firebase/firestore';
 import { auth, db } from '../firebase';
 import type { Project, ProjectStatus } from '../types';
@@ -26,7 +28,7 @@ function requireUser() {
   return user;
 }
 
-function toProject(id: string, data: any): Project {
+function toProject(id: string, data: DocumentData): Project {
   return {
     id,
     name: data.name || '',
@@ -62,7 +64,7 @@ export async function listProjects(filters?: {
   status?: ProjectStatus;
 }): Promise<Project[]> {
   const user = requireUser();
-  const constraints: any[] = [where('ownerUid', '==', user.uid)];
+  const constraints: QueryConstraint[] = [where('ownerUid', '==', user.uid)];
 
   if (filters?.status) {
     constraints.push(where('status', '==', filters.status));
@@ -100,6 +102,7 @@ export async function updateProject(id: string, data: Partial<Project>): Promise
   await updateDoc(doc(projectsRef, id), updateData);
 
   const updated = await getDoc(doc(projectsRef, id));
+  if (!updated.exists()) throw new Error('Project not found after update');
   return toProject(updated.id, updated.data());
 }
 

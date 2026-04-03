@@ -3,20 +3,15 @@ import { useProject, useUpdateProject, useToggleProjectStatus, useDeleteProject 
 import { useTasks, useCompleteTask, useCreateTask, useIceboxTask } from '../../hooks/useTasks';
 import { useProjectActivityLog } from '../../hooks/useActivityLog';
 import { useIsMobile } from '../../hooks/useViewport';
-import type { Task, Classification } from '../../types';
-import { TaskEditPanel } from '../shared/TaskEditPanel';
-import {
-  collapsedTaskMetaLineStyle,
-  formatCollapsedTaskMetaLine,
-  formatTaskDeadlineForMeta,
-} from '../shared/collapsedTaskMeta';
+import type { Classification } from '../../types';
+import { ProjectActivitySection } from './ProjectActivitySection';
+import { ProjectDetailTaskRail } from './ProjectDetailTaskRail';
+import { btnSmStyle, editorStyle, projectNameInputStyle } from './projectDetailStyles';
 
 interface ProjectDetailViewProps {
   projectId: string;
   onBack: () => void;
 }
-
-const PROJECT_DETAIL_TASK_DRAG_TYPE = 'project-detail-task';
 
 export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps) {
   const isMobile = useIsMobile();
@@ -49,13 +44,16 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
     }
   }, [project?.id]);
 
-  const handleMarkdownChange = useCallback((value: string) => {
-    setMarkdown(value);
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      updateProject.mutate({ id: projectId, data: { markdown: value } });
-    }, 1000);
-  }, [projectId, updateProject]);
+  const handleMarkdownChange = useCallback(
+    (value: string) => {
+      setMarkdown(value);
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        updateProject.mutate({ id: projectId, data: { markdown: value } });
+      }, 1000);
+    },
+    [projectId, updateProject],
+  );
 
   const handleAddTask = useCallback(() => {
     if (!newTaskTitle.trim()) return;
@@ -67,15 +65,18 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
     setNewTaskTitle('');
   }, [newTaskTitle, newTaskType, projectId, createTask]);
 
-  const handleProjectNameChange = useCallback((value: string) => {
-    setProjectName(value);
-    if (nameSaveTimerRef.current) clearTimeout(nameSaveTimerRef.current);
-    nameSaveTimerRef.current = setTimeout(() => {
-      const trimmed = value.trim();
-      if (!trimmed || trimmed === project?.name) return;
-      updateProject.mutate({ id: projectId, data: { name: trimmed } });
-    }, 500);
-  }, [project?.name, projectId, updateProject]);
+  const handleProjectNameChange = useCallback(
+    (value: string) => {
+      setProjectName(value);
+      if (nameSaveTimerRef.current) clearTimeout(nameSaveTimerRef.current);
+      nameSaveTimerRef.current = setTimeout(() => {
+        const trimmed = value.trim();
+        if (!trimmed || trimmed === project?.name) return;
+        updateProject.mutate({ id: projectId, data: { name: trimmed } });
+      }, 500);
+    },
+    [project?.name, projectId, updateProject],
+  );
 
   if (isLoading || !project) {
     return (
@@ -85,198 +86,13 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
     );
   }
 
-  const boulders = projectTasks.filter(t => t.classification === 'boulder');
-  const rocks = projectTasks.filter(t => t.classification === 'rock');
-  const pebbles = projectTasks.filter(t => t.classification === 'pebble');
-  const unclassified = projectTasks.filter(t => !t.classification || t.classification === 'unclassified');
-
-  const activityLogSection = (
-    <div style={{ marginTop: '16px' }}>
-      <div
-        onClick={() => setShowLog(!showLog)}
-        style={{
-          cursor: 'pointer', color: '#6b7280', fontSize: '14px',
-          userSelect: 'none', fontWeight: 500,
-        }}
-      >
-        Activity Log ({activityLog.length}) {showLog ? '▲' : '▼'}
-      </div>
-      {showLog && (
-        <div style={{
-          marginTop: '8px', background: '#fff', border: '1px solid #E7E3DF',
-          borderRadius: '16px', padding: '8px 0', maxHeight: '300px', overflow: 'auto',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-        }}>
-          {activityLog.length === 0 && (
-            <div style={{ padding: '12px 16px', color: '#9ca3af', fontStyle: 'italic', fontSize: '13px' }}>
-              No activity yet
-            </div>
-          )}
-          {activityLog.map(entry => (
-            <div key={entry.id} style={{
-              padding: '6px 16px', borderBottom: '1px solid #EFEDEB',
-              display: 'flex', gap: '8px', alignItems: 'baseline',
-            }}>
-              <span style={{ fontSize: '10px', color: '#9ca3af', whiteSpace: 'nowrap', minWidth: '70px' }}>
-                {formatTimestamp(entry.timestamp)}
-              </span>
-              <span style={{ fontSize: '13px', color: '#1D212B' }}>
-                {entry.description}
-              </span>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-
-  const rightRail = (
-    <div style={{ width: isMobile ? '100%' : '320px', flexShrink: 0 }}>
-      {/* Add task */}
-      <div style={{ marginBottom: '16px' }}>
-        <div style={{ display: 'flex', gap: '4px', marginBottom: '6px' }}>
-          <input
-            type="text"
-            value={newTaskTitle}
-            onChange={e => setNewTaskTitle(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleAddTask()}
-            placeholder="Add a task..."
-            style={{
-              flex: 1, padding: '6px 10px', border: '2px solid #E7E3DF',
-              borderRadius: '12px', fontSize: '13px', fontFamily: 'inherit', outline: 'none',
-              color: '#1D212B',
-            }}
-          />
-          <button onClick={handleAddTask} style={btnSmStyle}>Add</button>
-        </div>
-        <div style={{ display: 'flex', gap: '4px', flexWrap: 'wrap' }}>
-          {(['boulder', 'rock', 'pebble'] as const).map(type => (
-            <button
-              key={type}
-              onClick={() => setNewTaskType(type)}
-              style={{
-                ...btnSmStyle,
-                background: newTaskType === type ? '#EA6657' : '#F2F0ED',
-                color: newTaskType === type ? '#fff' : '#1D212B',
-                borderColor: newTaskType === type ? '#EA6657' : '#E7E3DF',
-                textTransform: 'capitalize',
-                fontWeight: 700,
-              }}
-            >
-              {type === 'boulder' ? '🪨 Boulder' : type === 'rock' ? 'Rock' : 'Pebble'}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* Boulders */}
-      <div style={{ marginBottom: '16px' }}>
-        <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Boulders</h2>
-        {boulders.length === 0 && <div style={emptyTaskStyle}>No boulders yet</div>}
-        {boulders.map(t => (
-          <TaskRow
-            key={t.id}
-            task={t}
-            onComplete={(id) => completeTask.mutate(id)}
-            onIcebox={(id) => iceboxTask.mutate(id)}
-          />
-        ))}
-      </div>
-
-      {/* Rocks */}
-      <div style={{ marginBottom: '16px' }}>
-        <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Rocks</h2>
-        {rocks.length === 0 && <div style={emptyTaskStyle}>No rocks yet</div>}
-        {rocks.map(t => (
-          <TaskRow
-            key={t.id}
-            task={t}
-            onComplete={(id) => completeTask.mutate(id)}
-            onIcebox={(id) => iceboxTask.mutate(id)}
-          />
-        ))}
-      </div>
-
-      {/* Pebbles */}
-      <div style={{ marginBottom: '16px' }}>
-        <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Pebbles</h2>
-        {pebbles.length === 0 && <div style={emptyTaskStyle}>No pebbles yet</div>}
-        {pebbles.map(t => (
-          <TaskRow
-            key={t.id}
-            task={t}
-            onComplete={(id) => completeTask.mutate(id)}
-            onIcebox={(id) => iceboxTask.mutate(id)}
-          />
-        ))}
-      </div>
-
-      {/* Unclassified */}
-      <div style={{ marginBottom: '16px' }}>
-        <h2 style={{ ...sectionHeaderStyle, fontSize: '12px' }}>Unclassified</h2>
-        {unclassified.length === 0 && <div style={emptyTaskStyle}>No unclassified tasks</div>}
-        {unclassified.map(t => (
-          <TaskRow
-            key={t.id}
-            task={t}
-            onComplete={(id) => completeTask.mutate(id)}
-            onIcebox={(id) => iceboxTask.mutate(id)}
-          />
-        ))}
-      </div>
-
-      {/* Completed */}
-      <div style={{ marginBottom: '16px' }}>
-        <div
-          onClick={() => setShowCompleted(!showCompleted)}
-          style={{ cursor: 'pointer', color: '#6b7280', fontSize: '14px', userSelect: 'none' }}
-        >
-          Completed ({completedTasks.length}) {showCompleted ? '▲' : '▼'}
-        </div>
-        {showCompleted && (
-          <div style={{ marginTop: '8px' }}>
-            {completedTasks.length === 0 && (
-              <div style={emptyTaskStyle}>No completed tasks</div>
-            )}
-            {completedTasks.map(t => (
-              <div key={t.id} style={completedTaskStyle}>
-                <div style={{
-                  width: '16px', height: '16px',
-                  background: '#EA6657', border: '2px solid #EA6657',
-                  borderRadius: '6px', flexShrink: 0,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  fontSize: '10px', color: '#fff',
-                }}>✓</div>
-                <div style={{ flex: 1 }}>
-                  <span style={{ fontSize: '13px', fontWeight: 500, textDecoration: 'line-through', color: '#9ca3af' }}>
-                    {t.title}
-                  </span>
-                  {t.completedAt && (
-                    <div style={{ fontSize: '10px', color: '#d1d5db' }}>
-                      {formatTimestamp(t.completedAt)}
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* Hint */}
-      <div style={{
-        marginTop: '12px', fontSize: '12px', color: '#9ca3af',
-        fontStyle: 'italic', lineHeight: '1.5',
-      }}>
-        Tasks can be generated via assistant workflows.<br />
-        "What should I work on next for this project?"
-      </div>
-    </div>
-  );
+  const boulders = projectTasks.filter((t) => t.classification === 'boulder');
+  const rocks = projectTasks.filter((t) => t.classification === 'rock');
+  const pebbles = projectTasks.filter((t) => t.classification === 'pebble');
+  const unclassified = projectTasks.filter((t) => !t.classification || t.classification === 'unclassified');
 
   return (
     <div style={{ padding: '20px 24px', maxWidth: '1100px', margin: '0 auto' }}>
-      {/* Breadcrumb */}
       <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '6px' }}>
         <span
           onClick={onBack}
@@ -288,25 +104,31 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
         <span>{projectName || project.name}</span>
       </div>
 
-      {/* Header */}
-      <div style={{
-        display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '16px', flexWrap: 'wrap',
-      }}>
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'center',
+          gap: '10px',
+          marginBottom: '16px',
+          flexWrap: 'wrap',
+        }}
+      >
         <input
           type="text"
           value={projectName}
-          onChange={e => handleProjectNameChange(e.target.value)}
+          onChange={(e) => handleProjectNameChange(e.target.value)}
           placeholder="Project name"
           style={projectNameInputStyle}
         />
         <span style={{ fontSize: '13px', color: '#6b7280' }}>
           {project.status === 'active' ? 'Active' : 'On Hold'}
         </span>
-        <button onClick={() => toggleStatus.mutate(projectId)} style={btnSmStyle}>
+        <button type="button" onClick={() => toggleStatus.mutate(projectId)} style={btnSmStyle}>
           {project.status === 'active' ? 'Put on Hold' : 'Reactivate'}
         </button>
         {!confirmingDelete ? (
           <button
+            type="button"
             onClick={() => setConfirmingDelete(true)}
             style={{ ...btnSmStyle, color: '#DC2828', borderColor: '#FCEDED' }}
           >
@@ -314,6 +136,7 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
           </button>
         ) : (
           <button
+            type="button"
             onClick={() => deleteProject.mutate(projectId, { onSuccess: onBack })}
             style={{ ...btnSmStyle, background: '#DC2828', color: '#fff', borderColor: '#DC2828' }}
           >
@@ -322,182 +145,47 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
         )}
       </div>
 
-      {/* Split layout */}
-      <div style={{ display: 'flex', gap: '24px', alignItems: 'flex-start', flexDirection: isMobile ? 'column' : 'row' }}>
-        {/* Markdown editor */}
+      <div
+        style={{
+          display: 'flex',
+          gap: '24px',
+          alignItems: 'flex-start',
+          flexDirection: isMobile ? 'column' : 'row',
+        }}
+      >
         <div style={{ flex: 1, minWidth: 0, width: '100%' }}>
           <textarea
             value={markdown}
-            onChange={e => handleMarkdownChange(e.target.value)}
+            onChange={(e) => handleMarkdownChange(e.target.value)}
             placeholder="Write your project notes here... plans, goals, context, links, anything."
             style={editorStyle}
           />
         </div>
 
-        {rightRail}
-      </div>
-
-      {activityLogSection}
-    </div>
-  );
-}
-
-function TaskRow({
-  task,
-  onComplete,
-  onIcebox,
-}: {
-  task: Task;
-  onComplete: (id: string) => void;
-  onIcebox: (id: string) => void;
-}) {
-  const [editing, setEditing] = useState(false);
-  const deadlineStr = formatTaskDeadlineForMeta(task.deadline);
-  const collapsedMeta = formatCollapsedTaskMetaLine({
-    deadlineLabel: deadlineStr,
-    showRecurrence: !!task.recurrence,
-    projectName: null,
-    prevCompletedLabel: null,
-  });
-  const typeStyles = getTaskTypeStyles(task.classification);
-
-  const handleDragStart = (e: React.DragEvent) => {
-    e.dataTransfer.setData(PROJECT_DETAIL_TASK_DRAG_TYPE, task.id);
-    e.dataTransfer.setData(`${PROJECT_DETAIL_TASK_DRAG_TYPE}-classification`, task.classification);
-    e.dataTransfer.effectAllowed = 'move';
-  };
-
-  return (
-    <div style={{ marginBottom: '6px' }}>
-      <div
-        draggable
-        onDragStart={handleDragStart}
-        style={{
-          ...taskRowCardStyle,
-          borderColor: typeStyles.border,
-          background: typeStyles.bg,
-          display: 'flex',
-          alignItems: 'flex-start',
-          gap: '10px',
-          padding: '10px 12px',
-          cursor: 'grab',
-        }}
-      >
-        <span
-          style={{ ...taskDragHandleStyle, color: typeStyles.handle }}
-          onMouseDown={(e) => e.stopPropagation()}
-        >
-          ⠿
-        </span>
-        <div
-          style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
-          onClick={() => setEditing(prev => !prev)}
-        >
-          <div
-            style={{
-              fontSize: '13px',
-              color: '#1D212B',
-              fontWeight: 500,
-              borderBottom: editing ? '1px dashed #EA6657' : '1px dashed transparent',
-            }}
-          >
-            {task.title}
-          </div>
-          {collapsedMeta && (
-            <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
-          )}
-        </div>
-      </div>
-      {editing && (
-        <TaskEditPanel
-          task={task}
-          onClose={() => setEditing(false)}
-          onComplete={onComplete}
-          onIcebox={onIcebox}
+        <ProjectDetailTaskRail
+          isMobile={isMobile}
+          newTaskTitle={newTaskTitle}
+          setNewTaskTitle={setNewTaskTitle}
+          newTaskType={newTaskType}
+          setNewTaskType={setNewTaskType}
+          onAddTask={handleAddTask}
+          boulders={boulders}
+          rocks={rocks}
+          pebbles={pebbles}
+          unclassified={unclassified}
+          onCompleteTask={(id) => completeTask.mutate(id)}
+          onIceboxTask={(id) => iceboxTask.mutate(id)}
+          showCompleted={showCompleted}
+          setShowCompleted={setShowCompleted}
+          completedTasks={completedTasks}
         />
-      )}
+      </div>
+
+      <ProjectActivitySection
+        entries={activityLog}
+        showLog={showLog}
+        onToggle={() => setShowLog(!showLog)}
+      />
     </div>
   );
-}
-
-function formatTimestamp(ts: any): string {
-  if (!ts) return '';
-  const date = ts.seconds ? new Date(ts.seconds * 1000) : new Date(ts);
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
-const btnSmStyle: React.CSSProperties = {
-  padding: '4px 10px', border: '1px solid #E7E3DF', borderRadius: '12px',
-  background: '#F2F0ED', cursor: 'pointer', fontSize: '12px',
-  fontWeight: 600, color: '#1D212B', fontFamily: 'inherit',
-  transition: 'opacity 0.2s ease',
-};
-
-const projectNameInputStyle: React.CSSProperties = {
-  fontSize: '22px',
-  fontWeight: 600,
-  lineHeight: 1.2,
-  color: '#1D212B',
-  border: '1px solid transparent',
-  borderRadius: '10px',
-  background: 'transparent',
-  padding: '4px 8px',
-  marginLeft: '-8px',
-  fontFamily: 'inherit',
-  outline: 'none',
-  minWidth: '280px',
-};
-
-const sectionHeaderStyle: React.CSSProperties = {
-  fontSize: '14px', textTransform: 'uppercase', letterSpacing: '0.05em',
-  color: '#6b7280', marginBottom: '8px', fontWeight: 500,
-};
-
-const emptyTaskStyle: React.CSSProperties = {
-  padding: '8px 4px', color: '#9ca3af', fontStyle: 'italic', fontSize: '13px',
-};
-
-const taskDragHandleStyle: React.CSSProperties = {
-  fontSize: '16px',
-  userSelect: 'none',
-  flexShrink: 0,
-  marginTop: '1px',
-};
-
-const taskRowCardStyle: React.CSSProperties = {
-  border: '2px dashed #E7E3DF',
-  borderRadius: '8px',
-  background: '#fff',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
-};
-
-const completedTaskStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: '8px',
-  padding: '8px 10px',
-  borderBottom: '1px solid #EFEDEB',
-  background: '#fff',
-  border: '1px solid #E7E3DF',
-  borderRadius: '8px',
-  marginBottom: '6px',
-};
-
-const editorStyle: React.CSSProperties = {
-  width: '100%', minHeight: '400px', padding: '16px 20px',
-  border: '2px solid #E7E3DF', borderRadius: '16px', background: '#fff',
-  fontFamily: 'var(--font-mono)',
-  fontSize: '14px', lineHeight: '1.7', color: '#1D212B',
-  resize: 'vertical', outline: 'none', boxSizing: 'border-box',
-  boxShadow: '0 1px 3px rgba(0,0,0,0.1)',
-};
-
-function getTaskTypeStyles(classification: Task['classification']) {
-  if (classification === 'boulder') {
-    return { border: '#EA6657', bg: '#fff', handle: '#EA6657' };
-  }
-  if (classification === 'rock') {
-    return { border: '#d7b27a', bg: '#fff', handle: '#d7b27a' };
-  }
-  return { border: '#E7E3DF', bg: '#fff', handle: '#d1d5db' };
 }

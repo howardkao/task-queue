@@ -1,8 +1,13 @@
+import {
+  calculateNextOccurrence,
+  ORDERED_CLASSIFICATIONS,
+  sortTasksForList,
+  type RecurrenceRule,
+} from '@task-queue/shared';
 import { db, OWNER_UID, FieldValue, Timestamp } from './firestore.js';
 
 const tasksRef = db.collection('tasks');
 const logRef = db.collection('activityLog');
-const ORDERED_CLASSIFICATIONS = new Set(['boulder', 'rock', 'pebble']);
 
 export type Classification = 'unclassified' | 'boulder' | 'rock' | 'pebble';
 
@@ -79,16 +84,7 @@ export async function listTasks(filters?: {
     });
   }
 
-  tasks.sort((a, b) => {
-    if (a.classification === b.classification && ORDERED_CLASSIFICATIONS.has(a.classification)) {
-      return (a.sortOrder || 0) - (b.sortOrder || 0);
-    }
-    const aTime = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-    const bTime = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-    return aTime - bTime;
-  });
-
-  return tasks;
+  return sortTasksForList(tasks, (t) => (t.createdAt ? new Date(t.createdAt).getTime() : 0));
 }
 
 export async function getTask(id: string): Promise<Task> {
@@ -138,15 +134,13 @@ export async function createTask(data: {
   recurrence?: any;
   lastOccurrenceCompletedAt?: any;
 }): Promise<Task> {
-  let sortOrder = 0;
-  if (data.classification && ORDERED_CLASSIFICATIONS.has(data.classification)) {
-    sortOrder = await getTopSortOrder(data.classification as Classification);
-  }
+  const classification = (data.classification || 'unclassified') as Classification;
+  const sortOrder = await getTopSortOrder(classification);
 
   const taskData: any = {
     title: data.title.trim(),
     notes: data.notes || '',
-    classification: data.classification || 'unclassified',
+    classification,
     status: 'active',
     priority: data.priority || 'low',
     deadline: data.deadline ? Timestamp.fromDate(new Date(data.deadline)) : null,
@@ -165,7 +159,7 @@ export async function createTask(data: {
     addLogEntry({
       projectId: data.projectId,
       action: 'task_created',
-      description: `Created ${data.classification || 'unclassified'}: "${data.title.trim()}"`,
+      description: `Created ${classification}: "${data.title.trim()}"`,
       taskId: ref.id,
     }).catch(() => {});
   }
@@ -238,7 +232,7 @@ export async function completeTask(id: string): Promise<{ completed: Task; nextO
 
   let nextOccurrence: Task | null = null;
   if (task.recurrence) {
-    const nextDeadline = calculateNextOccurrence(task.recurrence, task.deadline);
+    const nextDeadline = calculateNextOccurrence(task.recurrence as RecurrenceRule, task.deadline);
     nextOccurrence = await createTask({
       title: task.title,
       notes: task.notes,
@@ -270,90 +264,3 @@ export async function iceboxTask(id: string): Promise<Task> {
   return result;
 }
 
-const DAY_INDEX: Record<string, number> = {
-  sun: 0, mon: 1, tue: 2, wed: 3, thu: 4, fri: 5, sat: 6,
-};
-
-function findNextDayOfWeek(from: Date, days: string[]): Date {
-  const targetDays = days.map(d => DAY_INDEX[d]).filter(d => d !== undefined).sort((a, b) => a - b);
-  if (targetDays.length === 0) {
-    const next = new Date(from);
-    next.setDate(next.getDate() + 7);
-    return next;
-  }
-  const currentDay = from.getDay();
-  const nextDay = targetDays.find(d => d > currentDay);
-  const daysToAdd = nextDay !== undefined
-    ? nextDay - currentDay
-    : 7 - currentDay + targetDays[0];
-  const next = new Date(from);
-  next.setDate(next.getDate() + daysToAdd);
-  return next;
-}
-
-function calculateNextOccurrence(recurrence: any, currentDeadline: string | null): string | null {
-  if (!recurrence || !recurrence.freq) return null;
-  const now = new Date();
-
-  switch (recurrence.freq) {
-    case 'daily': {
-      const base = currentDeadline ? new Date(currentDeadline) : now;
-      const next = new Date(base);
-      next.setDate(next.getDate() + (recurrence.interval || 1));
-      return next.toISOString();
-    }
-    case 'weekly': {
-      const base = currentDeadline ? new Date(currentDeadline) : now;
-      if (recurrence.days && recurrence.days.length > 0) {
-        return findNextDayOfWeek(base, recurrence.days).toISOString();
-      }
-      const next = new Date(base);
-      next.setDate(next.getDate() + 7);
-      return next.toISOString();
-    }
-    case 'monthly': {
-      const base = currentDeadline ? new Date(currentDeadline) : now;
-      const next = new Date(base);
-      next.setMonth(next.getMonth() + (recurrence.interval || 1));
-      return next.toISOString();
-    }
-    case 'yearly': {
-      const base = currentDeadline ? new Date(currentDeadline) : now;
-      const next = new Date(base);
-      next.setFullYear(next.getFullYear() + (recurrence.interval || 1));
-      return next.toISOString();
-    }
-    case 'periodically': {
-      const next = new Date(now);
-      const interval = recurrence.interval || 1;
-      const unit = recurrence.periodUnit || 'days';
-      if (unit === 'hours') {
-        next.setHours(next.getHours() + interval);
-      } else if (unit === 'weeks') {
-        next.setDate(next.getDate() + interval * 7);
-      } else {
-        next.setDate(next.getDate() + interval);
-      }
-      return next.toISOString();
-    }
-    case 'custom': {
-      const base = currentDeadline ? new Date(currentDeadline) : now;
-      const interval = recurrence.interval || 1;
-      if (recurrence.customUnit === 'monthly') {
-        const next = new Date(base);
-        next.setMonth(next.getMonth() + interval);
-        return next.toISOString();
-      }
-      if (recurrence.days && recurrence.days.length > 0) {
-        const jumped = new Date(base);
-        jumped.setDate(jumped.getDate() + 7 * (interval - 1));
-        return findNextDayOfWeek(jumped, recurrence.days).toISOString();
-      }
-      const next = new Date(base);
-      next.setDate(next.getDate() + 7 * interval);
-      return next.toISOString();
-    }
-    default:
-      return null;
-  }
-}
