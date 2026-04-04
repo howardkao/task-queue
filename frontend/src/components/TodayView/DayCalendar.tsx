@@ -13,7 +13,11 @@ import {
 } from './dayCalendarUtils';
 import { computeTimedEventOverlapLayout } from './dayCalendarOverlapLayout';
 
-const OVERLAP_LANE_GAP_PX = 2;
+/** Horizontal overlap between adjacent lane columns: step = (1 − this) × card width. */
+const OVERLAP_LANE_OVERLAP_FRACTION = 0.3;
+/** Gap between time labels and timed-event cards (must match timed track `left` below). */
+const TIMED_TRACK_LEFT_GUTTER_PX = 8;
+const TIMED_TRACK_RIGHT_MARGIN_PX = 4;
 const PRE_DRAG_THRESHOLD_SQ = PLACED_TASK_PRE_DRAG_MOVE_PX * PLACED_TASK_PRE_DRAG_MOVE_PX;
 
 export type { CalEvent } from './dayCalendarTypes';
@@ -378,14 +382,14 @@ export function DayCalendar({
 
     const lane = overlapLayout.get(event.id) ?? { column: 0, columnCount: 1 };
     const { column: laneCol, columnCount: laneCount } = lane;
-    const innerLeftPx = timeColWidth + 8;
-    const rightMarginPx = 4;
-    const gapTotalPx = (laneCount - 1) * OVERLAP_LANE_GAP_PX;
-    const laneWidthCalc = `calc((100% - ${innerLeftPx + rightMarginPx}px - ${gapTotalPx}px) / ${laneCount})`;
+    const stepFraction = 1 - OVERLAP_LANE_OVERLAP_FRACTION;
+    const widthDenom = 1 + stepFraction * Math.max(0, laneCount - 1);
+    const stepScaled = laneCol * stepFraction;
+    const cardWidthCalc = `calc(100% / ${widthDenom})`;
     const leftExpr =
       laneCol === 0
-        ? `${innerLeftPx}px`
-        : `calc(${innerLeftPx}px + ${laneCol} * ((100% - ${innerLeftPx + rightMarginPx}px - ${gapTotalPx}px) / ${laneCount} + ${OVERLAP_LANE_GAP_PX}px))`;
+        ? '0'
+        : `calc(${stepScaled} * (100% / ${widthDenom}))`;
 
     const taskId = event.id.replace('boulder-', '');
     const isActiveDrag = placed && activePlacedDragTaskId === taskId;
@@ -394,7 +398,7 @@ export function DayCalendar({
       position: 'absolute',
       top: `${top}px`,
       left: leftExpr,
-      width: laneWidthCalc,
+      width: cardWidthCalc,
       right: 'auto',
       height: `${heightPx}px`,
       ...calendarEventCardChrome,
@@ -405,7 +409,10 @@ export function DayCalendar({
           : {}),
       padding: `${paddingY}px ${laneCount > 1 ? 6 : 12}px`,
       overflow: 'hidden',
-      zIndex: isActiveDrag ? 12 : 1,
+      pointerEvents: 'auto',
+      zIndex: isActiveDrag
+        ? 100
+        : (placed ? 40 : 20) + (laneCount - 1 - laneCol),
       userSelect: 'none',
       touchAction: isActiveDrag ? 'none' : undefined,
       cursor: placed ? 'default' : 'pointer',
@@ -616,6 +623,17 @@ export function DayCalendar({
           </>
         )}
 
+        <div
+          style={{
+            position: 'absolute',
+            left: `${timeColWidth + TIMED_TRACK_LEFT_GUTTER_PX}px`,
+            right: `${TIMED_TRACK_RIGHT_MARGIN_PX}px`,
+            top: 0,
+            bottom: 0,
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        >
         {timedEvents.map((event) => {
           const extChrome = externalCalendarChrome(event);
           const taskChrome = isPlacedTaskEventType(event.type) ? getPlacedTaskCalendarChrome() : null;
@@ -703,6 +721,7 @@ export function DayCalendar({
           </div>
           );
         })}
+        </div>
       </div>
 
       {selectedEvent && (

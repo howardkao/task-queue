@@ -33,6 +33,10 @@ function eventsOverlap(a: CalEvent, b: CalEvent): boolean {
   return intervalsOverlap(A.start, A.end, B.start, B.end);
 }
 
+function isExternalCalEventType(t: CalEvent['type']): boolean {
+  return t === 'meeting' || t === 'personal';
+}
+
 function findOverlapComponents(events: CalEvent[]): CalEvent[][] {
   const visited = new Set<string>();
   const components: CalEvent[][] = [];
@@ -61,14 +65,26 @@ function findOverlapComponents(events: CalEvent[]): CalEvent[][] {
 }
 
 /**
- * Assign columns within one overlap component: higher-priority types claim lower indices first.
+ * Assign columns within one overlap component: placed tasks claim lanes before GCal events.
+ * Among external (meeting / personal) events, shorter blocks are placed first so very long
+ * events tend to the right, regardless of calendar subtype or slightly different start times.
  */
 function assignLanesInComponent(events: CalEvent[]): Map<string, number> {
   const sorted = [...events].sort((a, b) => {
-    const p = LANE_PRIORITY[a.type] - LANE_PRIORITY[b.type];
-    if (p !== 0) return p;
+    const aExt = isExternalCalEventType(a.type);
+    const bExt = isExternalCalEventType(b.type);
+    if (aExt !== bExt) return aExt ? 1 : -1;
+
+    if (!aExt && !bExt) {
+      const p = LANE_PRIORITY[a.type] - LANE_PRIORITY[b.type];
+      if (p !== 0) return p;
+      if (a.startHour !== b.startHour) return a.startHour - b.startHour;
+      return b.duration - a.duration;
+    }
+
+    if (a.duration !== b.duration) return a.duration - b.duration;
     if (a.startHour !== b.startHour) return a.startHour - b.startHour;
-    return b.duration - a.duration;
+    return LANE_PRIORITY[a.type] - LANE_PRIORITY[b.type];
   });
 
   const placed: { start: number; end: number; col: number }[] = [];
@@ -92,7 +108,7 @@ function assignLanesInComponent(events: CalEvent[]): Map<string, number> {
 
 /**
  * Google Calendar–style columns: each timed event gets a lane within its overlap cluster.
- * Lane order favors boulders, then rocks, then pebbles, then iCal (meeting / personal).
+ * Lane order favors boulders, then rocks, then pebbles; then iCal events by increasing duration.
  */
 export function computeTimedEventOverlapLayout(events: CalEvent[]): Map<string, TimedEventLane> {
   const result = new Map<string, TimedEventLane>();
