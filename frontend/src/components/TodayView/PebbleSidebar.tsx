@@ -3,6 +3,7 @@ import type { Task, Priority } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
 import { useProjects } from '../../hooks/useProjects';
 import { useTodayPebbles, useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
+import type { PlannerScope } from '../../types';
 import { reorderPebbles as reorderPebblesApi } from '../../api/tasks';
 import type { TodayProjectFilter } from '../../hooks/useTasks';
 import {
@@ -22,6 +23,7 @@ interface PebbleSidebarProps {
   priorityFilter?: Priority[];
   expandedTaskId: string | null;
   onExpandedTaskIdChange: (taskId: string | null) => void;
+  plannerScope?: PlannerScope;
 }
 
 export function PebbleSidebar({
@@ -29,8 +31,9 @@ export function PebbleSidebar({
   priorityFilter = [],
   expandedTaskId,
   onExpandedTaskIdChange,
+  plannerScope = 'me',
 }: PebbleSidebarProps) {
-  const { data: allPebbles = [] } = useTodayPebbles(projectFilter);
+  const { data: allPebbles = [] } = useTodayPebbles(projectFilter, plannerScope);
   const pebbles = priorityFilter.length === 0
     ? allPebbles
     : allPebbles.filter(t => priorityFilter.includes(t.priority || 'low'));
@@ -46,10 +49,17 @@ export function PebbleSidebar({
 
   const displayPebbles = localOrder || pebbles;
 
-  const persistOrder = useCallback(async (newList: Task[]) => {
-    const order = newList.map((t, i) => ({ id: t.id, sortOrder: (i + 1) * 1000 }));
-    try { await reorderPebblesApi(order); } catch (e) { console.error('Failed to persist order:', e); }
-  }, []);
+  const persistOrder = useCallback(
+    async (newList: Task[]) => {
+      const order = newList.map((t, i) => ({ id: t.id, sortOrder: (i + 1) * 1000 }));
+      try {
+        await reorderPebblesApi(order, plannerScope);
+      } catch (e) {
+        console.error('Failed to persist order:', e);
+      }
+    },
+    [plannerScope],
+  );
 
   const applyReorder = useCallback((fromIdx: number, toIdx: number) => {
     const list = [...displayPebbles];

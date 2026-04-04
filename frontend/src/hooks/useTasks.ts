@@ -1,12 +1,25 @@
 import { useMemo } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { listTasks, createTask, updateTask, completeTask, iceboxTask, reorderPebbles, deleteTask } from '../api/tasks';
+import {
+  listTasks,
+  createTask,
+  updateTask,
+  completeTask,
+  iceboxTask,
+  reorderPebbles,
+  deleteTask,
+  getMeSortOrder,
+  type PebbleReorderContext,
+} from '../api/tasks';
 import { useProjects } from './useProjects';
-import type { Classification, Task, RecurrenceRule } from '../types';
+import { useAuth } from './useAuth';
+import type { Classification, Task, RecurrenceRule, Project, PlannerScope } from '../types';
 import { firestoreTimeToMs } from '@/lib/firestoreTime';
+import { isTaskVisibleOnFamily } from '../taskFamilyScope';
 
 export const STANDALONE_PROJECT_FILTER = '__standalone__';
 export type TodayProjectFilter = string[];
+export type { PlannerScope } from '../types';
 
 /** One Firestore fetch for all active tasks; inbox/boulders/rocks/pebbles/due-soon derive via `select`. */
 const ACTIVE_TASKS_QUERY_KEY = ['tasks', 'active-all'] as const;
@@ -156,10 +169,10 @@ export function useDeleteTask() {
   });
 }
 
-export function useReorderPebbles() {
+export function useReorderPebbles(context: PebbleReorderContext = 'me') {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: reorderPebbles,
+    mutationFn: (order: Array<{ id: string; sortOrder: number }>) => reorderPebbles(order, context),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
     },
@@ -258,79 +271,121 @@ function filterByTodayProject(tasks: Task[], projectFilter: TodayProjectFilter) 
   });
 }
 
-function sortTodayTasks(tasks: Task[]) {
+function sortTodayTasks(tasks: Task[], scope: PlannerScope, uid: string) {
   return [...tasks].sort((a, b) => {
-    // 1. Due Later tasks (that aren't in Due Soon) go to the very top
     const aDueLater = isDueLater(a.deadline);
     const bDueLater = isDueLater(b.deadline);
     if (aDueLater !== bDueLater) return aDueLater ? -1 : 1;
 
-    // 2. Future recurring tasks go to the bottom
     const aFuture = isFutureRecurring(a);
     const bFuture = isFutureRecurring(b);
     if (aFuture !== bFuture) return aFuture ? 1 : -1;
 
-    // Primary: Manual sort order
-    const aOrder = a.sortOrder || 0;
-    const bOrder = b.sortOrder || 0;
+    const aOrder =
+      scope === 'family'
+        ? (a.sortOrderFamily ?? a.sortOrder ?? 0)
+        : getMeSortOrder(a, uid);
+    const bOrder =
+      scope === 'family'
+        ? (b.sortOrderFamily ?? b.sortOrder ?? 0)
+        : getMeSortOrder(b, uid);
     if (aOrder !== bOrder) return aOrder - bOrder;
 
-    // Secondary: Created time (newest first for same sort order)
     return firestoreTimeToMs(b.createdAt) - firestoreTimeToMs(a.createdAt);
   });
 }
 
-function useTodayTaskList(tasks: Task[], projectFilter: TodayProjectFilter = []) {
+function filterTasksByPlannerScope(
+  tasks: Task[],
+  scope: PlannerScope,
+  uid: string,
+  projectById: Map<string, Project>,
+): Task[] {
+  if (scope === 'me') {
+    return tasks.filter((t) => t.assigneeUids.includes(uid));
+  }
+  return tasks.filter((t) =>
+    isTaskVisibleOnFamily(t, t.projectId ? projectById.get(t.projectId) : undefined),
+  );
+}
+
+function useTodayTaskList(
+  tasks: Task[],
+  projectFilter: TodayProjectFilter = [],
+  scope: PlannerScope = 'me',
+) {
+  const { user } = useAuth();
+  const uid = user?.uid ?? '';
   const { data: activeProjects = [] } = useProjects('active');
 
   const data = useMemo(() => {
-    const activeProjectIds = new Set(activeProjects.map(project => project.id));
+    if (!uid) return [];
+    const projectById = new Map(activeProjects.map((p) => [p.id, p]));
+    const activeProjectIds = new Set(activeProjects.map((project) => project.id));
     let visibleTasks = filterOutOnHoldProjectTasks(tasks, activeProjectIds);
-    
-    // We only exclude tasks that are in the "Due Soon" section (Overdue/Today)
-    // AND tasks that are considered future recurring based on our new logic
-    visibleTasks = visibleTasks.filter(t => !isOverdueOrDueToday(t.deadline) && !isFutureRecurring(t));
+    visibleTasks = filterTasksByPlannerScope(visibleTasks, scope, uid, projectById);
+    visibleTasks = visibleTasks.filter(
+      (t) => !isOverdueOrDueToday(t.deadline) && !isFutureRecurring(t),
+    );
 
     const projectFilteredTasks = filterByTodayProject(visibleTasks, projectFilter);
-    return sortTodayTasks(projectFilteredTasks);
-  }, [tasks, activeProjects, projectFilter]);
+    return sortTodayTasks(projectFilteredTasks, scope, uid);
+  }, [tasks, activeProjects, projectFilter, scope, uid]);
 
   return data;
 }
 
-export function useDueSoonTasks() {
+export function useDueSoonTasks(scope: PlannerScope = 'me') {
   const { data: allTasks = [] } = useTasks({ status: 'active' });
-  
+  const { user } = useAuth();
+  const uid = user?.uid ?? '';
+  const { data: activeProjects = [] } = useProjects('active');
+
   return useMemo(() => {
-    const dueSoon = allTasks.filter(t => isOverdueOrDueToday(t.deadline) && !isFutureRecurring(t));
+    if (!uid) return [];
+    const projectById = new Map(activeProjects.map((p) => [p.id, p]));
+    let pool = filterTasksByPlannerScope(allTasks, scope, uid, projectById);
+    const dueSoon = pool.filter((t) => isOverdueOrDueToday(t.deadline) && !isFutureRecurring(t));
     return dueSoon.sort((a, b) => firestoreTimeToMs(a.deadline) - firestoreTimeToMs(b.deadline));
-  }, [allTasks]);
+  }, [allTasks, activeProjects, scope, uid]);
 }
 
-export function useTodayInboxTasks(projectFilter: TodayProjectFilter = []) {
+export function useTodayInboxTasks(
+  projectFilter: TodayProjectFilter = [],
+  scope: PlannerScope = 'me',
+) {
   const inboxQuery = useInboxTasks();
-  const data = useTodayTaskList(inboxQuery.data || [], projectFilter);
+  const data = useTodayTaskList(inboxQuery.data || [], projectFilter, scope);
 
   return { ...inboxQuery, data };
 }
 
-export function useTodayBoulders(projectFilter: TodayProjectFilter = []) {
+export function useTodayBoulders(
+  projectFilter: TodayProjectFilter = [],
+  scope: PlannerScope = 'me',
+) {
   const bouldersQuery = useBoulders();
-  const data = useTodayTaskList(bouldersQuery.data || [], projectFilter);
+  const data = useTodayTaskList(bouldersQuery.data || [], projectFilter, scope);
 
   return { ...bouldersQuery, data };
 }
 
-export function useTodayRocks(projectFilter: TodayProjectFilter = []) {
+export function useTodayRocks(
+  projectFilter: TodayProjectFilter = [],
+  scope: PlannerScope = 'me',
+) {
   const rocksQuery = useRocks();
-  const data = useTodayTaskList(rocksQuery.data || [], projectFilter);
+  const data = useTodayTaskList(rocksQuery.data || [], projectFilter, scope);
 
   return { ...rocksQuery, data };
 }
 
-export function useTodayPebbles(projectFilter: TodayProjectFilter = []) {
+export function useTodayPebbles(
+  projectFilter: TodayProjectFilter = [],
+  scope: PlannerScope = 'me',
+) {
   const pebblesQuery = usePebbles();
-  const data = useTodayTaskList(pebblesQuery.data || [], projectFilter);
+  const data = useTodayTaskList(pebblesQuery.data || [], projectFilter, scope);
 
   return { ...pebblesQuery, data };
 }

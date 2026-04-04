@@ -55,7 +55,7 @@ function AppContent() {
   }, [notifyQueryError]);
 
   const { user, loading: authLoading, signOut } = useAuth();
-  const [activeTab, setActiveTab] = useState<TabId>('today');
+  const [activeTab, setActiveTab] = useState<TabId>('me');
   const { data: iceboxTasks = [] } = useIceboxedTasks();
   const [openProjectId, setOpenProjectId] = useState<string | null>(null);
   const [showAdmin, setShowAdmin] = useState(false);
@@ -63,7 +63,8 @@ function AppContent() {
   const isMobile = useIsMobile();
 
   const tabs = [
-    { id: 'today' as TabId, label: 'Today' },
+    { id: 'me' as TabId, label: 'Me' },
+    { id: 'family' as TabId, label: 'Family' },
     { id: 'projects' as TabId, label: 'Projects' },
   ];
 
@@ -80,7 +81,7 @@ function AppContent() {
 
   // Keyboard shortcuts: 1-3 to switch tabs
   useEffect(() => {
-    const tabMap: Record<string, TabId> = { '1': 'today', '2': 'icebox', '3': 'projects' };
+    const tabMap: Record<string, TabId> = { '1': 'me', '2': 'family', '3': 'projects' };
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
@@ -179,9 +180,8 @@ function AppContent() {
       </SideDrawer>
 
       <Suspense fallback={<SectionLoading />}>
-        {activeTab === 'today' && (
-          <TodayView />
-        )}
+        {activeTab === 'me' && <TodayView plannerScope="me" />}
+        {activeTab === 'family' && <TodayView plannerScope="family" />}
 
         {activeTab === 'icebox' && (
           <IceboxView />

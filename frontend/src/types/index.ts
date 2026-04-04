@@ -18,6 +18,8 @@ export type FirestoreTimestampLike =
   | null
   | undefined;
 
+export type PlannerScope = 'me' | 'family';
+
 export type Classification = 'unclassified' | 'boulder' | 'rock' | 'pebble';
 export type TaskStatus = 'active' | 'completed' | 'iceboxed';
 export type Priority = 'high' | 'med' | 'low';
@@ -36,6 +38,10 @@ export interface Task {
   recurrence: RecurrenceRule | null;
   projectId: string | null;
   sortOrder: number;
+  /** Ordering on the Family tab for this classification (independent from Me / sortOrder). */
+  sortOrderFamily: number;
+  /** Per-assignee ordering on Me; falls back to sortOrder when missing for a uid. */
+  sortOrderByAssignee: Record<string, number>;
   placement?: {
     date: string;       // YYYY-MM-DD
     startHour: number;  // e.g. 9.5
@@ -45,6 +51,15 @@ export interface Task {
   lastOccurrenceCompletedAt?: FirestoreTimestampLike | null;
   createdAt: FirestoreTimestampLike;
   updatedAt: FirestoreTimestampLike;
+  /** Legacy / creator uid; kept for rules and migration. */
+  ownerUid?: string;
+  householdId?: string | null;
+  /** Always at least one household member. */
+  assigneeUids: string[];
+  /** When true, task stays off Family even if the project is family-visible. */
+  excludeFromFamily: boolean;
+  /** When true, task appears on Family even without a family-scoped project. */
+  familyPinned: boolean;
 }
 
 export interface Project {
@@ -52,9 +67,16 @@ export interface Project {
   name: string;
   markdown: string;
   status: ProjectStatus;
+  /** Legacy field; family visibility is expressed with familyVisible. */
   visibility: 'personal' | 'shared';
   createdAt: FirestoreTimestampLike;
   updatedAt: FirestoreTimestampLike;
+  ownerUid?: string;
+  householdId?: string | null;
+  /** At least one uid; typically includes ownerUid. */
+  assigneeUids: string[];
+  /** Family tab shows tasks in this project by default (tasks can opt out). */
+  familyVisible: boolean;
 }
 
 export interface ActivityLogEntry {

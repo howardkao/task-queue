@@ -29,8 +29,12 @@ export function useProject(id: string | null) {
 export function useCreateProject() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; markdown?: string; status?: ProjectStatus }) =>
-      createProject(data),
+    mutationFn: (data: {
+      name: string;
+      markdown?: string;
+      status?: ProjectStatus;
+      familyVisible?: boolean;
+    }) => createProject(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: PROJECTS_KEY });
     },

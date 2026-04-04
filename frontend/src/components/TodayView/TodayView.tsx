@@ -3,8 +3,21 @@ import { DayCalendar } from './DayCalendar';
 import { BoulderSidebar } from './BoulderSidebar';
 import { RockSidebar } from './RockSidebar';
 import { PebbleSidebar } from './PebbleSidebar';
-import { useTodayBoulders, useTodayRocks, useTodayPebbles, useTodayInboxTasks, useCreateTask, useClassifyTask, useUpdateTask, useDueSoonTasks, isOverdueOrDueToday, STANDALONE_PROJECT_FILTER } from '../../hooks/useTasks';
+import {
+  useTodayBoulders,
+  useTodayRocks,
+  useTodayPebbles,
+  useTodayInboxTasks,
+  useCreateTask,
+  useClassifyTask,
+  useUpdateTask,
+  useDueSoonTasks,
+  isOverdueOrDueToday,
+  STANDALONE_PROJECT_FILTER,
+  type PlannerScope,
+} from '../../hooks/useTasks';
 import { useProjects } from '../../hooks/useProjects';
+import { readPlannerStorage, writePlannerStorage } from '../../plannerStorage';
 import { useIsMobile } from '../../hooks/useViewport';
 import { useEventsForRange } from '../../hooks/useCalendar';
 import type { CalEvent, PlacedTaskDragPreview } from './dayCalendarTypes';
@@ -60,30 +73,34 @@ function resolveStickyDateKey(
   return prevDateKey;
 }
 
-export function TodayView() {
+export interface TodayViewProps {
+  plannerScope?: PlannerScope;
+}
+
+export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
   const isMobile = useIsMobile();
   const { data: projects = [] } = useProjects('active');
   const unfilteredProjectFilter = useMemo<TodayProjectFilter>(() => [], []);
   const [projectFilter, setProjectFilter] = useState<TodayProjectFilter>(() => {
-    const saved = localStorage.getItem('today_projectFilter');
+    const saved = readPlannerStorage(plannerScope, 'projectFilter');
     return saved ? JSON.parse(saved) : [];
   });
-  const { data: boulders = [] } = useTodayBoulders(projectFilter);
-  const { data: rocks = [] } = useTodayRocks(projectFilter);
-  const { data: allBoulders = [] } = useTodayBoulders(unfilteredProjectFilter);
-  const { data: allRocks = [] } = useTodayRocks(unfilteredProjectFilter);
-  const { data: allPebbles = [] } = useTodayPebbles(unfilteredProjectFilter);
-  const { data: inboxTasks = [] } = useTodayInboxTasks(projectFilter);
+  const { data: boulders = [] } = useTodayBoulders(projectFilter, plannerScope);
+  const { data: rocks = [] } = useTodayRocks(projectFilter, plannerScope);
+  const { data: allBoulders = [] } = useTodayBoulders(unfilteredProjectFilter, plannerScope);
+  const { data: allRocks = [] } = useTodayRocks(unfilteredProjectFilter, plannerScope);
+  const { data: allPebbles = [] } = useTodayPebbles(unfilteredProjectFilter, plannerScope);
+  const { data: inboxTasks = [] } = useTodayInboxTasks(projectFilter, plannerScope);
   const createTask = useCreateTask();
   const classifyTask = useClassifyTask();
-  const dueSoonTasks = useDueSoonTasks();
+  const dueSoonTasks = useDueSoonTasks(plannerScope);
 
   const [priorityFilter, setPriorityFilter] = useState<Priority[]>(() => {
-    const saved = localStorage.getItem('today_priorityFilter');
+    const saved = readPlannerStorage(plannerScope, 'priorityFilter');
     return saved ? JSON.parse(saved) : [];
   });
   const [isFilterExpanded, setIsFilterExpanded] = useState(() => {
-    const saved = localStorage.getItem('today_isFilterExpanded');
+    const saved = readPlannerStorage(plannerScope, 'isFilterExpanded');
     return saved === 'true';
   });
 
@@ -105,7 +122,7 @@ export function TodayView() {
   }, [priorityFilter, projectFilter, projects]);
 
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => {
-    const saved = localStorage.getItem('today_sidebarMode');
+    const saved = readPlannerStorage(plannerScope, 'sidebarMode');
     return (saved as SidebarMode) || 'boulders';
   });
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
@@ -113,15 +130,15 @@ export function TodayView() {
   const dayGridElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const [placedTaskDragPreview, setPlacedTaskDragPreview] = useState<PlacedTaskDragPreview | null>(null);
   const [dayCount, setDayCount] = useState(() => {
-    const saved = localStorage.getItem('today_dayCount');
+    const saved = readPlannerStorage(plannerScope, 'dayCount');
     return saved ? parseInt(saved, 10) : 3;
   });
   const [wakeUpHour, setWakeUpHour] = useState(() => {
-    const saved = localStorage.getItem('today_wakeUpHour');
+    const saved = readPlannerStorage(plannerScope, 'wakeUpHour');
     return saved ? parseInt(saved, 10) : 8;
   });
   const [bedTimeHour, setBedTimeHour] = useState(() => {
-    const saved = localStorage.getItem('today_bedTimeHour');
+    const saved = readPlannerStorage(plannerScope, 'bedTimeHour');
     return saved ? parseInt(saved, 10) : 22;
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -135,11 +152,18 @@ export function TodayView() {
 
   const [shouldBustCache, setShouldBustCache] = useState(false);
 
-  // Persist filters/settings
-  useEffect(() => { localStorage.setItem('today_projectFilter', JSON.stringify(projectFilter)); }, [projectFilter]);
-  useEffect(() => { localStorage.setItem('today_priorityFilter', JSON.stringify(priorityFilter)); }, [priorityFilter]);
-  useEffect(() => { localStorage.setItem('today_isFilterExpanded', String(isFilterExpanded)); }, [isFilterExpanded]);
-  useEffect(() => { localStorage.setItem('today_sidebarMode', sidebarMode); }, [sidebarMode]);
+  useEffect(() => {
+    writePlannerStorage(plannerScope, 'projectFilter', JSON.stringify(projectFilter));
+  }, [plannerScope, projectFilter]);
+  useEffect(() => {
+    writePlannerStorage(plannerScope, 'priorityFilter', JSON.stringify(priorityFilter));
+  }, [plannerScope, priorityFilter]);
+  useEffect(() => {
+    writePlannerStorage(plannerScope, 'isFilterExpanded', String(isFilterExpanded));
+  }, [plannerScope, isFilterExpanded]);
+  useEffect(() => {
+    writePlannerStorage(plannerScope, 'sidebarMode', sidebarMode);
+  }, [plannerScope, sidebarMode]);
   useEffect(() => {
     if (skipClearExpandedOnNextSidebarMode.current) {
       skipClearExpandedOnNextSidebarMode.current = false;
@@ -147,9 +171,15 @@ export function TodayView() {
     }
     setExpandedTaskId(null);
   }, [sidebarMode]);
-  useEffect(() => { localStorage.setItem('today_dayCount', dayCount.toString()); }, [dayCount]);
-  useEffect(() => { localStorage.setItem('today_wakeUpHour', wakeUpHour.toString()); }, [wakeUpHour]);
-  useEffect(() => { localStorage.setItem('today_bedTimeHour', bedTimeHour.toString()); }, [bedTimeHour]);
+  useEffect(() => {
+    writePlannerStorage(plannerScope, 'dayCount', dayCount.toString());
+  }, [plannerScope, dayCount]);
+  useEffect(() => {
+    writePlannerStorage(plannerScope, 'wakeUpHour', wakeUpHour.toString());
+  }, [plannerScope, wakeUpHour]);
+  useEffect(() => {
+    writePlannerStorage(plannerScope, 'bedTimeHour', bedTimeHour.toString());
+  }, [plannerScope, bedTimeHour]);
 
   const visibleDayCount = isMobile ? 1 : dayCount;
 
@@ -644,6 +674,7 @@ export function TodayView() {
           standaloneCount={standaloneCount}
           expandedTaskId={expandedTaskId}
           onExpandedTaskIdChange={setExpandedTaskId}
+          reorderContext={plannerScope}
         />
       )}
       {sidebarMode === 'rocks' && (
@@ -652,6 +683,7 @@ export function TodayView() {
           placedBoulders={placedTasksMap}
           expandedTaskId={expandedTaskId}
           onExpandedTaskIdChange={setExpandedTaskId}
+          reorderContext={plannerScope}
         />
       )}
       {sidebarMode === 'pebbles' && (
@@ -660,6 +692,7 @@ export function TodayView() {
           priorityFilter={priorityFilter}
           expandedTaskId={expandedTaskId}
           onExpandedTaskIdChange={setExpandedTaskId}
+          plannerScope={plannerScope}
         />
       )}
     </>
@@ -823,7 +856,11 @@ export function TodayView() {
       </div>
 
       {isMobile && (
-        <SideDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} title="Today Tasks">
+        <SideDrawer
+          open={drawerOpen}
+          onClose={() => setDrawerOpen(false)}
+          title={plannerScope === 'family' ? 'Family tasks' : 'Me'}
+        >
           {sidebarContent}
         </SideDrawer>
       )}

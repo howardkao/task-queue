@@ -15,6 +15,7 @@ import {
 import { auth, db } from '../firebase';
 import type { Project, ProjectStatus } from '../types';
 import { addLogEntry } from './activityLog';
+import { ensureUserHousehold } from './household';
 
 const projectsRef = collection(db, 'projects');
 const tasksRef = collection(db, 'tasks');
@@ -29,6 +30,16 @@ function requireUser() {
 }
 
 function toProject(id: string, data: DocumentData): Project {
+  const ownerUid = data.ownerUid as string | undefined;
+  const assigneeUids =
+    Array.isArray(data.assigneeUids) && data.assigneeUids.length > 0
+      ? [...data.assigneeUids]
+      : ownerUid
+        ? [ownerUid]
+        : [];
+  const familyVisible =
+    data.familyVisible === true || data.visibility === 'shared';
+
   return {
     id,
     name: data.name || '',
@@ -37,6 +48,10 @@ function toProject(id: string, data: DocumentData): Project {
     visibility: data.visibility || 'personal',
     createdAt: data.createdAt,
     updatedAt: data.updatedAt,
+    ownerUid,
+    householdId: data.householdId ?? null,
+    assigneeUids,
+    familyVisible,
   };
 }
 
@@ -44,14 +59,21 @@ export async function createProject(data: {
   name: string;
   markdown?: string;
   status?: ProjectStatus;
+  familyVisible?: boolean;
 }): Promise<Project> {
   const user = requireUser();
+  await ensureUserHousehold(user.uid);
+  const householdId = (await getDoc(doc(db, 'users', user.uid))).data()?.householdId as string;
+
   const docData = {
     name: data.name,
     markdown: data.markdown || `# ${data.name}\n\n`,
     status: data.status || 'active',
-    visibility: 'personal',
+    visibility: 'personal' as const,
     ownerUid: user.uid,
+    householdId,
+    assigneeUids: [user.uid],
+    familyVisible: data.familyVisible === true,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   };
@@ -64,7 +86,10 @@ export async function listProjects(filters?: {
   status?: ProjectStatus;
 }): Promise<Project[]> {
   const user = requireUser();
-  const constraints: QueryConstraint[] = [where('ownerUid', '==', user.uid)];
+  await ensureUserHousehold(user.uid);
+  const householdId = (await getDoc(doc(db, 'users', user.uid))).data()?.householdId as string;
+
+  const constraints: QueryConstraint[] = [where('householdId', '==', householdId)];
 
   if (filters?.status) {
     constraints.push(where('status', '==', filters.status));
@@ -73,9 +98,8 @@ export async function listProjects(filters?: {
   const q = query(projectsRef, ...constraints);
   const snapshot = await getDocs(q);
 
-  const projects = snapshot.docs.map(d => toProject(d.id, d.data()));
+  const projects = snapshot.docs.map((d) => toProject(d.id, d.data()));
 
-  // Sort: active first, then by name
   projects.sort((a, b) => {
     if (a.status !== b.status) {
       return a.status === 'active' ? -1 : 1;
@@ -95,11 +119,16 @@ export async function getProject(id: string): Promise<Project> {
 
 export async function updateProject(id: string, data: Partial<Project>): Promise<Project> {
   requireUser();
-  const updateData: any = { ...data, updatedAt: serverTimestamp() };
-  delete updateData.id;
-  delete updateData.createdAt;
+  const payload: Record<string, unknown> = { updatedAt: serverTimestamp() };
+  for (const [k, v] of Object.entries(data)) {
+    if (k === 'id' || k === 'createdAt') continue;
+    if (v !== undefined) payload[k] = v;
+  }
+  if (data.visibility !== undefined && data.familyVisible === undefined && data.visibility === 'shared') {
+    payload.familyVisible = true;
+  }
 
-  await updateDoc(doc(projectsRef, id), updateData);
+  await updateDoc(doc(projectsRef, id), payload as any);
 
   const updated = await getDoc(doc(projectsRef, id));
   if (!updated.exists()) throw new Error('Project not found after update');
@@ -123,24 +152,19 @@ export async function toggleProjectStatus(id: string): Promise<Project> {
 
 export async function deleteProject(id: string): Promise<void> {
   const user = requireUser();
+  await ensureUserHousehold(user.uid);
+  const householdId = (await getDoc(doc(db, 'users', user.uid))).data()?.householdId as string;
+
   const batch = writeBatch(db);
 
   const [taskSnapshot, logSnapshot] = await Promise.all([
-    getDocs(query(
-      tasksRef,
-      where('ownerUid', '==', user.uid),
-      where('projectId', '==', id),
-    )),
-    getDocs(query(
-      activityLogRef,
-      where('ownerUid', '==', user.uid),
-      where('projectId', '==', id),
-    )),
+    getDocs(query(tasksRef, where('householdId', '==', householdId), where('projectId', '==', id))),
+    getDocs(query(activityLogRef, where('ownerUid', '==', user.uid), where('projectId', '==', id))),
   ]);
 
   batch.delete(doc(projectsRef, id));
-  taskSnapshot.docs.forEach(taskDoc => batch.delete(taskDoc.ref));
-  logSnapshot.docs.forEach(logDoc => batch.delete(logDoc.ref));
+  taskSnapshot.docs.forEach((taskDoc) => batch.delete(taskDoc.ref));
+  logSnapshot.docs.forEach((logDoc) => batch.delete(logDoc.ref));
 
   await batch.commit();
 }

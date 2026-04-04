@@ -43,6 +43,8 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   const [showProject, setShowProject] = useState(!!task.projectId);
   const [showDeadline, setShowDeadline] = useState(!!task.deadline);
   const [showRecurrence, setShowRecurrence] = useState(!!task.recurrence);
+  const [excludeFromFamily, setExcludeFromFamily] = useState(task.excludeFromFamily);
+  const [familyPinned, setFamilyPinned] = useState(task.familyPinned);
 
   const [recMode, setRecMode] = useState<RecurrenceMode>(recurrenceToMode(task.recurrence));
   const [weeklyDays, setWeeklyDays] = useState<string[]>(
@@ -122,8 +124,22 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
       projectId: projectId || null,
       deadline: deadlineStr,
       recurrence: buildRecurrence(),
+      excludeFromFamily,
+      familyPinned,
     };
-  }, [title, notes, classification, priority, projectId, showDeadline, deadlineDate, deadlineTime, buildRecurrence]);
+  }, [
+    title,
+    notes,
+    classification,
+    priority,
+    projectId,
+    showDeadline,
+    deadlineDate,
+    deadlineTime,
+    buildRecurrence,
+    excludeFromFamily,
+    familyPinned,
+  ]);
 
   const buildUpdateData = useCallback((current: EditableTaskState): Partial<Task> => {
     const data: Partial<Task> = {};
@@ -135,6 +151,8 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     if (current.projectId !== saved.projectId) data.projectId = current.projectId;
     if (current.deadline !== saved.deadline) data.deadline = current.deadline;
     if (JSON.stringify(current.recurrence) !== JSON.stringify(saved.recurrence)) data.recurrence = current.recurrence;
+    if (current.excludeFromFamily !== saved.excludeFromFamily) data.excludeFromFamily = current.excludeFromFamily;
+    if (current.familyPinned !== saved.familyPinned) data.familyPinned = current.familyPinned;
     return data;
   }, []);
 
@@ -172,6 +190,8 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   useEffect(() => {
     savedStateRef.current = buildEditableState(task);
     setSaveState('idle');
+    setExcludeFromFamily(task.excludeFromFamily);
+    setFamilyPinned(task.familyPinned);
   }, [task.id]);
 
   useEffect(() => {
@@ -369,6 +389,30 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
           </div>
         </div>
       )}
+
+      <div className="mb-4 space-y-2">
+        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+          Family
+        </label>
+        <label className="flex items-center gap-2 text-[13px] text-foreground cursor-pointer">
+          <input
+            type="checkbox"
+            checked={familyPinned}
+            onChange={(e) => setFamilyPinned(e.target.checked)}
+            className="rounded border-input"
+          />
+          Show on Family (without a family-scoped project)
+        </label>
+        <label className="flex items-center gap-2 text-[13px] text-foreground cursor-pointer">
+          <input
+            type="checkbox"
+            checked={excludeFromFamily}
+            onChange={(e) => setExcludeFromFamily(e.target.checked)}
+            className="rounded border-input"
+          />
+          Exclude from Family (even if project is family-visible)
+        </label>
+      </div>
 
       {showDeadline && (
         <div className="mb-4">

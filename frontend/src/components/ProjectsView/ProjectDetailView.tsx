@@ -131,6 +131,25 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
         <button type="button" onClick={() => toggleStatus.mutate(projectId)} style={btnSmStyle}>
           {project.status === 'active' ? 'Put on Hold' : 'Reactivate'}
         </button>
+        <label
+          style={{
+            fontSize: '13px',
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: '6px',
+            cursor: 'pointer',
+            userSelect: 'none',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={project.familyVisible}
+            onChange={(e) =>
+              updateProject.mutate({ id: projectId, data: { familyVisible: e.target.checked } })
+            }
+          />
+          Family-visible
+        </label>
         {!confirmingDelete ? (
           <button
             type="button"

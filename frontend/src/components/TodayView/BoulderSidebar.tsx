@@ -3,7 +3,7 @@ import type { Task } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
 import { useProjects } from '../../hooks/useProjects';
 import { useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
-import { reorderPebbles as reorderTasksApi } from '../../api/tasks';
+import { reorderPebbles as reorderTasksApi, type PebbleReorderContext } from '../../api/tasks';
 import {
   listCardStyle as cardStyle,
   listPlacedCardStyle as placedCardStyle,
@@ -30,13 +30,17 @@ interface BoulderSidebarProps {
   standaloneCount: number;
   expandedTaskId: string | null;
   onExpandedTaskIdChange: (taskId: string | null) => void;
+  reorderContext?: PebbleReorderContext;
 }
 
 export function BoulderSidebar({
-  boulders, placedBoulders,
-  activeProjectCount, standaloneCount,
+  boulders,
+  placedBoulders,
+  activeProjectCount,
+  standaloneCount,
   expandedTaskId,
   onExpandedTaskIdChange,
+  reorderContext = 'me',
 }: BoulderSidebarProps) {
   const placedIds = Object.keys(placedBoulders);
   const { data: projects = [] } = useProjects('active');
@@ -53,10 +57,17 @@ export function BoulderSidebar({
 
   const displayBoulders = localOrder || boulders;
 
-  const persistOrder = useCallback(async (newList: Task[]) => {
-    const order = newList.map((t, i) => ({ id: t.id, sortOrder: (i + 1) * 1000 }));
-    try { await reorderTasksApi(order); } catch (e) { console.error('Failed to persist boulder order:', e); }
-  }, []);
+  const persistOrder = useCallback(
+    async (newList: Task[]) => {
+      const order = newList.map((t, i) => ({ id: t.id, sortOrder: (i + 1) * 1000 }));
+      try {
+        await reorderTasksApi(order, reorderContext);
+      } catch (e) {
+        console.error('Failed to persist boulder order:', e);
+      }
+    },
+    [reorderContext],
+  );
 
   const applyReorder = useCallback((fromIdx: number, toIdx: number) => {
     const list = [...displayBoulders];

@@ -70,6 +70,8 @@ export interface EditableTaskState {
   projectId: string | null;
   deadline: string | null;
   recurrence: RecurrenceRule | null;
+  excludeFromFamily: boolean;
+  familyPinned: boolean;
 }
 
 export function buildEditableState(task: Task): EditableTaskState {
@@ -83,6 +85,8 @@ export function buildEditableState(task: Task): EditableTaskState {
     projectId: task.projectId || null,
     deadline: deadlineStr,
     recurrence: task.recurrence || null,
+    excludeFromFamily: task.excludeFromFamily,
+    familyPinned: task.familyPinned,
   };
 }
 

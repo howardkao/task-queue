@@ -1,6 +1,6 @@
 import { cn } from '@/lib/utils';
 
-export type TabId = 'today' | 'icebox' | 'projects';
+export type TabId = 'me' | 'family' | 'icebox' | 'projects';
 
 interface Tab {
   id: TabId;
