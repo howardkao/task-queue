@@ -159,7 +159,7 @@ export async function deleteProject(id: string): Promise<void> {
 
   const [taskSnapshot, logSnapshot] = await Promise.all([
     getDocs(query(tasksRef, where('householdId', '==', householdId), where('projectId', '==', id))),
-    getDocs(query(activityLogRef, where('ownerUid', '==', user.uid), where('projectId', '==', id))),
+    getDocs(query(activityLogRef, where('householdId', '==', householdId), where('projectId', '==', id))),
   ]);
 
   batch.delete(doc(projectsRef, id));

@@ -70,7 +70,7 @@ export async function createCalendarFeed(input: CalendarFeedInput): Promise<Cale
 
 export async function updateCalendarFeed(
   id: string,
-  updates: Partial<CalendarFeedInput & { enabled: boolean }>,
+  updates: Partial<CalendarFeedInput & { enabled: boolean; sharedWithFamily: boolean; hiddenByUser: boolean }>,
 ): Promise<CalendarFeed> {
   if (!API_BASE) throw new Error('API not configured');
 

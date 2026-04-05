@@ -19,7 +19,7 @@ import {
 import { useProjects } from '../../hooks/useProjects';
 import { readPlannerStorage, writePlannerStorage } from '../../plannerStorage';
 import { useIsMobile } from '../../hooks/useViewport';
-import { useEventsForRange } from '../../hooks/useCalendar';
+import { useCalendarFeeds, useEventsForRange } from '../../hooks/useCalendar';
 import type { CalEvent, PlacedTaskDragPreview } from './dayCalendarTypes';
 import type { CalendarEvent, Classification, Priority, Task } from '../../types';
 import type { TodayProjectFilter } from '../../hooks/useTasks';
@@ -239,6 +239,22 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
   const apiConfigured = calendarQuery.isConfigured;
   const syncWarnings = calendarQuery.data?.syncWarnings || [];
 
+  const { data: calendarFeeds = [] } = useCalendarFeeds();
+  const visibleFeedIds = useMemo(() => {
+    const ids = new Set<string>();
+    for (const feed of calendarFeeds) {
+      if (feed.hiddenByUser) continue;
+      if (plannerScope === 'family') {
+        if (feed.sharedWithFamily) ids.add(feed.id);
+      } else {
+        // Me view: own enabled feeds + shared feeds
+        if (feed.isOwner && feed.enabled) ids.add(feed.id);
+        else if (!feed.isOwner && feed.sharedWithFamily) ids.add(feed.id);
+      }
+    }
+    return ids;
+  }, [calendarFeeds, plannerScope]);
+
   const handleRefresh = useCallback(() => {
     setShouldBustCache(true);
     // Reset the flag after a short delay so subsequent range changes use cache again
@@ -273,7 +289,10 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
 
   // Build calendar events per day
   const eventsPerDay = useMemo(() => {
-    const allRangeEvents = calendarQuery.data?.events ? icalToCalEvents(calendarQuery.data.events) : [];
+    const scopedEvents = calendarQuery.data?.events
+      ? calendarQuery.data.events.filter(e => !e.feedId || visibleFeedIds.has(e.feedId))
+      : [];
+    const allRangeEvents = scopedEvents.length > 0 ? icalToCalEvents(scopedEvents) : [];
 
     return dateKeys.map((dateKey) => {
       const dayIcalEvents = allRangeEvents.filter(e => {
@@ -336,7 +355,7 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
 
       return events;
     });
-  }, [dateKeys, calendarQuery.data, schedulableCalendarTasks, todayKey, placedTaskDragPreview]);
+  }, [dateKeys, calendarQuery.data, visibleFeedIds, schedulableCalendarTasks, todayKey, placedTaskDragPreview]);
 
   const maxAllDayCount = useMemo(() => {
     return Math.max(...eventsPerDay.map(dayEvents => dayEvents.filter(e => e.allDay).length), 0);
@@ -892,9 +911,11 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
           <div style={{ fontSize: '13px', color: '#6b7280', lineHeight: 1.5 }}>
             Adjusting these will change the visible range of your daily calendar.
           </div>
-          <div style={{ borderTop: '1px solid #E7E3DF', paddingTop: '16px' }}>
-            <CalendarFeedSettings />
-          </div>
+          {plannerScope === 'me' && (
+            <div style={{ borderTop: '1px solid #E7E3DF', paddingTop: '16px' }}>
+              <CalendarFeedSettings />
+            </div>
+          )}
         </div>
       </SideDrawer>
 

@@ -22,10 +22,17 @@ export interface Task {
   recurrence: { freq: string; interval?: number; days?: string[]; customUnit?: string; periodUnit?: string } | null;
   projectId: string | null;
   sortOrder: number;
+  sortOrderFamily: number;
+  sortOrderByAssignee: Record<string, number>;
   completedAt: string | null;
   lastOccurrenceCompletedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  ownerUid?: string;
+  householdId?: string | null;
+  assigneeUids: string[];
+  excludeFromFamily: boolean;
+  familyPinned: boolean;
 }
 
 function tsToISO(ts: any): string | null {
@@ -37,6 +44,21 @@ function tsToISO(ts: any): string | null {
 }
 
 function toTask(id: string, data: any): Task {
+  const ownerUid = data.ownerUid as string | undefined;
+  const assigneeUids =
+    Array.isArray(data.assigneeUids) && data.assigneeUids.length > 0
+      ? [...data.assigneeUids]
+      : ownerUid
+        ? [ownerUid]
+        : [];
+  const sortBase = typeof data.sortOrder === 'number' ? data.sortOrder : 0;
+  const rawBy = data.sortOrderByAssignee;
+  const sortOrderByAssignee: Record<string, number> =
+    rawBy && typeof rawBy === 'object' && !Array.isArray(rawBy)
+      ? Object.fromEntries(
+          Object.entries(rawBy).filter(([, value]) => typeof value === 'number') as [string, number][],
+        )
+      : {};
   return {
     id,
     title: data.title || '',
@@ -47,12 +69,35 @@ function toTask(id: string, data: any): Task {
     deadline: data.deadline ? (data.deadline.toDate ? data.deadline.toDate().toISOString() : data.deadline) : null,
     recurrence: data.recurrence || null,
     projectId: data.projectId || null,
-    sortOrder: data.sortOrder || 0,
+    sortOrder: sortBase,
+    sortOrderFamily: typeof data.sortOrderFamily === 'number' ? data.sortOrderFamily : sortBase,
+    sortOrderByAssignee,
     completedAt: tsToISO(data.completedAt),
     lastOccurrenceCompletedAt: tsToISO(data.lastOccurrenceCompletedAt),
     createdAt: tsToISO(data.createdAt),
     updatedAt: tsToISO(data.updatedAt),
+    ownerUid,
+    householdId: data.householdId ?? null,
+    assigneeUids,
+    excludeFromFamily: data.excludeFromFamily === true,
+    familyPinned: data.familyPinned === true,
   };
+}
+
+async function getOwnerHouseholdId(): Promise<string> {
+  const userSnap = await db.collection('users').doc(OWNER_UID).get();
+  const householdId = userSnap.data()?.householdId;
+  if (typeof householdId !== 'string' || householdId.length === 0) {
+    throw new Error(`Owner ${OWNER_UID} is missing householdId`);
+  }
+  return householdId;
+}
+
+async function assertTaskInOwnerHousehold(id: string, data: FirebaseFirestore.DocumentData): Promise<void> {
+  const householdId = await getOwnerHouseholdId();
+  if (data.householdId !== householdId) {
+    throw new Error(`Task ${id} is outside owner household ${householdId}`);
+  }
 }
 
 export async function listTasks(filters?: {
@@ -61,7 +106,8 @@ export async function listTasks(filters?: {
   projectId?: string;
   staleThresholdDays?: number;
 }): Promise<Task[]> {
-  let q: FirebaseFirestore.Query = tasksRef.where('ownerUid', '==', OWNER_UID);
+  const householdId = await getOwnerHouseholdId();
+  let q: FirebaseFirestore.Query = tasksRef.where('householdId', '==', householdId);
 
   if (filters?.status) {
     q = q.where('status', '==', filters.status);
@@ -90,21 +136,48 @@ export async function listTasks(filters?: {
 export async function getTask(id: string): Promise<Task> {
   const d = await tasksRef.doc(id).get();
   if (!d.exists) throw new Error('Task not found');
-  return toTask(d.id, d.data());
+  const data = d.data();
+  if (!data) throw new Error('Task data missing');
+  await assertTaskInOwnerHousehold(d.id, data);
+  return toTask(d.id, data);
 }
 
 async function getTopSortOrder(classification: Classification): Promise<number> {
   try {
+    const householdId = await getOwnerHouseholdId();
     const snapshot = await tasksRef
-      .where('ownerUid', '==', OWNER_UID)
-      .where('classification', '==', classification)
+      .where('householdId', '==', householdId)
       .where('status', '==', 'active')
-      .orderBy('sortOrder', 'asc')
       .get();
+    const tasks = snapshot.docs
+      .map((doc) => toTask(doc.id, doc.data()))
+      .filter((task) => task.classification === classification);
 
-    if (snapshot.empty) return 1000;
+    if (tasks.length === 0) return 1000;
 
-    const minOrder = snapshot.docs[0].data().sortOrder as number;
+    tasks.sort((a, b) => a.sortOrder - b.sortOrder);
+    const minOrder = tasks[0].sortOrder;
+    return minOrder - 1000;
+  } catch {
+    return 500 + Math.random() * 100;
+  }
+}
+
+async function getTopSortOrderFamily(classification: Classification): Promise<number> {
+  try {
+    const householdId = await getOwnerHouseholdId();
+    const snapshot = await tasksRef
+      .where('householdId', '==', householdId)
+      .where('status', '==', 'active')
+      .get();
+    const tasks = snapshot.docs
+      .map((doc) => toTask(doc.id, doc.data()))
+      .filter((task) => task.classification === classification);
+
+    if (tasks.length === 0) return 1000;
+
+    tasks.sort((a, b) => a.sortOrderFamily - b.sortOrderFamily);
+    const minOrder = tasks[0].sortOrderFamily;
     return minOrder - 1000;
   } catch {
     return 500 + Math.random() * 100;
@@ -117,9 +190,11 @@ async function addLogEntry(entry: {
   description: string;
   taskId?: string;
 }): Promise<void> {
+  const householdId = await getOwnerHouseholdId();
   await logRef.add({
     ...entry,
     ownerUid: OWNER_UID,
+    householdId,
     timestamp: FieldValue.serverTimestamp(),
   });
 }
@@ -135,7 +210,9 @@ export async function createTask(data: {
   lastOccurrenceCompletedAt?: any;
 }): Promise<Task> {
   const classification = (data.classification || 'unclassified') as Classification;
+  const householdId = await getOwnerHouseholdId();
   const sortOrder = await getTopSortOrder(classification);
+  const sortOrderFamily = await getTopSortOrderFamily(classification);
 
   const taskData: any = {
     title: data.title.trim(),
@@ -148,7 +225,13 @@ export async function createTask(data: {
     projectId: data.projectId || null,
     lastOccurrenceCompletedAt: data.lastOccurrenceCompletedAt || null,
     sortOrder,
+    sortOrderFamily,
+    sortOrderByAssignee: { [OWNER_UID]: sortOrder },
     ownerUid: OWNER_UID,
+    householdId,
+    assigneeUids: [OWNER_UID],
+    excludeFromFamily: false,
+    familyPinned: false,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };
@@ -185,6 +268,8 @@ export async function updateTask(id: string, data: {
     updates.classification = data.classification;
     if (ORDERED_CLASSIFICATIONS.has(data.classification) && data.sortOrder === undefined) {
       updates.sortOrder = await getTopSortOrder(data.classification as Classification);
+      updates.sortOrderFamily = await getTopSortOrderFamily(data.classification as Classification);
+      updates[`sortOrderByAssignee.${OWNER_UID}`] = updates.sortOrder;
     }
   }
   if (data.priority !== undefined && data.priority !== null) updates.priority = data.priority;
@@ -206,6 +291,7 @@ export async function reorderTasks(order: Array<{ id: string; sortOrder: number 
   for (const item of order) {
     batch.update(tasksRef.doc(item.id), {
       sortOrder: item.sortOrder,
+      [`sortOrderByAssignee.${OWNER_UID}`]: item.sortOrder,
       updatedAt: FieldValue.serverTimestamp(),
     });
   }
@@ -263,4 +349,3 @@ export async function iceboxTask(id: string): Promise<Task> {
 
   return result;
 }
-

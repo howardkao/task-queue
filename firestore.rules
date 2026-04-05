@@ -29,6 +29,22 @@ service cloud.firestore {
         resource.data.householdId == userHouseholdId();
     }
 
+    function immutableSharedFieldsPreserved() {
+      return request.resource.data.householdId == resource.data.householdId &&
+        request.resource.data.ownerUid == resource.data.ownerUid;
+    }
+
+    function validRequestedAssignees() {
+      return request.resource.data.assigneeUids is list &&
+        request.resource.data.assigneeUids.size() >= 1 &&
+        request.auth.uid in request.resource.data.assigneeUids;
+    }
+
+    function isExistingAssignee() {
+      return resource.data.assigneeUids is list &&
+        request.auth.uid in resource.data.assigneeUids;
+    }
+
     function isAdmin() {
       return isSignedIn() &&
         exists(/databases/$(database)/documents/admins/$(request.auth.uid));
@@ -104,10 +120,16 @@ service cloud.firestore {
         isOwner(resource.data) ||
         taskHouseholdMatch()
       );
-      allow update, delete: if isSignedIn() && (
+      allow update: if isSignedIn() && (
         isOwner(resource.data) ||
-        taskHouseholdMatch()
+        (
+          taskHouseholdMatch() &&
+          isExistingAssignee() &&
+          immutableSharedFieldsPreserved() &&
+          validRequestedAssignees()
+        )
       );
+      allow delete: if isOwner(resource.data);
     }
 
     match /projects/{projectId} {
@@ -121,15 +143,26 @@ service cloud.firestore {
         isOwner(resource.data) ||
         projectHouseholdMatch()
       );
-      allow update, delete: if isSignedIn() && (
+      allow update: if isSignedIn() && (
         isOwner(resource.data) ||
-        projectHouseholdMatch()
+        (
+          projectHouseholdMatch() &&
+          isExistingAssignee() &&
+          immutableSharedFieldsPreserved() &&
+          validRequestedAssignees()
+        )
       );
+      allow delete: if isOwner(resource.data);
     }
 
     match /activityLog/{entryId} {
-      allow create: if isOwner(request.resource.data);
-      allow read, update, delete: if isOwner(resource.data);
+      allow create: if isSignedIn() &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        request.resource.data.householdId == userHouseholdId();
+      allow read: if isSignedIn() &&
+        resource.data.householdId != null &&
+        resource.data.householdId == userHouseholdId();
+      allow update, delete: if isOwner(resource.data);
     }
 
     match /settings/{docId} {

@@ -107,6 +107,22 @@ export function CalendarFeedSettings() {
     }
   }
 
+  async function handleToggleShared(feed: CalendarFeed) {
+    try {
+      await updateFeed.mutateAsync({ id: feed.id, updates: { sharedWithFamily: !feed.sharedWithFamily } });
+    } catch (e: any) {
+      setError(e.message || 'Failed to update sharing');
+    }
+  }
+
+  async function handleToggleHidden(feed: CalendarFeed) {
+    try {
+      await updateFeed.mutateAsync({ id: feed.id, updates: { hiddenByUser: !feed.hiddenByUser } });
+    } catch (e: any) {
+      setError(e.message || 'Failed to update visibility');
+    }
+  }
+
   if (isLoading) {
     return <div style={{ padding: '8px 0', fontSize: '13px', color: '#9ca3af' }}>Loading feeds...</div>;
   }
@@ -124,8 +140,8 @@ export function CalendarFeedSettings() {
       {/* Feed list */}
       {feeds.map(feed => (
         <div key={feed.id}>
-          {editingId === feed.id ? (
-            // Edit form
+          {feed.isOwner && editingId === feed.id ? (
+            // Edit form (owners only)
             <div style={feedFormStyle}>
               <FeedForm
                 name={editName}
@@ -143,8 +159,8 @@ export function CalendarFeedSettings() {
                 <button style={cancelBtnStyle} onClick={cancelEdit}>Cancel</button>
               </div>
             </div>
-          ) : (
-            // Feed row
+          ) : feed.isOwner ? (
+            // Owner feed row
             <div style={feedRowStyle}>
               <div
                 style={{
@@ -156,6 +172,13 @@ export function CalendarFeedSettings() {
               <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: feed.enabled ? '#1D212B' : '#9ca3af' }}>
                 {feed.name}
               </span>
+              <button
+                style={{ ...iconBtnStyle, color: feed.sharedWithFamily ? '#4285f4' : '#9ca3af' }}
+                onClick={() => handleToggleShared(feed)}
+                title={feed.sharedWithFamily ? 'Shared with family (click to unshare)' : 'Share with family'}
+              >
+                {feed.sharedWithFamily ? 'shared' : 'share'}
+              </button>
               <button
                 style={iconBtnStyle}
                 onClick={() => handleToggle(feed)}
@@ -180,6 +203,28 @@ export function CalendarFeedSettings() {
                   del
                 </button>
               )}
+            </div>
+          ) : (
+            // Shared feed row (non-owner — show/hide only)
+            <div style={feedRowStyle}>
+              <div
+                style={{
+                  ...colorDotStyle,
+                  ...getCalendarFeedSwatchStyle(normalizeFeedColorId(feed.color)),
+                  opacity: feed.hiddenByUser ? 0.3 : 1,
+                }}
+              />
+              <span style={{ flex: 1, fontSize: '13px', fontWeight: 500, color: feed.hiddenByUser ? '#9ca3af' : '#1D212B' }}>
+                {feed.name}
+              </span>
+              <span style={{ fontSize: '11px', color: '#9ca3af', paddingRight: '4px' }}>shared</span>
+              <button
+                style={iconBtnStyle}
+                onClick={() => handleToggleHidden(feed)}
+                title={feed.hiddenByUser ? 'Show' : 'Hide'}
+              >
+                {feed.hiddenByUser ? 'show' : 'hide'}
+              </button>
             </div>
           )}
         </div>

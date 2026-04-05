@@ -160,31 +160,39 @@ export function useCreateFeed() {
 export function useUpdateFeed() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, updates }: { id: string; updates: Partial<CalendarFeedInput & { enabled: boolean }> }) =>
+    mutationFn: ({ id, updates }: { id: string; updates: Partial<CalendarFeedInput & { enabled: boolean; sharedWithFamily: boolean; hiddenByUser: boolean }> }) =>
       updateCalendarFeed(id, updates),
     onSuccess: async (_, { id, updates }) => {
-      if (updates.enabled === false) {
-        const u = auth.currentUser;
-        if (u) await deleteCalendarMirrorForFeed(u.uid, id);
-      }
-      const u = auth.currentUser;
-      if (u && apiBase) {
-        const urlChanged = typeof updates.url === 'string' && updates.url.length > 0;
-        const enabling = updates.enabled === true;
-        const metadataOnly =
-          !urlChanged &&
-          !enabling &&
-          (updates.color !== undefined || updates.name !== undefined);
+      // hiddenByUser and sharedWithFamily don't touch the mirror — skip sync
+      const mirrorRelevant = updates.url !== undefined || updates.enabled !== undefined ||
+        updates.color !== undefined || updates.name !== undefined;
 
-        if (metadataOnly) {
-          await patchMirrorEventsForFeedMetadata(u.uid, id, {
-            ...(updates.color !== undefined && { color: updates.color }),
-            ...(updates.name !== undefined && { calendarName: updates.name }),
-          }).catch(console.error);
+      if (mirrorRelevant) {
+        if (updates.enabled === false) {
+          const u = auth.currentUser;
+          if (u) await deleteCalendarMirrorForFeed(u.uid, id);
         } else {
-          await runCalendarSync(u.uid, true).catch(console.error);
+          const u = auth.currentUser;
+          if (u && apiBase) {
+            const urlChanged = typeof updates.url === 'string' && updates.url.length > 0;
+            const enabling = updates.enabled === true;
+            const metadataOnly =
+              !urlChanged &&
+              !enabling &&
+              (updates.color !== undefined || updates.name !== undefined);
+
+            if (metadataOnly) {
+              await patchMirrorEventsForFeedMetadata(u.uid, id, {
+                ...(updates.color !== undefined && { color: updates.color }),
+                ...(updates.name !== undefined && { calendarName: updates.name }),
+              }).catch(console.error);
+            } else {
+              await runCalendarSync(u.uid, true).catch(console.error);
+            }
+          }
         }
       }
+
       qc.invalidateQueries({ queryKey: ['calendar', 'feeds'] });
       qc.invalidateQueries({ queryKey: ['calendar'] });
     },

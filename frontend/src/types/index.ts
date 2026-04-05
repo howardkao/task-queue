@@ -107,6 +107,8 @@ export interface CalendarEvent {
   rrule?: string;
   rawStart?: string;
   rawEnd?: string;
+  /** Feed this event belongs to (for scope-based visibility filtering). */
+  feedId?: string;
   /** Firestore mirror document id (client-side calendar sync). */
   mirrorDocId?: string;
 }
@@ -116,6 +118,12 @@ export interface CalendarFeed {
   name: string;
   color: string;
   enabled: boolean;
+  /** True when the current user created this feed. */
+  isOwner: boolean;
+  /** When true, this feed appears on the Family view and in household members' lists. */
+  sharedWithFamily: boolean;
+  /** When true, the current user has chosen not to display this feed in their views. */
+  hiddenByUser: boolean;
 }
 
 export interface CalendarFeedInput {

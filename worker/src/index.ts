@@ -18,6 +18,8 @@ interface StoredCalendarFeed {
   color: string;
   url: string;
   enabled: boolean;
+  ownerId: string;
+  sharedWithFamily: boolean;
   createdAt: string;
   updatedAt: string;
 }
@@ -27,6 +29,9 @@ interface CalendarFeedMeta {
   name: string;
   color: string;
   enabled: boolean;
+  isOwner: boolean;
+  sharedWithFamily: boolean;
+  hiddenByUser: boolean;
 }
 
 interface FeedSyncMeta {
@@ -94,10 +99,6 @@ async function authenticateRequest(request: Request, env: Env): Promise<Firebase
   return p;
 }
 
-function isAdmin(payload: FirebaseTokenPayload, env: Env): boolean {
-  return !!env.ADMIN_UID && payload.sub === env.ADMIN_UID;
-}
-
 // ── Response helpers ─────────────────────────────────────────────────────────
 
 function corsHeaders(env: Env, request?: Request): Record<string, string> {
@@ -129,20 +130,57 @@ function errorResponse(message: string, env: Env, status = 500, request?: Reques
 
 async function getFeeds(env: Env): Promise<StoredCalendarFeed[]> {
   try {
-    const kvFeeds = await env.CALENDAR_KV.get<StoredCalendarFeed[]>('feeds', 'json');
-    if (kvFeeds && kvFeeds.length > 0) return kvFeeds;
+    let kvFeeds = await env.CALENDAR_KV.get<StoredCalendarFeed[]>('feeds', 'json');
+    if (kvFeeds && kvFeeds.length > 0) {
+      const needsMigration = kvFeeds.some((f: any) => f.ownerId === undefined);
+      if (needsMigration) {
+        kvFeeds = kvFeeds.map((f: any) => ({
+          ...f,
+          ownerId: f.ownerId ?? (env.ADMIN_UID || ''),
+          sharedWithFamily: f.sharedWithFamily ?? false,
+        }));
+        await env.CALENDAR_KV.put('feeds', JSON.stringify(kvFeeds));
+      }
+      return kvFeeds;
+    }
   } catch (err) {}
   if (!env.CALENDAR_FEEDS) return [];
   try {
     const legacy = JSON.parse(env.CALENDAR_FEEDS);
-    const migrated = legacy.map((f: any) => ({ id: crypto.randomUUID(), name: f.name, color: f.color, url: f.url, enabled: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() }));
+    const migrated = legacy.map((f: any) => ({
+      id: crypto.randomUUID(),
+      name: f.name,
+      color: f.color,
+      url: f.url,
+      enabled: true,
+      ownerId: env.ADMIN_UID || '',
+      sharedWithFamily: false,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }));
     await env.CALENDAR_KV.put('feeds', JSON.stringify(migrated));
     return migrated;
   } catch { return []; }
 }
 
 async function saveFeeds(env: Env, feeds: StoredCalendarFeed[]) { await env.CALENDAR_KV.put('feeds', JSON.stringify(feeds)); }
-function stripUrl(f: StoredCalendarFeed): CalendarFeedMeta { return { id: f.id, name: f.name, color: f.color, enabled: f.enabled }; }
+
+async function getHiddenFeedIds(env: Env, uid: string): Promise<Set<string>> {
+  try {
+    const raw = await env.CALENDAR_KV.get<string[]>(`hidden-feeds:${uid}`, 'json');
+    return new Set(raw || []);
+  } catch {
+    return new Set();
+  }
+}
+
+async function saveHiddenFeedIds(env: Env, uid: string, ids: Set<string>): Promise<void> {
+  await env.CALENDAR_KV.put(`hidden-feeds:${uid}`, JSON.stringify([...ids]));
+}
+
+function toFeedMeta(f: StoredCalendarFeed, callerId: string, hiddenIds: Set<string>): CalendarFeedMeta {
+  return { id: f.id, name: f.name, color: f.color, enabled: f.enabled, isOwner: f.ownerId === callerId, sharedWithFamily: f.sharedWithFamily, hiddenByUser: hiddenIds.has(f.id) };
+}
 
 // ── Sync metadata (conditional GET + body hash) ─────────────────────────────
 
@@ -164,11 +202,11 @@ async function sha256Hex(text: string): Promise<string> {
   return [...new Uint8Array(buf)].map((b) => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function handleCalendarSync(request: Request, env: Env): Promise<Response> {
+async function handleCalendarSync(request: Request, env: Env, callerId: string): Promise<Response> {
   const url = new URL(request.url);
   const bust = url.searchParams.get('bust') === 'true';
   const feeds = await getFeeds(env);
-  const enabledFeeds = feeds.filter((f) => f.enabled);
+  const enabledFeeds = feeds.filter((f) => (f.ownerId === callerId || f.sharedWithFamily) && f.enabled);
   const results: SyncFeedResult[] = [];
 
   for (const feed of enabledFeeds) {
@@ -227,47 +265,82 @@ export default {
         let payload: FirebaseTokenPayload;
         try { payload = await authenticateRequest(request, env); } catch (e: any) { return jsonResponse({ error: 'Unauthorized', message: e.message }, env, 401, request); }
 
-        if (base === '/calendar/sync' && request.method === 'GET') return await handleCalendarSync(request, env);
+        const callerId = payload.sub!;
+
+        if (base === '/calendar/sync' && request.method === 'GET') return await handleCalendarSync(request, env, callerId);
 
         if (base === '/calendar/feeds' && request.method === 'GET') {
           const feeds = await getFeeds(env);
-          return jsonResponse({ feeds: feeds.map(stripUrl) }, env, 200, request);
+          const hiddenIds = await getHiddenFeedIds(env, callerId);
+          const visibleFeeds = feeds.filter(f => f.ownerId === callerId || f.sharedWithFamily);
+          return jsonResponse({ feeds: visibleFeeds.map(f => toFeedMeta(f, callerId, hiddenIds)) }, env, 200, request);
         }
 
         if (base === '/calendar/feeds' && request.method === 'POST') {
-          if (!isAdmin(payload, env)) return errorResponse('Admin only', env, 403, request);
           const body = await request.json() as any;
           const feeds = await getFeeds(env);
-          const newFeed = { id: crypto.randomUUID(), name: body.name, url: body.url, color: body.color, enabled: true, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString() };
+          const newFeed: StoredCalendarFeed = {
+            id: crypto.randomUUID(),
+            name: body.name,
+            url: body.url,
+            color: body.color,
+            enabled: true,
+            ownerId: callerId,
+            sharedWithFamily: false,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          };
           feeds.push(newFeed);
           await saveFeeds(env, feeds);
-          return jsonResponse({ feed: stripUrl(newFeed) }, env, 201, request);
+          const hiddenIds = await getHiddenFeedIds(env, callerId);
+          return jsonResponse({ feed: toFeedMeta(newFeed, callerId, hiddenIds) }, env, 201, request);
         }
 
         if (parts.length === 3 && parts[0] === 'calendar' && parts[1] === 'feeds') {
           const feedId = parts[2];
           if (request.method === 'DELETE') {
-            if (!isAdmin(payload, env)) return errorResponse('Admin only', env, 403, request);
             const feeds = await getFeeds(env);
+            const feed = feeds.find(f => f.id === feedId);
+            if (!feed) return errorResponse('Not found', env, 404, request);
+            if (feed.ownerId !== callerId) return errorResponse('Not the feed owner', env, 403, request);
             await saveFeeds(env, feeds.filter((f) => f.id !== feedId));
             await env.CALENDAR_KV.delete(`sync-meta:${feedId}`);
             return jsonResponse({ success: true }, env, 200, request);
           }
           if (request.method === 'PUT') {
-            if (!isAdmin(payload, env)) return errorResponse('Admin only', env, 403, request);
             const body = await request.json() as any;
             const feeds = await getFeeds(env);
             const idx = feeds.findIndex((f) => f.id === feedId);
             if (idx === -1) return errorResponse('Not found', env, 404, request);
-            if (body.name) feeds[idx].name = body.name;
-            if (body.color) feeds[idx].color = body.color;
-            if (body.enabled !== undefined) feeds[idx].enabled = body.enabled;
-            if (body.url) {
-              feeds[idx].url = body.url;
-              await env.CALENDAR_KV.delete(`sync-meta:${feedId}`);
+
+            const isOwner = feeds[idx].ownerId === callerId;
+            let hiddenIds = await getHiddenFeedIds(env, callerId);
+
+            // Any user can toggle their own hidden pref for a feed
+            if (body.hiddenByUser !== undefined) {
+              if (body.hiddenByUser) hiddenIds.add(feedId);
+              else hiddenIds.delete(feedId);
+              await saveHiddenFeedIds(env, callerId, hiddenIds);
             }
-            await saveFeeds(env, feeds);
-            return jsonResponse({ feed: stripUrl(feeds[idx]) }, env, 200, request);
+
+            // Only the owner can change feed properties
+            const ownerFieldsRequested = body.name !== undefined || body.color !== undefined ||
+              body.enabled !== undefined || body.sharedWithFamily !== undefined || body.url !== undefined;
+            if (ownerFieldsRequested) {
+              if (!isOwner) return errorResponse('Not the feed owner', env, 403, request);
+              if (body.name) feeds[idx].name = body.name;
+              if (body.color) feeds[idx].color = body.color;
+              if (body.enabled !== undefined) feeds[idx].enabled = body.enabled;
+              if (body.sharedWithFamily !== undefined) feeds[idx].sharedWithFamily = body.sharedWithFamily;
+              if (body.url) {
+                feeds[idx].url = body.url;
+                await env.CALENDAR_KV.delete(`sync-meta:${feedId}`);
+              }
+              feeds[idx].updatedAt = new Date().toISOString();
+              await saveFeeds(env, feeds);
+            }
+
+            return jsonResponse({ feed: toFeedMeta(feeds[idx], callerId, hiddenIds) }, env, 200, request);
           }
         }
       }

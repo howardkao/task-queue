@@ -40,10 +40,12 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
 
   useEffect(() => {
     if (project) {
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      if (nameSaveTimerRef.current) clearTimeout(nameSaveTimerRef.current);
       setMarkdown(project.markdown);
       setProjectName(project.name);
     }
-  }, [project?.id]);
+  }, [project]);
 
   useEffect(() => {
     setExpandedTaskId(null);

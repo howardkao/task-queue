@@ -2,6 +2,8 @@ import {
   collection,
   addDoc,
   getDocs,
+  getDoc,
+  doc,
   query,
   where,
   orderBy,
@@ -40,19 +42,30 @@ export async function addLogEntry(entry: {
   taskId?: string;
 }): Promise<void> {
   const user = requireUser();
+  const userSnap = await getDoc(doc(db, 'users', user.uid));
+  const householdId = userSnap.data()?.householdId;
+  if (typeof householdId !== 'string' || householdId.length === 0) {
+    throw new Error('Household required for activity log');
+  }
   await addDoc(logRef, {
     ...entry,
     ownerUid: user.uid,
+    householdId,
     timestamp: serverTimestamp(),
   });
 }
 
 export async function getProjectLog(projectId: string): Promise<ActivityLogEntry[]> {
   const user = requireUser();
+  const userSnap = await getDoc(doc(db, 'users', user.uid));
+  const householdId = userSnap.data()?.householdId;
+  if (typeof householdId !== 'string' || householdId.length === 0) {
+    return [];
+  }
   try {
     const q = query(
       logRef,
-      where('ownerUid', '==', user.uid),
+      where('householdId', '==', householdId),
       where('projectId', '==', projectId),
       orderBy('timestamp', 'desc'),
     );
@@ -62,7 +75,7 @@ export async function getProjectLog(projectId: string): Promise<ActivityLogEntry
     // Fallback if composite index doesn't exist — fetch without ordering
     const q = query(
       logRef,
-      where('ownerUid', '==', user.uid),
+      where('householdId', '==', householdId),
       where('projectId', '==', projectId),
     );
     const snapshot = await getDocs(q);

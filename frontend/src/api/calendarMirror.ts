@@ -384,7 +384,7 @@ export function filterMirrorEventsForVisibleRange(
   const rangeEnd = getTimezoneDate(endKey, '00:00:00', tz);
   const startISO = rangeStart.toISOString();
   const endISO = rangeEnd.toISOString();
-  return events.filter((e) => e.start >= startISO && e.start < endISO);
+  return events.filter((e) => e.end > startISO && e.start < endISO);
 }
 
 function revisionFromSignalSnap(snap: DocumentSnapshot): number {
@@ -421,7 +421,6 @@ export function subscribeCalendarMirror(ownerUid: string, onUpdate: (data: Calen
   const qEvents = query(
     collection(db, EVENTS),
     where('ownerUid', '==', ownerUid),
-    where('start', '>=', startISO),
     where('start', '<', endISO),
     orderBy('start'),
   );
@@ -435,6 +434,7 @@ export function subscribeCalendarMirror(ownerUid: string, onUpdate: (data: Calen
       const x = d.data() as DocumentData;
       return {
         mirrorDocId: d.id,
+        feedId: x.feedId,
         title: x.title,
         start: x.start,
         end: x.end,

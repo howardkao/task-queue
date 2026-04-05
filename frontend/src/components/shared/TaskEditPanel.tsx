@@ -188,11 +188,47 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   }, [buildCurrentState, persistDraft]);
 
   useEffect(() => {
+    if (autosaveTimeoutRef.current !== null) {
+      window.clearTimeout(autosaveTimeoutRef.current);
+      autosaveTimeoutRef.current = null;
+    }
+    const initialDeadline = parseDeadline(task.deadline);
     savedStateRef.current = buildEditableState(task);
     setSaveState('idle');
+    setTitle(task.title);
+    setNotes(task.notes);
+    setClassification(task.classification);
+    setPriority(task.priority || 'low');
+    setProjectId(task.projectId || '');
+    setDeadlineDate(initialDeadline.date);
+    setDeadlineTime(initialDeadline.time);
+    setShowTime(!!initialDeadline.time);
+    setShowNotes(!!task.notes);
+    setShowProject(!!task.projectId);
+    setShowDeadline(!!task.deadline);
+    setShowRecurrence(!!task.recurrence);
     setExcludeFromFamily(task.excludeFromFamily);
     setFamilyPinned(task.familyPinned);
-  }, [task.id]);
+    setRecMode(recurrenceToMode(task.recurrence));
+    setWeeklyDays(
+      task.recurrence?.freq === 'weekly' && task.recurrence.days ? task.recurrence.days : [],
+    );
+    setPeriodicallyValue(
+      task.recurrence?.freq === 'periodically' ? task.recurrence.interval || 7 : 7,
+    );
+    setPeriodicallyUnit(
+      task.recurrence?.freq === 'periodically' ? task.recurrence.periodUnit || 'days' : 'days',
+    );
+    setCustomUnit(
+      task.recurrence?.freq === 'custom' ? task.recurrence.customUnit || 'weekly' : 'weekly',
+    );
+    setCustomInterval(
+      task.recurrence?.freq === 'custom' ? task.recurrence.interval || 2 : 2,
+    );
+    setCustomDays(
+      task.recurrence?.freq === 'custom' && task.recurrence.days ? task.recurrence.days : [],
+    );
+  }, [task]);
 
   useEffect(() => {
     const current = buildCurrentState();
