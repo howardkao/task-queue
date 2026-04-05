@@ -4,19 +4,18 @@
 
 ### High-Level Overview
 
-Task Queue is a single-page React application backed by Firebase Auth + Firestore, designed for a small number of authenticated users to manage tasks using a boulders (deep work), rocks (medium-sized work), and pebbles (small tasks) mental model. Assistant integration happens externally via an MCP server; the app itself remains a simple, durable CRUD system.
+Task Queue is a single-page React application backed by Firebase Auth + Firestore, designed for a small number of authenticated users to manage tasks using a boulders (deep work), rocks (medium-sized work), and pebbles (small tasks) mental model. Tasks and projects belong to a **household** (solo by default); the **Me** planner shows tasks assigned to the signed-in user, and the **Family** planner shows tasks that are family-visible (project default + per-task overrides). Assistant integration happens externally via an MCP server; the app itself remains a simple, durable CRUD system.
 
 ```
 ┌─────────────────────────────────────────────────────────┐
 │                     Browser (SPA)                        │
 │                                                          │
-│  ┌──────────┐  ┌──────────┐  ┌──────────┐              │
-│  │  Today   │  │  Icebox  │  │ Projects │              │
-│  │  View    │  │  (menu)  │  │ View     │              │
-│  └────┬─────┘  └────┬─────┘  └────┬─────┘              │
-│       │              │             │                     │
-│       └──────────┬───┴─────────┬──┘                     │
-│                  │             │                         │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐   │
+│  │   Me     │ │  Family  │ │ Projects │ │ Icebox   │   │
+│  │  View    │ │  View    │ │  View    │ │ (menu)   │   │
+│  └────┬─────┘ └────┬─────┘ └────┬─────┘ └────┬─────┘   │
+│       └──────────────────┬───────────────────────────────┘
+│                        │                                │
 │            ┌─────┴─────┐ ┌────┴──────┐ ┌──────────────┐┌─────────────┐│
 │            │ useTasks  │ │useProjects│ │useActivityLog││ useCalendar ││
 │            │ (RQ hooks)│ │(RQ hooks) │ │ (RQ hooks)   ││ (range +   ││
@@ -32,9 +31,10 @@ Task Queue is a single-page React application backed by Firebase Auth + Firestor
 ┌────────┴─────────┐                         ┌──────────┴──────────┐
 │    Firestore     │                         │  Cloudflare Worker  │
 │ tasks / projects │                         │ iCal fetch + sync   │
-│ activityLog      │                         │ verifies Firebase   │
-│ calendar mirror  │                         │ ID token, expands   │
-│ admins / invites │                         │ iCal to mirror docs │
+│ users / households│                        │ verifies Firebase   │
+│ activityLog      │                         │ ID token, expands   │
+│ calendar mirror  │                         │ iCal to mirror docs │
+│ admins / invites │                         │                     │
 └────────┬─────────┘                         └──────────┬──────────┘
          ▲                                              │
          │                                              │
@@ -52,7 +52,7 @@ The active production path uses direct Firestore access from the browser for app
 
 Current responsibilities:
 - **Firebase Auth**: email/password sign-in, admin detection, invite-gated signup
-- **Firestore**: owner-scoped app data (`tasks`, `projects`, `activityLog`), calendar mirror collections (`calendarMirrorEvents`, `calendarMirrorFeedMeta`), plus auth/admin metadata
+- **Firestore**: household-scoped app data (`tasks`, `projects` keyed by `householdId` with `assigneeUids` / family visibility), `users` (profile doc with `householdId`), `households` (`memberUids`), `activityLog`, calendar mirror collections (`calendarMirrorEvents`, `calendarMirrorFeedMeta`, `calendarMirrorRevision`), plus auth/admin metadata
 - **Cloudflare Worker**: fetches private iCal feeds and verifies Firebase ID tokens; sync writes expanded events into Firestore for the SPA to subscribe via the Firebase SDK
 - **MCP server**: local stdio bridge for MCP-compatible assistant workflows
 
@@ -77,9 +77,9 @@ App.tsx
 ├── Auth/
 │   ├── Login (email/password sign-in + invite-gated signup)
 │   └── AdminPanel (invite code management, admin-only)
-├── TabBar — primary tabs: Today, Projects (`TabId` still includes `icebox` for routing)
+├── TabBar — primary tabs: Me, Family, Projects (`TabId` still includes `icebox` for routing / menu)
 ├── Header Menu (`SideDrawer`) — Icebox entry (badge count), Invites (admins), sign out
-├── TodayView/
+├── TodayView/ (shared planner UI; `plannerScope: 'me' | 'family'`)
 │   ├── DayCalendar (wake–bed hour grid; drag-and-drop placement for boulders, rocks, pebbles)
 │   │   ├── `dayCalendarOverlapLayout.ts` — side-by-side lanes when timed events overlap (priority: boulder → rock → pebble → iCal)
 │   │   └── DayCalendarEventModal — detail modal for external (iCal) events
@@ -94,13 +94,13 @@ App.tsx
 │   └── ProjectDetailView (markdown editor + task sections + activity log)
 └── shared/
     ├── TaskEditPanel (reusable task metadata editor: title, notes, classification, priority, project, deadline, recurrence)
-    ├── SideDrawer (mobile task drawer on Today; project rail drawer; header Menu on all layouts)
+    ├── SideDrawer (mobile task drawer on Me/Family; project rail drawer; header Menu on all layouts)
     └── Toast (global error toast system)
 
 Hooks (all in src/hooks/):
 ├── useAuth.ts → Firebase Auth state, admin detection, sign-in/sign-out
-├── useTasks.ts → api/tasks.ts → Firestore (lists by classification, inbox, icebox, due-soon, mutations)
-├── useProjects.ts → api/projects.ts → Firestore
+├── useTasks.ts → api/tasks.ts + api/household.ts → Firestore (household-scoped lists; Me vs Family filters + sort keys; mutations)
+├── useProjects.ts → api/projects.ts → Firestore (household-scoped projects)
 ├── useCalendar.ts → `api/calendar.ts` + `api/calendarMirror.ts` → Worker sync + Firestore mirror subscription (`useEventsForRange`, feed hooks)
 └── useActivityLog.ts → api/activityLog.ts → Firestore
 ```
@@ -109,8 +109,8 @@ Hooks (all in src/hooks/):
 
 All data flows follow the same pattern:
 1. **Component** calls a React Query hook (e.g., `usePebbles()`)
-2. **Hook** delegates to an API function (e.g., `listTasks({ classification: 'pebble', status: 'active' })`)
-3. **API function** calls `requireUser()` for auth, queries Firestore with `ownerUid` filter, applies client-side filtering, returns typed data
+2. **Hook** delegates to an API function (e.g., `listTasks({ status: 'active' })`)
+3. **API function** calls `requireUser()` for auth, runs `ensureUserHousehold(uid)` (idempotent: creates `users/{uid}`, `households/{id}`, backfills legacy `ownerUid` docs with `householdId` + `assigneeUids`), queries Firestore with `where('householdId', '==', …)`, applies client-side filters (classification, project, **Me vs Family** visibility), returns typed data
 4. **Mutations** call API functions, then invalidate relevant query keys to trigger refetch
 5. **Side effects** (activity log entries) are fire-and-forget `.catch(() => {})` — never block the user
 
@@ -120,11 +120,11 @@ All data flows follow the same pattern:
 
 ### Feature 1: Inline Inbox (Capture + Classification)
 
-**What it does:** Unclassified tasks enter via a text input at the top of the Today task workspace. Each shows the task title with buttons for boulder, rock, or pebble. Classifying moves the task to the top of the respective ordered list. There is no standalone Triage tab — capture and classification happen inline on the Today page.
+**What it does:** Unclassified tasks enter via a text input at the top of the **Me** or **Family** task workspace (same `TodayView` with `plannerScope`). Each shows the task title with buttons for boulder, rock, or pebble. Classifying moves the task to the top of the respective ordered list. There is no standalone Triage tab — capture and classification happen inline on the planner page.
 
 **Location in component tree:**
 ```
-TodayView task workspace (above the ordered task sections)
+Planner task workspace / `TodayView` (above the ordered task sections)
 ├── Text input (Enter to capture)
 └── Inbox task rows[] (one per unclassified task)
     ├── Title
@@ -135,7 +135,7 @@ TodayView task workspace (above the ordered task sections)
 
 **State management:**
 - `useInboxTasks()` → queries `listTasks({ classification: 'unclassified', status: 'active' })`
-- Today View uses `useTodayInboxTasks(projectFilter)` so the inbox list respects the same project filter as boulders/rocks
+- Planner uses `useTodayInboxTasks(projectFilter, plannerScope)` so the inbox list respects the same project filter and **Me** vs **Family** visibility as boulders/rocks/pebbles
 - `useCreateTask()` mutation → `createTask({ title })`
 - `useClassifyTask()` mutation → `updateTask(id, { classification })` — assigns `sortOrder` via `getTopSortOrder()` to place at top of list
 
@@ -147,7 +147,7 @@ TodayView task workspace (above the ordered task sections)
 
 ### Feature 2: Ordered Task Management (Boulders, Rocks, Pebbles)
 
-**What it does:** The Today task workspace contains ordered lists for boulders, rocks, and pebbles. Each list supports drag-and-drop reorder, shortcut buttons, and complete/icebox via expanded card view.
+**What it does:** The planner task workspace (`TodayView`) contains ordered lists for boulders, rocks, and pebbles. Each list supports drag-and-drop reorder, shortcut buttons, and complete/icebox via expanded card view.
 
 **Component tree:**
 ```
@@ -163,34 +163,41 @@ BoulderSidebar / RockSidebar / PebbleSidebar
 **State management:**
 - `useBoulders()`, `useRocks()`, and `usePebbles()` fetch sorted task lists by classification
 - Local `localOrder` state for optimistic drag reordering on all three ordered sidebars
-- On drag end: update local state immediately, then `reorderPebbles()` (Firestore `writeBatch` in `api/tasks.ts` — the name is historical) with new `sortOrder` values for the affected list
+- On drag end: update local state immediately, then `reorderPebbles(order, context)` (Firestore `writeBatch` in `api/tasks.ts` — the name is historical): **`context: 'me'`** updates `sortOrder` and `sortOrderByAssignee.{uid}`; **`context: 'family'`** updates `sortOrderFamily` only
 - Bump-to-top: assigns `sortOrder = firstPebble.sortOrder - 1000`
 - Drop-by-10: inserts between positions 10 and 11 using fractional indexing
 
 **Sort order strategy:**
-- Boulders, rocks, and pebbles use a numeric `sortOrder` field (fractional indexing)
-- **New tasks (from inbox classification) go to the top of their list** via `getTopSortOrder()` which finds the minimum sortOrder and subtracts 1000
-- Fallback for missing composite index: `-1000 + Math.random() * 100`
-- Full drag reorder: assigns fresh integer sortOrders to all items via `writeBatch`
+- **Me tab:** ordering uses `getMeSortOrder(task, uid)` → `sortOrderByAssignee[uid]` if set, else legacy `sortOrder` (fractional indexing within the classification column).
+- **Family tab:** ordering uses `sortOrderFamily` (independent from Me), also fractional-style via `getTopSortOrderFamily()` / full-list reorder.
+- **New tasks (from inbox classification) go to the top** of both Me and Family lists where applicable: `getTopSortOrder()` / `getTopSortOrderFamily()` find the minimum existing order in the household slice and subtract 1000.
+- Fallback when queries fail: `-1000 + Math.random() * 100`
+- Full drag reorder: assigns fresh integer sort values to all items in that list via `writeBatch`
 
 **Persistence:**
-- `reorderPebbles()` in `api/tasks.ts` performs a Firestore `writeBatch` of `sortOrder` updates. Boulder, Rock, and Pebble sidebars call it directly after list reorder; the `useReorderPebbles()` hook is available when a mutation-shaped API is preferred (invalidates `['tasks']`).
+- `reorderPebbles(order, context)` in `api/tasks.ts` performs a Firestore `writeBatch`. Boulder, Rock, and Pebble sidebars pass `reorderContext` from `plannerScope`. The `useReorderPebbles(context)` hook invalidates `['tasks']` when used.
 
 ---
 
-### Feature 3: Today View (Daily Planning)
+### Feature 3: Me & Family Views (Daily Planning)
 
-**What it does:** Adjustable multi-day calendar whose visible time range is driven by per-user **wake** and **bed** hours (defaults 8–22). The grid shows mirrored Google Calendar (iCal) events plus **placed tasks**: boulders, rocks, and pebbles that have a `placement` on the visible day. On desktop, Today uses a split layout with a task workspace column; on mobile, the workspace lives in a right-edge `SideDrawer`. Overlapping timed events render in **side-by-side lanes** within each overlap cluster so blocks stay readable; lane order favors **boulders, then rocks, then pebbles, then iCal-backed meeting/personal** types (`dayCalendarOverlapLayout.ts`).
+**What it does:** The former **Today** experience is implemented as **`TodayView` with `plannerScope: 'me' | 'family'`**. **Me** is the default primary tab; **Family** reuses the same layout and calendar behavior with different task filtering and list ordering. Adjustable multi-day calendar whose visible time range is driven by per-user **wake** and **bed** hours (defaults 8–22). The grid shows mirrored Google Calendar (iCal) events plus **placed tasks**: boulders, rocks, and pebbles that have a `placement` on the visible day. On desktop, the planner uses a split layout with a task workspace column; on mobile, the workspace lives in a right-edge `SideDrawer`. Overlapping timed events render in **side-by-side lanes** within each overlap cluster so blocks stay readable; lane order favors **boulders, then rocks, then pebbles, then iCal-backed meeting/personal** types (`dayCalendarOverlapLayout.ts`).
+
+**Task visibility:**
+- **Me:** `assigneeUids` contains the signed-in user (every task has at least one assignee; v1 defaults to the creator).
+- **Family:** `isTaskVisibleOnFamily(task, project)` in `taskFamilyScope.ts` — `false` if `excludeFromFamily`; else `true` if `familyPinned` or the linked project has `familyVisible`.
+
+**Calendar:** Each task still has **at most one** `placement`; the same block appears on whichever planner tabs include that task.
 
 **Navigation & filters:**
-- Horizontal day strip with previous/next day, “Today,” and configurable **day count** on larger viewports (persisted in `localStorage`, default 3). **Mobile** always shows **one** day (`visibleDayCount` derived from `useIsMobile()`). Scroll position is clamped to a finite past/future window (`calendarLimits.ts`).
-- **Project filter** and **priority filter** (high/med/low) narrow sidebar lists; filters persist in `localStorage`.
-- **Sidebar mode** toggles which ordered list is visible: boulders, rocks, or pebbles (persisted).
+- Horizontal day strip with previous/next day, “Today,” and configurable **day count** on larger viewports (persisted per scope: `me_*` / `family_*` keys in `localStorage`; legacy `today_*` is migrated once into `me_*`). **Mobile** always shows **one** day (`visibleDayCount` derived from `useIsMobile()`). Scroll position is clamped to a finite past/future window (`calendarLimits.ts`).
+- **Project filter** and **priority filter** (high/med/low) narrow sidebar lists; persisted per scope via `plannerStorage.ts` helpers.
+- **Sidebar mode** toggles which ordered list is visible: boulders, rocks, or pebbles (persisted per scope).
 - Optional **CalendarFeedSettings** and refresh when `VITE_API_BASE` is set.
 
 **Component tree:**
 ```
-TodayView
+TodayView ({ plannerScope })
 ├── Header row (date strip, filters, settings, mobile drawer trigger)
 ├── DayCalendar × N (one per visible day; compact when N > 1)
 │   ├── Half-hour slot lines (wake–bed)
@@ -225,15 +232,17 @@ TodayView
 - `yToHour()` maps pointer Y to snapped hour
 
 **Calendar data:**
-- When `VITE_API_BASE` is set: `useEventsForRange(startDate, days)` subscribes to Firestore calendar mirror updates (`subscribeCalendarMirror` in `api/calendarMirror.ts`) and triggers periodic Worker sync (`runCalendarSync`).
+- When `VITE_API_BASE` is set: `useEventsForRange(startDate, days)` subscribes via `subscribeCalendarMirror` (`api/calendarMirror.ts`) and triggers Worker-backed sync (`runCalendarSync`, throttled in `useCalendar.ts`).
+- **Mirror read path:** The SPA listens to **`calendarMirrorRevision/{ownerUid}`** (single doc, monotonic `rev`). When `rev` changes—or on first load while the doc is missing—it runs **`getDocs`** for the mirror event window (today ± `CALENDAR_RANGE_DAYS`) and for `calendarMirrorFeedMeta`. That avoids holding query `onSnapshot` listeners on hundreds of event rows, so idle tab reconnects cost ~one read on the revision doc instead of re-reading the full mirror. **Invariant:** any write to `calendarMirrorEvents` or `calendarMirrorFeedMeta` for that owner must increment `rev` (see `bumpCalendarMirrorRevision` in `calendarMirror.ts` and ADR-011). If mirror writes are ever added in the Worker, MCP, or scripts, they must bump the same doc.
 - When unset: mock events for today only (`MOCK_CAL_EVENTS` in `todayCalendarBridge.ts`).
 - `icalToCalEvents()` maps `CalendarEvent[]` to `CalEvent[]` (includes mirror doc id prefixing for stable keys).
 
-**Client state (TodayView) — highlights:**
+**Client state (`TodayView`) — highlights:**
+- `plannerScope` — `'me' | 'family'` (from route / parent; not persisted)
 - `drawerOpen` — mobile task drawer
 - `sidebarMode` — `'boulders' | 'rocks' | 'pebbles'`
-- `dayCount`, `wakeUpHour`, `bedTimeHour`, `startDate` — calendar scope (several persisted)
-- `projectFilter`, `priorityFilter`, `isFilterExpanded` — sidebar filtering (persisted)
+- `dayCount`, `wakeUpHour`, `bedTimeHour`, `startDate` — calendar scope (persisted per scope via `me_*` / `family_*` keys)
+- `projectFilter`, `priorityFilter`, `isFilterExpanded` — sidebar filtering (persisted per scope)
 - `expandedTaskId`, `captureValue`, `isSettingsOpen`, `shouldBustCache`
 - **Placement** itself is **not** ephemeral local state: it lives on each `Task` in Firestore (`placement` field).
 
@@ -264,7 +273,7 @@ IceboxView
 
 **State management:**
 - `useIceboxedTasks()` → queries `listTasks({ status: 'iceboxed' })`
-- Badge count on Icebox tab driven by `iceboxTasks.length` in App.tsx
+- Badge count on **Menu → Icebox** driven by `iceboxTasks.length` in `App.tsx` (Icebox is not a primary tab)
 
 ---
 
@@ -286,7 +295,7 @@ ProjectListView
 
 ProjectDetailView
 ├── Breadcrumb (← Projects / Project Name)
-├── Header (name + status + toggle button)
+├── Header (name + status + toggle + **Family-visible** checkbox → `familyVisible` on project)
 ├── Split layout
 │   ├── Left: Markdown textarea (auto-save, 1s debounce)
 │   │   └── Activity Log (collapsible)
@@ -311,6 +320,8 @@ ProjectDetailView
 - Displayed newest-first with formatted timestamps
 - Firestore query with fallback: tries `orderBy('timestamp', 'desc')`, falls back to client-side sort if composite index missing
 
+**Household scope:** `listProjects` queries `where('householdId', '==', userHouseholdId)`. New projects set `assigneeUids: [creator]`, `familyVisible` (default false; `createProject` accepts optional `familyVisible`). Legacy documents with `visibility: 'shared'` are treated as `familyVisible: true` when read.
+
 ---
 
 ### Feature 6: Shared TaskEditPanel
@@ -324,6 +335,7 @@ TaskEditPanel
 ├── Notes (textarea)
 ├── Classification + priority controls
 ├── Project dropdown (active projects)
+├── **Family** (checkboxes): “Show on Family (without a family-scoped project)” (`familyPinned`), “Exclude from Family (even if project is family-visible)” (`excludeFromFamily`)
 ├── Deadline picker
 ├── Recurrence selector (only shown when deadline is set)
 │   ├── Never / Daily / Weekly / Monthly / Yearly / Periodically / Custom
@@ -344,7 +356,7 @@ TaskEditPanel
 
 **What it does:** Email/password authentication with invite-gated signup. First user becomes admin automatically. Admin can generate invite codes for additional users.
 
-**Global chrome:** The signed-in header shows **Today** and **Projects** tabs plus a **Menu** control. **Icebox** and **Invites** (admins only) live in that menu; keyboard shortcuts **`1` / `2` / `3`** still switch **Today / Icebox / Projects** when focus is not in an input.
+**Global chrome:** The signed-in header shows **Me**, **Family**, and **Projects** tabs plus a **Menu** control. **Icebox** and **Invites** (admins only) live in that menu; keyboard shortcuts **`1` / `2` / `3`** switch **Me / Family / Projects** when focus is not in an input.
 
 **Components:**
 - `Login` — sign-in form + invite-code signup flow
@@ -367,17 +379,23 @@ TaskEditPanel
 ```typescript
 {
   id: string;                              // Firestore document ID
-  ownerUid: string;                        // Firebase Auth UID for per-user data isolation
+  ownerUid: string;                        // Creator; retained for rules / migration
+  householdId: string;                   // Household scope; all list queries filter on this
+  assigneeUids: string[];                  // Non-empty; Me tab lists tasks where uid ∈ assigneeUids (v1: typically [creator])
   title: string;                           // Required, trimmed on create
   notes: string;                           // Freeform text, default ''
   classification: 'unclassified' | 'boulder' | 'rock' | 'pebble';
   status: 'active' | 'completed' | 'iceboxed';
-  priority: 'high' | 'med' | 'low';        // Default 'low'; surfaced in Today filters and TaskEditPanel
+  priority: 'high' | 'med' | 'low';        // Default 'low'; surfaced in planner filters and TaskEditPanel
   deadline: Timestamp | null;              // Firestore Timestamp, converted to ISO string client-side
   recurrence: RecurrenceRule | null;       // See RecurrenceRule below
   projectId: string | null;               // FK to projects collection
-  sortOrder: number;                       // Fractional index for boulder, rock, and pebble ordering
-  placement: {                             // Optional time block on Today calendar (persisted)
+  sortOrder: number;                       // Me list primary / legacy fractional index (kept in sync with reorder on Me)
+  sortOrderByAssignee: { [uid: string]: number }; // Per-user Me ordering (map on document)
+  sortOrderFamily: number;                 // Independent ordering for Family tab lists
+  excludeFromFamily: boolean;              // Opt out of Family even when project is family-visible
+  familyPinned: boolean;                   // Show on Family without relying on project.familyVisible
+  placement: {                             // Optional time block on planner calendar (single schedule per task)
     date: string;                          // YYYY-MM-DD
     startHour: number;                     // e.g. 9.5 for 9:30
     duration: number;                      // hours
@@ -388,6 +406,8 @@ TaskEditPanel
   updatedAt: Timestamp;                    // serverTimestamp(), updated on every write
 }
 ```
+
+**Invariant:** A task is never “family-only”; it always has at least one individual assignee. Family visibility is derived (see `taskFamilyScope.ts`).
 
 #### RecurrenceRule
 ```typescript
@@ -413,13 +433,35 @@ interface RecurrenceRule {
 ```typescript
 {
   id: string;
-  ownerUid: string;                        // Firebase Auth UID for per-user data isolation
+  ownerUid: string;                        // Creator
+  householdId: string;                   // Same household as tasks
+  assigneeUids: string[];                 // Non-empty; v1: [creator]
   name: string;
   markdown: string;                        // Default: "# {name}\n\n"
   status: 'active' | 'on_hold';
-  visibility: 'personal' | 'shared';       // Always 'personal' in MVP
+  visibility: 'personal' | 'shared';       // Legacy; `familyVisible` is the planner-facing flag
+  familyVisible: boolean;                  // New tasks in this project default to family visibility (task can opt out)
   createdAt: Timestamp;
   updatedAt: Timestamp;
+}
+```
+
+#### `users` (profile)
+```typescript
+{
+  // Document ID == Firebase Auth UID
+  householdId: string;                   // FK to households/{id}
+  updatedAt?: Timestamp;
+}
+```
+
+#### `households`
+```typescript
+{
+  // Document ID: generated on first bootstrap
+  memberUids: string[];                  // v1: solo household [uid]; multi-member invites are future work
+  createdAt: Timestamp;
+  updatedAt?: Timestamp;
 }
 ```
 
@@ -468,7 +510,9 @@ interface RecurrenceRule {
 
 ### Firestore Indexes
 
-Required composite index (defined in `firestore.indexes.json`):
+Composite indexes are defined in `firestore.indexes.json`. Notable entries:
+
+**Legacy / optional (ownerUid-era sort helpers):**
 ```json
 {
   "collectionGroup": "tasks",
@@ -480,23 +524,45 @@ Required composite index (defined in `firestore.indexes.json`):
 }
 ```
 
-**Index strategy:** `listTasks()` queries with `where('ownerUid', '==', uid)` plus optionally `where('status', '==', ...)`, and applies remaining filters (classification, projectId) client-side. `getTopSortOrder()` queries with `ownerUid` + `classification` + `status` + `orderBy('sortOrder')` — may require a composite index.
+**Household-scoped lists:**
+```json
+{
+  "collectionGroup": "tasks",
+  "fields": [
+    { "fieldPath": "householdId", "order": "ASCENDING" },
+    { "fieldPath": "status", "order": "ASCENDING" }
+  ]
+}
+```
+
+**Project delete / cleanup:**
+```json
+{
+  "collectionGroup": "tasks",
+  "fields": [
+    { "fieldPath": "householdId", "order": "ASCENDING" },
+    { "fieldPath": "projectId", "order": "ASCENDING" }
+  ]
+}
+```
+
+**Index strategy:** `listTasks()` and `listProjects()` query with `where('householdId', '==', hid)` plus optionally `where('status', '==', ...)`, then apply **classification**, **projectId**, and **Me vs Family** visibility in JavaScript. `getTopSortOrder()` / `getTopSortOrderFamily()` load active tasks for the household and filter by `classification` client-side (avoids extra composite indexes for sort discovery).
 
 ### React Query Cache Structure
 
 | Query Key | Source | Stale Time |
 |-----------|--------|------------|
 | `['tasks', filters]` | `useTasks(filters)` (non–active-all paths) | 30s (global default) |
-| `['tasks', 'active-all']` | Single shared query for all active tasks; `useInboxTasks`, `useBoulders`, `useRocks`, `usePebbles`, and Today-scoped hooks use `select` to slice by classification / project filter | 30s |
+| `['tasks', 'active-all']` | Single shared query for all active tasks in the household; `useInboxTasks`, `useBoulders`, `useRocks`, `usePebbles`, and planner hooks use `select` + **Me/Family** filters for classification / project / visibility | 30s |
 | `['tasks', 'iceboxed']` | `useIceboxedTasks()` | 30s |
 | `['projects']` | `useProjects()` | 30s |
 | `['projects', id]` | `useProject(id)` | 30s |
 | `['activityLog', projectId]` | `useProjectActivityLog(id)` | 30s |
-| `['calendar', 'range', uid, startDate, days]` | `useEventsForRange` + mirror subscription | `staleTime: Infinity` (live updates via `setQueryData`) |
+| `['calendar', 'mirror', uid]` | `useEventsForRange` / `useTodayEvents` + `subscribeCalendarMirror` (revision `onSnapshot` + `getDocs` when `rev` changes) | `staleTime: Infinity` (live updates via `setQueryData`) |
 
 **Invalidation strategy:**
 - Task mutations invalidate `['tasks']`, which refreshes the shared `active-all` query and any other task query prefixes the app uses
-- List reorder from sidebars persists via `reorderPebbles()` without always calling `invalidateQueries` (the optimistic `localOrder` holds until the next refetch)
+- List reorder from sidebars persists via `reorderPebbles(order, context)` without always calling `invalidateQueries` (the optimistic `localOrder` holds until the next refetch)
 - Project mutations invalidate `['projects']`
 - Project status toggle also invalidates `['tasks']` (boulder visibility changes)
 
@@ -504,20 +570,20 @@ Required composite index (defined in `firestore.indexes.json`):
 
 | State | Location | Purpose |
 |-------|----------|---------|
-| `activeTab` | App.tsx `useState` | Current primary tab (`today` / `projects`); `icebox` reachable via Menu or keyboard `2` |
+| `activeTab` | App.tsx `useState` | Current primary tab (`me` / `family` / `projects`); **Icebox** via Menu only (not `1`–`3`) |
 | `openProjectId` | App.tsx `useState` | Project detail navigation |
 | `showAdmin` | App.tsx `useState` | Admin panel modal visibility |
 | `showMenu` | App.tsx `useState` | Header Menu drawer (Icebox, Invites, sign out) |
-| `drawerOpen` | TodayView `useState` | Mobile task-workspace drawer |
-| `sidebarMode` | TodayView `useState` | Which ordered list is visible: boulders / rocks / pebbles |
-| `dayCount`, `wakeUpHour`, `bedTimeHour`, `startDate` | TodayView | Calendar scope (several persisted via `localStorage`) |
-| `projectFilter`, `priorityFilter` | TodayView | Sidebar list filters (persisted) |
-| `expandedTaskId` | TodayView `useState` | Which task card shows `TaskEditPanel` inline |
-| `captureValue` | TodayView `useState` | Inline inbox text input |
+| `drawerOpen` | `TodayView` `useState` | Mobile task-workspace drawer |
+| `sidebarMode` | `TodayView` `useState` | Which ordered list is visible: boulders / rocks / pebbles |
+| `dayCount`, `wakeUpHour`, `bedTimeHour`, `startDate` | `TodayView` | Calendar scope (persisted per planner scope: `me_*` / `family_*`; legacy `today_*` migrates to `me_*`) |
+| `projectFilter`, `priorityFilter` | `TodayView` | Sidebar list filters (persisted per scope) |
+| `expandedTaskId` | `TodayView` `useState` | Which task card shows `TaskEditPanel` inline |
+| `captureValue` | `TodayView` `useState` | Inline inbox text input |
 | *(placement)* | Firestore on `Task` | `{ date, startHour, duration }` or `null` — not separate React state |
 | `drawerOpen` | ProjectListView `useState` | Mobile unassociated-task rail drawer |
 | `markdown` | ProjectDetailView `useState` | Local editor state (debounced to server) |
-| `localOrder` | Today sidebars `useState` | Optimistic drag reorder for ordered task lists |
+| `localOrder` | Planner sidebars `useState` | Optimistic drag reorder for ordered task lists |
 | `showCompleted` | ProjectDetailView `useState` | Toggle completed tasks visibility |
 | `showLog` | ProjectDetailView `useState` | Toggle activity log visibility |
 | `newTaskTitle/Type` | ProjectDetailView `useState` | Task creation form |
@@ -546,15 +612,15 @@ Required composite index (defined in `firestore.indexes.json`):
 
 ### ADR-002: Client-Side Filtering vs. Composite Indexes
 
-**Decision:** Query Firestore with `ownerUid` + one optional `where` clause (status), filter remaining dimensions (classification, projectId) in JavaScript.
+**Decision:** Query Firestore with **`householdId`** + at most one additional equality filter (typically `status`), then filter **classification**, **projectId**, and **Me vs Family** visibility in JavaScript. Legacy `ownerUid`-only documents are migrated on first `ensureUserHousehold()`.
 
 **Context:** Firestore requires composite indexes for multi-field queries. These must be manually created in the Firebase console, and errors only surface at runtime. For a small-user app with small data volumes, the trade-off favors simplicity.
 
 **Consequences:**
 - (+) Minimal composite index management
 - (+) No runtime index-missing errors blocking the app
-- (-) Fetches more documents than needed (all active tasks when only pebbles are wanted)
-- (-) Won't scale to thousands of tasks — acceptable for personal use
+- (-) Fetches all active tasks for the household when only one classification is shown
+- (-) Won't scale to thousands of tasks per household — acceptable for personal / small-family use
 
 ---
 
@@ -573,7 +639,7 @@ Required composite index (defined in `firestore.indexes.json`):
 
 ### ADR-004: Fractional Indexing for Task Sort Order
 
-**Decision:** Boulder, rock, and pebble ordering use numeric `sortOrder` values with fractional midpoints for insertions.
+**Decision:** Boulder, rock, and pebble ordering use numeric fractional indices. **Me** and **Family** maintain **separate** order fields: `sortOrder` + `sortOrderByAssignee.{uid}` for Me, `sortOrderFamily` for Family.
 
 **Context:** Options considered: array-based ordering (requires rewriting all positions on every move), linked list (complex queries), or fractional indexing (simple math, occasional rebalancing). Fractional indexing gives O(1) inserts between any two items.
 
@@ -622,7 +688,7 @@ Required composite index (defined in `firestore.indexes.json`):
 
 ### ADR-007: Calendar Placement Stored on the Task Document
 
-**Decision:** When a boulder, rock, or pebble is placed on the day calendar, `placement: { date, startHour, duration }` is written to the task in Firestore via `updateTask`. Removing from the calendar sets `placement` to `null`. The task **remains** in its ordered sidebar list with a dimmed/placed visual distinction.
+**Decision:** When a boulder, rock, or pebble is placed on the **Me** or **Family** day calendar, `placement: { date, startHour, duration }` is written to the task in Firestore via `updateTask`. Removing from the calendar sets `placement` to `null`. The task **remains** in its ordered sidebar list with a dimmed/placed visual distinction.
 
 **Context:** Daily planning should survive refresh and multi-device use. Treating the time block as task metadata (like deadline) avoids a separate “calendar-only” store while keeping the mental model: the list is the inventory, the grid is the schedule sketch.
 
@@ -635,21 +701,21 @@ Required composite index (defined in `firestore.indexes.json`):
 
 ---
 
-### ADR-008: Triage Absorbed into Today View
+### ADR-008: Triage Absorbed into the Planner (Me / Family)
 
-**Decision:** Eliminated the standalone Triage tab. Capture and classification happen inline at the top of the Today sidebar.
+**Decision:** Eliminated the standalone Triage tab. Capture and classification happen inline at the top of the **Me** (and **Family**, when applicable) task column inside `TodayView`.
 
-**Context:** The Triage tab was a separate view with project/deadline/recurrence assignment during classification. In practice, most inbox items just need a quick boulder/rock/pebble decision. Metadata can be edited later via TaskEditPanel from any view. Reducing tabs from 4→3 simplifies navigation.
+**Context:** The Triage tab was a separate view with project/deadline/recurrence assignment during classification. In practice, most inbox items just need a quick boulder/rock/pebble decision. Metadata can be edited later via TaskEditPanel from any view.
 
 **Consequences:**
 - (+) Fewer tabs, faster workflow — capture and classify without leaving the planning view
-- (+) Inbox and capture share the Today task column — no separate triage view
+- (+) Inbox and capture share the planner task column — no separate triage view
 - (+) TaskEditPanel provides full metadata editing everywhere, so triage-time metadata assignment isn't needed
 - (-) No project/deadline assignment at classification time (must expand card later)
 
 ---
 
-### ADR-009: Overlap Columns on the Today Calendar
+### ADR-009: Overlap Columns on the Day Calendar
 
 **Decision:** When two or more timed calendar entries intersect, they render in equal-width horizontal lanes within the same overlap cluster (Google Calendar–style). Lane indices are assigned in **priority order**: boulder, then rock, then pebble, then iCal types (meeting, personal), so higher-priority work tends to occupy the **left** columns.
 
@@ -663,6 +729,36 @@ Required composite index (defined in `firestore.indexes.json`):
 
 ---
 
+### ADR-010: Households, Me vs Family, and Single Placement
+
+**Decision:** Introduce **`households`** and **`users/{uid}.householdId`** so tasks and projects are queried by **`householdId`**. The UI exposes **Me** and **Family** tabs backed by the same `TodayView` (`plannerScope`). **Me** lists tasks where the signed-in user is in **`assigneeUids`**; **Family** lists tasks whose effective family visibility is true (`taskFamilyScope.ts`: project `familyVisible`, task `familyPinned`, minus `excludeFromFamily`). **Calendar placement** remains a **single** `placement` on the task — no duplicate schedule per tab.
+
+**Context:** Family to-dos require shared data without “family-only” tasks (every task has ≥1 assignee). Distinct list orders for Me and Family are stored as **`sortOrderByAssignee`** / **`sortOrderFamily`**. Solo users auto-bootstrap a one-member household and backfill legacy `ownerUid` rows.
+
+**Consequences:**
+- (+) One Firestore listener for active tasks per session; Me/Family are client filters on the same query result
+- (+) Invites / multi-account households can extend `memberUids` later without changing the task document shape
+- (-) All household tasks load together — acceptable for small households
+- (-) MCP server and Worker calendar docs may still assume older fields until updated separately
+
+**Calendar mirrors:** Feeds remain **per `ownerUid`** in the mirror today; **per-feed `shareWithFamily`** and merged Me+Family mirror reads are planned but not required for duplicate-tab avoidance (only one planner tab mounts at a time).
+
+---
+
+### ADR-011: Calendar mirror revision signal + fat fetch
+
+**Decision:** Drive calendar mirror freshness with **`calendarMirrorRevision/{ownerUid}`**: a single document whose numeric **`rev`** field increments whenever **`calendarMirrorEvents`** or **`calendarMirrorFeedMeta`** changes for that owner. The SPA attaches **`onSnapshot` only to that revision doc**; on each new `rev` (and on initial subscribe when the doc is absent), it runs **`getDocs`** for the bounded mirror event query and for feed meta, then updates React Query via the existing `subscribeCalendarMirror` callback.
+
+**Context:** Large-query `onSnapshot` listeners re-read every matching document when the listen stream reconnects (common for background tabs). That produced hundreds of billed reads per hour while idle. A tiny signal document keeps reconnect cost to ~one read and preserves prompt updates whenever mirror data actually changes.
+
+**Consequences:**
+- (+) Much lower Firestore read volume during idle reconnects
+- (+) UI still updates as soon as `rev` bumps after a sync or feed delete/metadata patch
+- (-) Engineering rule: **every** mirror mutation path must bump `rev` (centralized in `api/calendarMirror.ts` today; any future Worker-side mirror writer must do the same or clients will stay stale)
+- (-) Slightly more latency than pure listener (one round of `getDocs` after `rev` changes—usually acceptable)
+
+---
+
 ## 5. Integration Points
 
 ### Firestore (Current)
@@ -670,18 +766,22 @@ Required composite index (defined in `firestore.indexes.json`):
 **Connection:** Firebase Web SDK v9+ (modular imports) initialized in `src/firebase.ts` from environment variables for your Firebase project.
 
 **Auth:** Email/password Firebase Auth is required. Firestore rules enforce:
-- owner-scoped reads/writes for `tasks`, `projects`, and `activityLog`
+- **`tasks` / `projects`:** create when `householdId` matches the signed-in user’s `users/{uid}.householdId`, `assigneeUids` includes `request.auth.uid`, and `assigneeUids` is non-empty; read/update/delete when **legacy `ownerUid`** matches **or** `householdId` matches the user’s household (household members share read/write for v1)
+- **`users/{uid}`:** each user may read/write their own profile doc (stores `householdId`)
+- **`households/{id}`:** read/update when `request.auth.uid` is in `memberUids`; create when the creator lists themselves in `memberUids`
+- **`activityLog`:** still owner-scoped via `ownerUid` (unchanged from earlier model)
+- **`calendarMirrorEvents` / `calendarMirrorFeedMeta` / `calendarMirrorRevision`:** mirror rows remain owner-scoped via `ownerUid`; revision doc id equals `request.auth.uid`, `rev` bumps on mirror changes (see ADR-011)
 - admin-only access for `admins`, `settings`, and invite-code management
 - one-time bootstrap for the first admin account
 - `admins` collection is publicly readable (needed for first-user check during signup)
 
-**Security model:** documents in user-owned collections must carry `ownerUid`, and rules compare that field to `request.auth.uid`. All API functions call `requireUser()` before any Firestore operation.
+**Security model:** All API functions call `requireUser()` before any Firestore operation. New writes must satisfy stricter create rules (`householdId` + `assigneeUids`); legacy documents remain readable by `ownerUid` until migrated.
 
 **Error handling:** React Query's `retry: 1` provides one automatic retry. Global toast system (`ToastProvider` + `MutationCache.onError`) surfaces mutation errors as temporary notifications.
 
 ### Google Calendar / iCal
 
-**Implementation:** The Cloudflare Worker verifies the caller’s Firebase ID token, fetches configured private iCal URLs, parses events with `ical.js` (including RRULE expansion), and **syncs** normalized instances into **Firestore** (mirrored event documents per user). The SPA does not long-poll the Worker for day cells: it uses `subscribeCalendarMirror` (`api/calendarMirror.ts`) so React Query receives realtime updates, and `runCalendarSync` triggers periodic refresh (throttled per user in `useCalendar.ts`).
+**Implementation:** The Cloudflare Worker verifies the caller’s Firebase ID token and returns **iCal payloads** (and conditional-fetch metadata) from `/calendar/sync`. The **browser** parses iCal, writes **`calendarMirrorEvents`** / **`calendarMirrorFeedMeta`**, and bumps **`calendarMirrorRevision`** (`api/calendarMirror.ts`). The SPA does not long-poll the Worker for day cells: `subscribeCalendarMirror` listens to the revision doc and runs **`getDocs`** when `rev` changes so React Query stays fresh; `runCalendarSync` invokes the Worker then applies mirror writes (throttled per user in `useCalendar.ts`).
 
 **Feed configuration:** Authenticated clients manage feeds through calendar API endpoints reflected in the UI as `CalendarFeedSettings` (create/update/delete feed metadata).
 
@@ -693,7 +793,9 @@ Required composite index (defined in `firestore.indexes.json`):
 - Staleness on the order of minutes is acceptable; mirror + throttled sync keep UX fresh without hammering origins
 - Never writes back to Google Calendar
 
-**Fallback state:** If `VITE_API_BASE` is unset, Today View uses hardcoded mock events for the current day only.
+**Fallback state:** If `VITE_API_BASE` is unset, the Me/Family planner uses hardcoded mock events for the current day only.
+
+**Future (spec):** Model **iCal feeds** as owned by the user who added the URL, with optional **`shareWithFamily`** so one mirror stream can feed both planners without duplicate Firestore reads for the same feed — not yet implemented end-to-end in the Worker/KV layer.
 
 ### MCP Server (Phase 5 — Built)
 
@@ -720,7 +822,7 @@ Required composite index (defined in `firestore.indexes.json`):
 | `get_project` | Markdown + active (by classification) + completed tasks |
 | `create_project` | Create project with optional initial markdown |
 | `update_project` | Update project markdown, name, or status |
-| `get_today` | Planning snapshot: boulders, rocks, top pebbles, inbox count |
+| `get_today` | Planning snapshot: boulders, rocks, top pebbles, inbox count (MCP naming predates Me/Family split; may not mirror new household fields until updated) |
 | `suggest_tasks_for_project` | Project doc + tasks (incl. iceboxed) formatted for assistant suggestions |
 
 **Setup:** `cd mcp-server && npm install && npm run build`, then configure it in your MCP-compatible client:
@@ -746,7 +848,7 @@ Required composite index (defined in `firestore.indexes.json`):
   - [x] Task data model + Firestore CRUD (`api/tasks.ts`)
   - [x] React Query hooks for tasks (`hooks/useTasks.ts`)
   - [x] TypeScript type definitions (`types/index.ts`)
-  - [x] Capture + classification (now inline on Today; triage-only view retired)
+  - [x] Capture + classification (now inline on Me/Family planner; triage-only view retired)
   - [x] Tab navigation; icebox count surfaced from Menu drawer
 
 - [x] **Phase 2: Pebble Sorting**
@@ -756,12 +858,12 @@ Required composite index (defined in `firestore.indexes.json`):
   - [x] Deadline flags and staleness indicators
   - [x] Batch reorder via Firestore writeBatch
 
-- [x] **Phase 3: Today View**
+- [x] **Phase 3: Me / Family planner (TodayView)**
   - [x] Day calendar with configurable wake/bed hours and multi-day strip
   - [x] Event rendering with feed-driven colors; placed boulder/rock/pebble blocks
   - [x] Drag-and-drop placement with 15-minute snap grid; move and resize
   - [x] Tasks stay in sidebar when placed (dimmed distinction); placement persisted on task
-  - [x] Boulder / Rock / Pebble sidebars with mode switch and reorder persistence
+  - [x] Boulder / Rock / Pebble sidebars with mode switch and reorder persistence (Me vs Family sort contexts)
   - [x] Overlap columns for concurrent timed events (priority-ordered lanes)
   - [x] iCal via Worker + Firestore calendar mirror subscription
 
@@ -785,15 +887,15 @@ Required composite index (defined in `firestore.indexes.json`):
   - [x] Cloudflare Worker for iCal feed fetching and Firebase-token verification
   - [x] Deploy Worker and configure iCal feed URLs in Worker secrets
   - [x] Frontend calendar API + Firestore mirror client (`api/calendar.ts`, `api/calendarMirror.ts`, `hooks/useCalendar.ts`)
-  - [x] Today View uses mirrored events when API configured, falls back to mock events
+  - [x] Me/Family planner uses mirrored events when API configured, falls back to mock events
   - [x] Full recurrence system: 6 types (daily, weekly, monthly, yearly, periodically, custom)
   - [x] Recurrence UI with day-of-week picker, interval controls, custom unit toggle
   - [x] Error handling UI — global toast system
-  - [x] Keyboard shortcuts — `1`/`2`/`3` switch Today / Icebox / Projects (inputs excluded)
+  - [x] Keyboard shortcuts — `1`/`2`/`3` switch Me / Family / Projects (inputs excluded); Icebox from Menu
   - [x] Staleness indicators with color escalation
 
 - [x] **Phase 7: UX Consolidation**
-  - [x] Triage tab removed — inline inbox in Today sidebar
+  - [x] Triage tab removed — inline inbox in planner sidebar
   - [x] Pebbles tab removed — PebbleSidebar is self-contained
   - [x] Icebox moved to header Menu (not a main tab); reactivate/delete per classification
   - [x] Shared TaskEditPanel for consistent task editing everywhere
@@ -806,16 +908,26 @@ Required composite index (defined in `firestore.indexes.json`):
   - [x] Firebase Auth with email/password + invite flow
   - [x] First-user auto-admin bootstrap
   - [x] Admin panel for invite code generation
-  - [x] Firestore security rules (per-user data isolation via ownerUid)
+  - [x] Firestore security rules (ownerUid legacy + household-scoped tasks/projects)
   - [x] All API functions call `requireUser()` for auth guard
   - [x] Worker calendar endpoint requires Firebase ID token
   - [ ] Replace public invite-code lookup with a rate-limited backend flow
 
+- [x] **Phase 9: Household & Family planner (v1)**
+  - [x] `households` + `users.householdId` bootstrap and legacy backfill (`api/household.ts`)
+  - [x] Tasks/projects queried by `householdId`; `assigneeUids`, `familyVisible`, `excludeFromFamily`, `familyPinned`, dual sort fields
+  - [x] **Me** / **Family** primary tabs + `plannerScope`; separate `localStorage` namespaces
+  - [x] Project **Family-visible** checkbox; task-level Family overrides in `TaskEditPanel`
+  - [x] Firestore rules + indexes for household scope
+
 ### Remaining
 
-- [ ] **P1: Shared Projects**
-  - [ ] Shared project visibility toggle
-  - [ ] Multi-user project access
+- [ ] **P1: Multi-account households**
+  - [x] Shared “family visibility” on projects and tasks (v1)
+  - [ ] Invite / join second household member; multi-assignee UI; enforce assignee rules in product workflows
+
+- [ ] **P1b: Calendar feeds**
+  - [ ] Per-feed `shareWithFamily` + merged mirror reads (Worker + Firestore) per product spec
 
 - [ ] **P2: Auth Hardening**
   - [ ] Replace public invite-code lookup with a rate-limited backend flow

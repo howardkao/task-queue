@@ -1,9 +1,20 @@
+/**
+ * Calendar mirror — Firestore writes for `calendarMirrorEvents` / `calendarMirrorFeedMeta`.
+ *
+ * **Revision contract:** Any mutation that changes mirror events or per-feed meta must call
+ * `bumpCalendarMirrorRevision` (or go through `runCalendarSync` / `deleteCalendarMirrorForFeed` /
+ * `patchMirrorEventsForFeedMetadata`, which bump for you). Clients listen to
+ * `calendarMirrorRevision/{ownerUid}` and only run a fat `getDocs` when `rev` changes, so idle
+ * reconnects bill ~1 document read instead of the full mirror. If you add mirror writes elsewhere
+ * (Worker, scripts, MCP), bump the same doc. See SPEC.md (calendar mirror) and ADR-011.
+ */
 import {
   collection,
   deleteDoc,
   doc,
   documentId,
   getDocs,
+  increment,
   limit,
   onSnapshot,
   orderBy,
@@ -13,8 +24,9 @@ import {
   startAfter,
   where,
   writeBatch,
-  type QueryDocumentSnapshot,
   type DocumentData,
+  type DocumentSnapshot,
+  type QueryDocumentSnapshot,
 } from 'firebase/firestore';
 import { db } from '../firebase';
 import type { CalendarEvent, CalendarFeed, CalendarResponse } from '../types';
@@ -25,6 +37,21 @@ import { parseICal } from '../calendar/parseICal';
 
 const EVENTS = 'calendarMirrorEvents';
 const META = 'calendarMirrorFeedMeta';
+
+/** Single doc per `ownerUid`; `rev` increments when mirror events or feed meta change. */
+const REVISION = 'calendarMirrorRevision';
+
+/**
+ * Call after any successful write to `EVENTS` or `META` for this owner (once per logical batch of work).
+ * Keeps realtime clients aligned without holding a query listener on every mirror row.
+ */
+async function bumpCalendarMirrorRevision(ownerUid: string): Promise<void> {
+  await setDoc(
+    doc(db, REVISION, ownerUid),
+    { ownerUid, rev: increment(1) },
+    { merge: true },
+  );
+}
 
 function logCalendarFirestore(message: string, data?: Record<string, unknown>) {
   if (import.meta.env.DEV) {
@@ -230,7 +257,8 @@ async function syncFeedMirrorEvents(
   await setMirrorFeedMeta(ownerUid, feedId, warnings);
 }
 
-async function cleanupDisabledMirrorFeeds(ownerUid: string, feedsList: CalendarFeed[]): Promise<void> {
+async function cleanupDisabledMirrorFeeds(ownerUid: string, feedsList: CalendarFeed[]): Promise<boolean> {
+  let didMutate = false;
   const q = query(collection(db, META), where('ownerUid', '==', ownerUid));
   const snap = await getDocs(q);
   for (const docSnap of snap.docs) {
@@ -239,8 +267,10 @@ async function cleanupDisabledMirrorFeeds(ownerUid: string, feedsList: CalendarF
     if (!feed || !feed.enabled) {
       await deleteMirrorEventsForFeed(ownerUid, fid);
       await deleteDoc(docSnap.ref);
+      didMutate = true;
     }
   }
+  return didMutate;
 }
 
 export async function runCalendarSync(ownerUid: string, bust: boolean): Promise<void> {
@@ -248,12 +278,15 @@ export async function runCalendarSync(ownerUid: string, bust: boolean): Promise<
   const feedsList = await getCalendarFeeds();
   const feedById = new Map(feedsList.map((f) => [f.id, f]));
 
+  let mirrorMutated = false;
+
   for (const item of data.feeds) {
     const feed = feedById.get(item.id);
     if (!feed) continue;
 
     if (item.status === 'error') {
       await setMirrorFeedMeta(ownerUid, item.id, [item.message || 'Sync error']);
+      mirrorMutated = true;
       continue;
     }
     if (item.status === 'unchanged') continue;
@@ -276,10 +309,13 @@ export async function runCalendarSync(ownerUid: string, bust: boolean): Promise<
         rawEnd: e.rawEnd,
       }));
       await syncFeedMirrorEvents(ownerUid, item.id, calendarEvents, warnings);
+      mirrorMutated = true;
     }
   }
 
-  await cleanupDisabledMirrorFeeds(ownerUid, feedsList);
+  if (await cleanupDisabledMirrorFeeds(ownerUid, feedsList)) mirrorMutated = true;
+
+  if (mirrorMutated) await bumpCalendarMirrorRevision(ownerUid);
 }
 
 export async function deleteCalendarMirrorForFeed(ownerUid: string, feedId: string): Promise<void> {
@@ -289,6 +325,7 @@ export async function deleteCalendarMirrorForFeed(ownerUid: string, feedId: stri
   } catch {
     /* missing meta */
   }
+  await bumpCalendarMirrorRevision(ownerUid);
 }
 
 /** Update stored mirror rows when only feed display fields change (avoids full iCal re-fetch). */
@@ -306,6 +343,7 @@ export async function patchMirrorEventsForFeedMetadata(
   ];
 
   let last: QueryDocumentSnapshot<DocumentData> | undefined;
+  let wroteAny = false;
   for (;;) {
     const q = last
       ? query(collection(db, EVENTS), ...base, startAfter(last), limit(450))
@@ -325,10 +363,13 @@ export async function patchMirrorEventsForFeedMetadata(
       batch.update(d.ref, fields);
     }
     await batch.commit();
+    wroteAny = true;
 
     if (snap.docs.length < 450) break;
     last = snap.docs[snap.docs.length - 1];
   }
+
+  if (wroteAny) await bumpCalendarMirrorRevision(ownerUid);
 }
 
 /** Client-side slice of the mirror for the visible calendar strip (same bounds the old per-range query used). */
@@ -346,9 +387,16 @@ export function filterMirrorEventsForVisibleRange(
   return events.filter((e) => e.start >= startISO && e.start < endISO);
 }
 
+function revisionFromSignalSnap(snap: DocumentSnapshot): number {
+  if (!snap.exists()) return -1;
+  const v = snap.data()?.rev;
+  return typeof v === 'number' && Number.isFinite(v) ? v : 0;
+}
+
 /**
- * Single Firestore listener for the full mirror sync window (today ± CALENDAR_RANGE_DAYS).
- * TodayView filters client-side so scrolling does not swap queries or re-read overlapping docs.
+ * Listens to `calendarMirrorRevision/{ownerUid}`; on each new `rev`, runs `getDocs` for the mirror
+ * sync window (today ± CALENDAR_RANGE_DAYS) and feed meta. Idle reconnects re-read one doc, not the
+ * full event set. TodayView still filters client-side when scrolling days.
  */
 export function subscribeCalendarMirror(ownerUid: string, onUpdate: (data: CalendarResponse) => void): () => void {
   const { start: rangeStart, end: rangeEnd } = getClientSyncWindowBounds();
@@ -357,6 +405,8 @@ export function subscribeCalendarMirror(ownerUid: string, onUpdate: (data: Calen
 
   let lastEvents: CalendarEvent[] = [];
   let lastWarnings: string[] = [];
+  let lastFetchedRev: number | null = null;
+  let loadGen = 0;
 
   const emit = () => {
     const sorted = [...lastEvents].sort(
@@ -378,25 +428,11 @@ export function subscribeCalendarMirror(ownerUid: string, onUpdate: (data: Calen
 
   const qMeta = query(collection(db, META), where('ownerUid', '==', ownerUid));
 
-  logCalendarFirestore('subscribe sync-window listener', {
-    startISO,
-    endISO,
-    note: 'One listener per session (until local calendar day changes); scroll uses client-side filter.',
-  });
+  const signalRef = doc(db, REVISION, ownerUid);
 
-  const unsubE = onSnapshot(qEvents, (snap) => {
-    const changes = snap.docChanges();
-    logCalendarFirestore('events snapshot', {
-      docCount: snap.size,
-      fromCache: snap.metadata.fromCache,
-      hasPendingWrites: snap.metadata.hasPendingWrites,
-      docChanges: changes.length,
-      added: changes.filter((c) => c.type === 'added').length,
-      modified: changes.filter((c) => c.type === 'modified').length,
-      removed: changes.filter((c) => c.type === 'removed').length,
-    });
-    lastEvents = snap.docs.map((d) => {
-      const x = d.data();
+  const applyFatSnapshot = (evSnap: Awaited<ReturnType<typeof getDocs>>, metaSnap: Awaited<ReturnType<typeof getDocs>>) => {
+    lastEvents = evSnap.docs.map((d) => {
+      const x = d.data() as DocumentData;
       return {
         mirrorDocId: d.id,
         title: x.title,
@@ -414,21 +450,52 @@ export function subscribeCalendarMirror(ownerUid: string, onUpdate: (data: Calen
         rawEnd: x.rawEnd ?? undefined,
       } as CalendarEvent;
     });
+    lastWarnings = metaSnap.docs.flatMap((d) => ((d.data() as DocumentData).syncWarnings as string[]) || []);
     emit();
+  };
+
+  const scheduleFatFetch = (currentRev: number) => {
+    const g = ++loadGen;
+    logCalendarFirestore('fat fetch mirror (rev changed or initial)', {
+      startISO,
+      endISO,
+      currentRev,
+      loadGen: g,
+    });
+    void (async () => {
+      try {
+        const [evSnap, metaSnap] = await Promise.all([getDocs(qEvents), getDocs(qMeta)]);
+        if (g !== loadGen) return;
+        lastFetchedRev = currentRev;
+        await applyFatSnapshot(evSnap, metaSnap);
+        logCalendarFirestore('fat fetch mirror done', {
+          eventDocs: evSnap.size,
+          metaDocs: metaSnap.size,
+          fromCacheEvents: evSnap.metadata.fromCache,
+          fromCacheMeta: metaSnap.metadata.fromCache,
+        });
+      } catch (e) {
+        if (g !== loadGen) return;
+        console.error('[calendarFirestore] fat fetch failed', e);
+      }
+    })();
+  };
+
+  logCalendarFirestore('subscribe revision listener + fat fetch on rev change', {
+    startISO,
+    endISO,
   });
 
-  const unsubM = onSnapshot(qMeta, (snap) => {
-    logCalendarFirestore('meta snapshot', {
-      docCount: snap.size,
-      fromCache: snap.metadata.fromCache,
-    });
-    lastWarnings = snap.docs.flatMap((d) => (d.data().syncWarnings as string[]) || []);
-    emit();
+  const unsubSignal = onSnapshot(signalRef, (snap) => {
+    const currentRev = revisionFromSignalSnap(snap);
+    if (lastFetchedRev === null || currentRev !== lastFetchedRev) {
+      scheduleFatFetch(currentRev);
+    }
   });
 
   return () => {
-    logCalendarFirestore('unsubscribe sync-window listener', { startISO, endISO });
-    unsubE();
-    unsubM();
+    logCalendarFirestore('unsubscribe calendar mirror subscription', { startISO, endISO });
+    loadGen += 1;
+    unsubSignal();
   };
 }

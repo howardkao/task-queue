@@ -146,6 +146,15 @@ service cloud.firestore {
       allow read, update, delete: if isSignedIn() && resource.data.ownerUid == request.auth.uid;
     }
 
+    /** Doc id = `ownerUid`; `rev` bumped when mirror events or feed meta change (see SPEC / ADR-011). */
+    match /calendarMirrorRevision/{uid} {
+      allow read: if isSignedIn() && request.auth.uid == uid;
+      allow create, update: if isSignedIn() &&
+        request.auth.uid == uid &&
+        request.resource.data.ownerUid == request.auth.uid;
+      allow delete: if false;
+    }
+
     match /{document=**} {
       allow read, write: if false;
     }
