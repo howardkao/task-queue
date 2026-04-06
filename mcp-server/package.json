@@ -10,12 +10,13 @@
     "dev": "tsc && node dist/index.js"
   },
   "dependencies": {
-    "@task-queue/shared": "file:../packages/shared",
     "@modelcontextprotocol/sdk": "^1.12.1",
+    "@task-queue/shared": "file:../packages/shared",
     "firebase-admin": "^13.7.0"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
+    "tsx": "^4.21.0",
     "typescript": "^5.5.0"
   }
 }

@@ -10,16 +10,20 @@ const tasksRef = db.collection('tasks');
 const logRef = db.collection('activityLog');
 
 export type Classification = 'unclassified' | 'boulder' | 'rock' | 'pebble';
+export type TaskSize = 'S' | 'M' | 'L';
 
 export interface Task {
   id: string;
   title: string;
   notes: string;
+  /** @deprecated Use vital + size instead. */
   classification: Classification;
   status: 'active' | 'completed' | 'iceboxed';
+  /** @deprecated Use vital instead. */
   priority: 'high' | 'med' | 'low';
   deadline: string | null;
   recurrence: { freq: string; interval?: number; days?: string[]; customUnit?: string; periodUnit?: string } | null;
+  /** @deprecated Use investmentId instead. */
   projectId: string | null;
   sortOrder: number;
   sortOrderFamily: number;
@@ -33,6 +37,11 @@ export interface Task {
   assigneeUids: string[];
   excludeFromFamily: boolean;
   familyPinned: boolean;
+  // v2 fields
+  vital: boolean;
+  size: TaskSize | null;
+  investmentId: string | null;
+  initiativeId: string | null;
 }
 
 function tsToISO(ts: any): string | null {
@@ -59,11 +68,21 @@ function toTask(id: string, data: any): Task {
           Object.entries(rawBy).filter(([, value]) => typeof value === 'number') as [string, number][],
         )
       : {};
+  // v2 fields — derive from old fields if not yet migrated
+  const classification = data.classification || 'unclassified';
+  const CLASSIFICATION_TO_SIZE: Record<string, TaskSize | null> = {
+    boulder: 'L', rock: 'M', pebble: 'S', unclassified: null,
+  };
+  const vital: boolean = data.vital === true || data.priority === 'high';
+  const size: TaskSize | null = data.size !== undefined ? data.size : (CLASSIFICATION_TO_SIZE[classification] ?? null);
+  const investmentId: string | null = data.investmentId !== undefined ? (data.investmentId || null) : (data.projectId || null);
+  const initiativeId: string | null = data.initiativeId || null;
+
   return {
     id,
     title: data.title || '',
     notes: data.notes || '',
-    classification: data.classification || 'unclassified',
+    classification,
     status: data.status || 'active',
     priority: data.priority || 'low',
     deadline: data.deadline ? (data.deadline.toDate ? data.deadline.toDate().toISOString() : data.deadline) : null,
@@ -81,6 +100,10 @@ function toTask(id: string, data: any): Task {
     assigneeUids,
     excludeFromFamily: data.excludeFromFamily === true,
     familyPinned: data.familyPinned === true,
+    vital,
+    size,
+    investmentId,
+    initiativeId,
   };
 }
 
@@ -105,6 +128,11 @@ export async function listTasks(filters?: {
   status?: string;
   projectId?: string;
   staleThresholdDays?: number;
+  // v2 filters
+  vital?: boolean;
+  size?: TaskSize;
+  investmentId?: string | null;
+  initiativeId?: string | null;
 }): Promise<Task[]> {
   const householdId = await getOwnerHouseholdId();
   let q: FirebaseFirestore.Query = tasksRef.where('householdId', '==', householdId);
@@ -116,6 +144,7 @@ export async function listTasks(filters?: {
   const snapshot = await q.get();
   let tasks = snapshot.docs.map(d => toTask(d.id, d.data()));
 
+  // v1 filters (backward compat)
   if (filters?.classification) {
     tasks = tasks.filter(t => t.classification === filters.classification);
   }
@@ -128,6 +157,20 @@ export async function listTasks(filters?: {
       if (!t.createdAt) return false;
       return new Date(t.createdAt).getTime() < cutoff;
     });
+  }
+
+  // v2 filters
+  if (filters?.vital !== undefined) {
+    tasks = tasks.filter(t => t.vital === filters.vital);
+  }
+  if (filters?.size !== undefined) {
+    tasks = tasks.filter(t => t.size === filters.size);
+  }
+  if (filters?.investmentId !== undefined) {
+    tasks = tasks.filter(t => t.investmentId === filters.investmentId);
+  }
+  if (filters?.initiativeId !== undefined) {
+    tasks = tasks.filter(t => t.initiativeId === filters.initiativeId);
   }
 
   return sortTasksForList(tasks, (t) => (t.createdAt ? new Date(t.createdAt).getTime() : 0));
@@ -208,21 +251,42 @@ export async function createTask(data: {
   projectId?: string;
   recurrence?: any;
   lastOccurrenceCompletedAt?: any;
+  // v2 fields
+  vital?: boolean;
+  size?: TaskSize | null;
+  investmentId?: string | null;
+  initiativeId?: string | null;
 }): Promise<Task> {
-  const classification = (data.classification || 'unclassified') as Classification;
+  // Derive v1 classification from v2 size for backward compat
+  const SIZE_TO_CLASSIFICATION: Record<string, Classification> = { L: 'boulder', M: 'rock', S: 'pebble' };
+  const classification = (data.classification || (data.size ? SIZE_TO_CLASSIFICATION[data.size] : 'unclassified')) as Classification;
   const householdId = await getOwnerHouseholdId();
   const sortOrder = await getTopSortOrder(classification);
   const sortOrderFamily = await getTopSortOrderFamily(classification);
 
+  // Derive v2 fields from v1 if not provided
+  const vital = data.vital ?? (data.priority === 'high');
+  const CLASSIFICATION_TO_SIZE_MAP: Record<string, TaskSize> = { boulder: 'L', rock: 'M', pebble: 'S' };
+  const size: TaskSize | null = data.size !== undefined ? data.size : (CLASSIFICATION_TO_SIZE_MAP[classification] ?? null);
+  const investmentId = data.investmentId !== undefined ? (data.investmentId || null) : (data.projectId || null);
+  const initiativeId = data.initiativeId || null;
+
   const taskData: any = {
     title: data.title.trim(),
     notes: data.notes || '',
+    // v1 fields (backward compat)
     classification,
     status: 'active',
-    priority: data.priority || 'low',
+    priority: vital ? 'high' : (data.priority || 'low'),
+    projectId: investmentId,
+    // v2 fields
+    vital,
+    size,
+    investmentId,
+    initiativeId,
+    // shared
     deadline: data.deadline ? Timestamp.fromDate(new Date(data.deadline)) : null,
     recurrence: data.recurrence || null,
-    projectId: data.projectId || null,
     lastOccurrenceCompletedAt: data.lastOccurrenceCompletedAt || null,
     sortOrder,
     sortOrderFamily,
@@ -238,11 +302,11 @@ export async function createTask(data: {
 
   const ref = await tasksRef.add(taskData);
 
-  if (data.projectId) {
+  if (investmentId) {
     addLogEntry({
-      projectId: data.projectId,
+      projectId: investmentId,
       action: 'task_created',
-      description: `Created ${classification}: "${data.title.trim()}"`,
+      description: `Created task: "${data.title.trim()}"`,
       taskId: ref.id,
     }).catch(() => {});
   }
@@ -259,6 +323,11 @@ export async function updateTask(id: string, data: {
   deadline?: string | null;
   projectId?: string | null;
   sortOrder?: number;
+  // v2 fields
+  vital?: boolean;
+  size?: TaskSize | null;
+  investmentId?: string | null;
+  initiativeId?: string | null;
 }): Promise<Task> {
   const updates: any = { updatedAt: FieldValue.serverTimestamp() };
 
@@ -281,6 +350,24 @@ export async function updateTask(id: string, data: {
   if (data.sortOrder !== undefined) updates.sortOrder = data.sortOrder;
   if ((data as any).placement !== undefined) updates.placement = (data as any).placement;
   if ((data as any).lastOccurrenceCompletedAt !== undefined) updates.lastOccurrenceCompletedAt = (data as any).lastOccurrenceCompletedAt;
+
+  // v2 fields
+  if (data.vital !== undefined) {
+    updates.vital = data.vital;
+    updates.priority = data.vital ? 'high' : 'low';
+  }
+  if (data.size !== undefined) {
+    updates.size = data.size;
+    const SIZE_TO_CLASSIFICATION: Record<string, string> = { L: 'boulder', M: 'rock', S: 'pebble' };
+    if (data.size && SIZE_TO_CLASSIFICATION[data.size]) {
+      updates.classification = SIZE_TO_CLASSIFICATION[data.size];
+    }
+  }
+  if (data.investmentId !== undefined) {
+    updates.investmentId = data.investmentId;
+    updates.projectId = data.investmentId;
+  }
+  if (data.initiativeId !== undefined) updates.initiativeId = data.initiativeId;
 
   await tasksRef.doc(id).update(updates);
   return getTask(id);
@@ -307,11 +394,12 @@ export async function completeTask(id: string): Promise<{ completed: Task; nextO
     updatedAt: FieldValue.serverTimestamp(),
   });
 
-  if (task.projectId) {
+  const logProjectId = task.investmentId || task.projectId;
+  if (logProjectId) {
     addLogEntry({
-      projectId: task.projectId,
+      projectId: logProjectId,
       action: 'task_completed',
-      description: `Completed ${task.classification}: "${task.title}"`,
+      description: `Completed task: "${task.title}"`,
       taskId: task.id,
     }).catch(() => {});
   }
@@ -328,6 +416,10 @@ export async function completeTask(id: string): Promise<{ completed: Task; nextO
       projectId: task.projectId || undefined,
       recurrence: task.recurrence,
       lastOccurrenceCompletedAt: now,
+      vital: task.vital,
+      size: task.size,
+      investmentId: task.investmentId,
+      initiativeId: task.initiativeId,
     });
   }
 
@@ -338,11 +430,12 @@ export async function iceboxTask(id: string): Promise<Task> {
   const task = await getTask(id);
   const result = await updateTask(id, { status: 'iceboxed' });
 
-  if (task.projectId) {
+  const logProjectId = task.investmentId || task.projectId;
+  if (logProjectId) {
     addLogEntry({
-      projectId: task.projectId,
+      projectId: logProjectId,
       action: 'task_iceboxed',
-      description: `Iceboxed ${task.classification}: "${task.title}"`,
+      description: `Iceboxed task: "${task.title}"`,
       taskId: task.id,
     }).catch(() => {});
   }

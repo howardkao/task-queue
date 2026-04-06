@@ -36,7 +36,8 @@ function toEntry(id: string, data: DocumentData): ActivityLogEntry {
 }
 
 export async function addLogEntry(entry: {
-  projectId: string;
+  projectId?: string;
+  investmentId?: string;
   action: ActivityLogEntry['action'];
   description: string;
   taskId?: string;

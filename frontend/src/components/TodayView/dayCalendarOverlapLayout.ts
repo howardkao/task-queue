@@ -2,11 +2,10 @@ import type { CalEvent } from './dayCalendarTypes';
 
 /** Lower = placed first in column assignment → tends toward smaller column index (left). */
 const LANE_PRIORITY: Record<CalEvent['type'], number> = {
-  boulder: 0,
-  rock: 1,
-  pebble: 2,
-  meeting: 3,
-  personal: 4,
+  vital: 0,
+  task: 1,
+  meeting: 2,
+  personal: 3,
 };
 
 export interface TimedEventLane {
@@ -108,7 +107,7 @@ function assignLanesInComponent(events: CalEvent[]): Map<string, number> {
 
 /**
  * Google Calendar–style columns: each timed event gets a lane within its overlap cluster.
- * Lane order favors boulders, then rocks, then pebbles; then iCal events by increasing duration.
+ * Lane order favors vital tasks, then other tasks; then iCal events by increasing duration.
  */
 export function computeTimedEventOverlapLayout(events: CalEvent[]): Map<string, TimedEventLane> {
   const result = new Map<string, TimedEventLane>();

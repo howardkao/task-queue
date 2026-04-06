@@ -1,5 +1,5 @@
 import type { CalEvent } from './dayCalendarTypes';
-import type { CalendarEvent, Classification } from '../../types';
+import type { CalendarEvent, Task } from '../../types';
 
 /** Fallback mock events when no iCal feeds configured */
 export const MOCK_CAL_EVENTS: CalEvent[] = [
@@ -38,8 +38,6 @@ export function icalToCalEvents(events: CalendarEvent[]): CalEvent[] {
   });
 }
 
-export function calendarEventTypeForTask(task: { classification: Classification }): CalEvent['type'] {
-  if (task.classification === 'rock') return 'rock';
-  if (task.classification === 'pebble') return 'pebble';
-  return 'boulder';
+export function calendarEventTypeForTask(task: Pick<Task, 'vital'>): CalEvent['type'] {
+  return task.vital ? 'vital' : 'task';
 }

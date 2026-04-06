@@ -10,8 +10,8 @@ import { useIsMobile } from './hooks/useViewport';
 
 const TodayView = lazy(() => import('./components/TodayView/TodayView').then(module => ({ default: module.TodayView })));
 const IceboxView = lazy(() => import('./components/IceboxView/IceboxView').then(module => ({ default: module.IceboxView })));
-const ProjectListView = lazy(() => import('./components/ProjectsView/ProjectListView').then(module => ({ default: module.ProjectListView })));
-const ProjectDetailView = lazy(() => import('./components/ProjectsView/ProjectDetailView').then(module => ({ default: module.ProjectDetailView })));
+const InvestmentListView = lazy(() => import('./components/InvestmentsView/InvestmentListView').then(module => ({ default: module.InvestmentListView })));
+const InvestmentDetailView = lazy(() => import('./components/InvestmentsView/InvestmentDetailView').then(module => ({ default: module.InvestmentDetailView })));
 const Login = lazy(() => import('./components/Auth/Login').then(module => ({ default: module.Login })));
 const AdminPanel = lazy(() => import('./components/Auth/AdminPanel').then(module => ({ default: module.AdminPanel })));
 
@@ -57,7 +57,7 @@ function AppContent() {
   const { user, loading: authLoading, signOut } = useAuth();
   const [activeTab, setActiveTab] = useState<TabId>('me');
   const { data: iceboxTasks = [] } = useIceboxedTasks();
-  const [openProjectId, setOpenProjectId] = useState<string | null>(null);
+  const [openInvestmentId, setOpenInvestmentId] = useState<string | null>(null);
   const [showAdmin, setShowAdmin] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
   const isMobile = useIsMobile();
@@ -65,12 +65,12 @@ function AppContent() {
   const tabs = [
     { id: 'me' as TabId, label: 'Me' },
     { id: 'family' as TabId, label: 'Family' },
-    { id: 'projects' as TabId, label: 'Projects' },
+    { id: 'investments' as TabId, label: 'Investments' },
   ];
 
   const handleTabChange = useCallback((tab: TabId) => {
     setActiveTab(tab);
-    if (tab !== 'projects') setOpenProjectId(null);
+    if (tab !== 'investments') setOpenInvestmentId(null);
     setShowMenu(false);
   }, []);
 
@@ -81,7 +81,7 @@ function AppContent() {
 
   // Keyboard shortcuts: 1-3 to switch tabs
   useEffect(() => {
-    const tabMap: Record<string, TabId> = { '1': 'me', '2': 'family', '3': 'projects' };
+    const tabMap: Record<string, TabId> = { '1': 'me', '2': 'family', '3': 'investments' };
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
       if (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.tagName === 'SELECT') return;
@@ -187,14 +187,14 @@ function AppContent() {
           <IceboxView />
         )}
 
-        {activeTab === 'projects' && !openProjectId && (
-          <ProjectListView onOpenProject={setOpenProjectId} />
+        {activeTab === 'investments' && !openInvestmentId && (
+          <InvestmentListView onOpenInvestment={setOpenInvestmentId} />
         )}
 
-        {activeTab === 'projects' && openProjectId && (
-          <ProjectDetailView
-            projectId={openProjectId}
-            onBack={() => setOpenProjectId(null)}
+        {activeTab === 'investments' && openInvestmentId && (
+          <InvestmentDetailView
+            investmentId={openInvestmentId}
+            onBack={() => setOpenInvestmentId(null)}
           />
         )}
       </Suspense>

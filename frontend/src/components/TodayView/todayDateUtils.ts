@@ -5,6 +5,10 @@ export function toDateKey(d: Date): string {
   return `${year}-${month}-${day}`;
 }
 
+export function isoToLocalDateKey(iso: string): string {
+  return toDateKey(new Date(iso));
+}
+
 export function addDays(d: Date, n: number): Date {
   const result = new Date(d);
   result.setDate(result.getDate() + n);

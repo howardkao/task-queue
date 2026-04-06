@@ -1,6 +1,6 @@
 import type { Task } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
-import { useProjects } from '../../hooks/useProjects';
+import { useInvestments } from '../../hooks/useInvestments';
 import { useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
 import {
   listCardStyle,
@@ -34,20 +34,16 @@ export function DueSoonSidebar({
   expandedTaskId,
   onExpandedTaskIdChange,
 }: DueSoonSidebarProps) {
-  const { data: projects = [] } = useProjects('active');
+  const { data: investments = [] } = useInvestments('active');
   const completeTask = useCompleteTask();
   const iceboxTask = useIceboxTask();
 
-  const projectMap = new Map(projects.map(p => [p.id, p.name]));
+  const investmentMap = new Map(investments.map(i => [i.id, i.name]));
   const placedIds = Object.keys(placedTasks);
 
   const handleDragStart = (e: React.DragEvent, task: Task) => {
-    if (
-      task.classification === 'boulder' ||
-      task.classification === 'rock' ||
-      task.classification === 'pebble'
-    ) {
-      e.dataTransfer.setData('boulder-id', task.id);
+    if (task.size != null) {
+      e.dataTransfer.setData('task-id', task.id);
       e.dataTransfer.effectAllowed = 'move';
     }
   };
@@ -72,7 +68,7 @@ export function DueSoonSidebar({
       {tasks.map((task) => {
         const isEditing = expandedTaskId === task.id;
         const isPlaced = placedIds.includes(task.id);
-        const projectName = task.projectId ? projectMap.get(task.projectId) : null;
+        const investmentName = task.investmentId ? investmentMap.get(task.investmentId) : null;
         const deadlineStr = formatTaskDeadlineForMeta(task.deadline);
 
         const prevStr = task.lastOccurrenceCompletedAt
@@ -81,14 +77,11 @@ export function DueSoonSidebar({
         const collapsedMeta = formatCollapsedTaskMetaLine({
           deadlineLabel: deadlineStr,
           showRecurrence: !!task.recurrence,
-          projectName: projectName ?? null,
+          investmentName: investmentName ?? null,
           prevCompletedLabel: prevStr,
         });
 
-        const calendarDraggable =
-          task.classification === 'boulder' ||
-          task.classification === 'rock' ||
-          task.classification === 'pebble';
+        const calendarDraggable = task.size != null;
 
         return (
           <div key={task.id}>

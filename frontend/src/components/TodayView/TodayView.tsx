@@ -1,28 +1,23 @@
 import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { DayCalendar } from './DayCalendar';
-import { BoulderSidebar } from './BoulderSidebar';
-import { RockSidebar } from './RockSidebar';
-import { PebbleSidebar } from './PebbleSidebar';
+import { TaskSidebar } from './TaskSidebar';
 import {
-  useTodayBoulders,
-  useTodayRocks,
-  useTodayPebbles,
-  useTodayInboxTasks,
+  useVitalTasks,
+  useOtherTasks,
+  useInboxTasksV2,
   useCreateTask,
-  useClassifyTask,
+  useTriageTask,
   useUpdateTask,
   useDueSoonTasks,
   isOverdueOrDueToday,
-  STANDALONE_PROJECT_FILTER,
   type PlannerScope,
 } from '../../hooks/useTasks';
-import { useProjects } from '../../hooks/useProjects';
+import { useInvestments } from '../../hooks/useInvestments';
 import { readPlannerStorage, writePlannerStorage } from '../../plannerStorage';
 import { useIsMobile } from '../../hooks/useViewport';
 import { useCalendarFeeds, useEventsForRange } from '../../hooks/useCalendar';
 import type { CalEvent, PlacedTaskDragPreview } from './dayCalendarTypes';
-import type { CalendarEvent, Classification, Priority, Task } from '../../types';
-import type { TodayProjectFilter } from '../../hooks/useTasks';
+import type { CalendarEvent, Task, TaskSize } from '../../types';
 import { SideDrawer } from '../shared/SideDrawer';
 import { DueSoonSidebar } from './DueSoonSidebar';
 import { CalendarFeedSettings } from './CalendarFeedSettings';
@@ -36,7 +31,7 @@ import {
   isCalendarScrollAtFutureLimit,
   isCalendarScrollAtPastLimit,
 } from '../../calendar/calendarLimits';
-import { addDays, formatDateHeader, toDateKey } from './todayDateUtils';
+import { addDays, formatDateHeader, isoToLocalDateKey, toDateKey } from './todayDateUtils';
 import {
   calendarEventTypeForTask,
   icalToCalEvents,
@@ -45,7 +40,7 @@ import {
 import { PX_PER_HOUR } from './dayCalendarConstants';
 import { snapToGrid } from './dayCalendarUtils';
 
-type SidebarMode = 'boulders' | 'rocks' | 'pebbles';
+type SidebarMode = 'vital' | 'other';
 
 /** Day only changes when the pointer is inside an adjacent column (not merely past the inner edge). */
 function resolveStickyDateKey(
@@ -79,51 +74,19 @@ export interface TodayViewProps {
 
 export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
   const isMobile = useIsMobile();
-  const { data: projects = [] } = useProjects('active');
-  const unfilteredProjectFilter = useMemo<TodayProjectFilter>(() => [], []);
-  const [projectFilter, setProjectFilter] = useState<TodayProjectFilter>(() => {
-    const saved = readPlannerStorage(plannerScope, 'projectFilter');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const { data: boulders = [] } = useTodayBoulders(projectFilter, plannerScope);
-  const { data: rocks = [] } = useTodayRocks(projectFilter, plannerScope);
-  const { data: allBoulders = [] } = useTodayBoulders(unfilteredProjectFilter, plannerScope);
-  const { data: allRocks = [] } = useTodayRocks(unfilteredProjectFilter, plannerScope);
-  const { data: allPebbles = [] } = useTodayPebbles(unfilteredProjectFilter, plannerScope);
-  const { data: inboxTasks = [] } = useTodayInboxTasks(projectFilter, plannerScope);
+  const { data: investments = [] } = useInvestments('active');
+  const { data: vitalTasks = [] } = useVitalTasks();
+  const { data: otherTasks = [] } = useOtherTasks();
+  const allSizedTasks = useMemo(() => [...vitalTasks, ...otherTasks], [vitalTasks, otherTasks]);
+  const { data: inboxTasks = [] } = useInboxTasksV2();
   const createTask = useCreateTask();
-  const classifyTask = useClassifyTask();
+  const triageTask = useTriageTask();
   const dueSoonTasks = useDueSoonTasks(plannerScope);
-
-  const [priorityFilter, setPriorityFilter] = useState<Priority[]>(() => {
-    const saved = readPlannerStorage(plannerScope, 'priorityFilter');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [isFilterExpanded, setIsFilterExpanded] = useState(() => {
-    const saved = readPlannerStorage(plannerScope, 'isFilterExpanded');
-    return saved === 'true';
-  });
-
-  const getFilterSummary = useCallback(() => {
-    const pStr = priorityFilter.length === 0 ? 'All' : priorityFilter.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(', ');
-    let prjStr = 'All';
-    if (projectFilter.length > 0) {
-      const names = projectFilter.map(pid => {
-        if (pid === STANDALONE_PROJECT_FILTER) return 'None';
-        return projects.find(p => p.id === pid)?.name || 'Unknown';
-      });
-      if (names.length <= 2) {
-        prjStr = names.join(', ');
-      } else {
-        prjStr = `${names.length} projects`;
-      }
-    }
-    return `Priority: ${pStr} • Projects: ${prjStr}`;
-  }, [priorityFilter, projectFilter, projects]);
 
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => {
     const saved = readPlannerStorage(plannerScope, 'sidebarMode');
-    return (saved as SidebarMode) || 'boulders';
+    if (saved === 'vital' || saved === 'other') return saved;
+    return 'vital';
   });
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
   const skipClearExpandedOnNextSidebarMode = useRef(false);
@@ -152,15 +115,6 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
 
   const [shouldBustCache, setShouldBustCache] = useState(false);
 
-  useEffect(() => {
-    writePlannerStorage(plannerScope, 'projectFilter', JSON.stringify(projectFilter));
-  }, [plannerScope, projectFilter]);
-  useEffect(() => {
-    writePlannerStorage(plannerScope, 'priorityFilter', JSON.stringify(priorityFilter));
-  }, [plannerScope, priorityFilter]);
-  useEffect(() => {
-    writePlannerStorage(plannerScope, 'isFilterExpanded', String(isFilterExpanded));
-  }, [plannerScope, isFilterExpanded]);
   useEffect(() => {
     writePlannerStorage(plannerScope, 'sidebarMode', sidebarMode);
   }, [plannerScope, sidebarMode]);
@@ -213,27 +167,22 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
   // Derived map for easy lookup
   const placedTasksMap = useMemo(() => {
     const map: Record<string, { date: string; startHour: number; duration: number }> = {};
-    [...allBoulders, ...allRocks, ...allPebbles, ...dueSoonTasks].forEach(t => {
+    [...allSizedTasks, ...dueSoonTasks].forEach(t => {
       if (t.placement) {
         map[t.id] = t.placement;
       }
     });
     return map;
-  }, [allBoulders, allRocks, allPebbles, dueSoonTasks]);
+  }, [allSizedTasks, dueSoonTasks]);
 
   const schedulableCalendarTasks = useMemo(() => {
-    const fromDueSoon = dueSoonTasks.filter(
-      (t) =>
-        t.classification === 'boulder' ||
-        t.classification === 'rock' ||
-        t.classification === 'pebble'
-    );
+    const fromDueSoon = dueSoonTasks.filter(t => t.size != null);
     const byId = new Map<string, Task>();
-    for (const t of [...allBoulders, ...allRocks, ...allPebbles, ...fromDueSoon]) {
+    for (const t of [...allSizedTasks, ...fromDueSoon]) {
       byId.set(t.id, t);
     }
     return [...byId.values()];
-  }, [allBoulders, allRocks, allPebbles, dueSoonTasks]);
+  }, [allSizedTasks, dueSoonTasks]);
 
   const calendarQuery = useEventsForRange(dateKeys[0], Math.max(dateKeys.length, 1), shouldBustCache);
   const apiConfigured = calendarQuery.isConfigured;
@@ -261,31 +210,9 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
     setTimeout(() => setShouldBustCache(false), 1000);
   }, []);
 
-  // Priority filtering
-  const togglePriorityFilter = useCallback((value: Priority) => {
-    setPriorityFilter(prev => (
-      prev.includes(value)
-        ? prev.filter(item => item !== value)
-        : [...prev, value]
-    ));
-  }, []);
-
-  const toggleProjectFilter = useCallback((value: string) => {
-    setProjectFilter(prev => (
-      prev.includes(value)
-        ? prev.filter(item => item !== value)
-        : [...prev, value]
-    ));
-  }, []);
-
-  const filterByPriority = useCallback(<T extends { priority?: Priority }>(tasks: T[]): T[] => {
-    if (priorityFilter.length === 0) return tasks;
-    return tasks.filter(t => priorityFilter.includes(t.priority || 'low'));
-  }, [priorityFilter]);
-
-  const filteredBoulders = useMemo(() => filterByPriority(boulders), [filterByPriority, boulders]);
-  const filteredRocks = useMemo(() => filterByPriority(rocks), [filterByPriority, rocks]);
-  const filteredInboxTasks = useMemo(() => filterByPriority(inboxTasks), [filterByPriority, inboxTasks]);
+  const handleTriage = useCallback((id: string, taskSize: TaskSize, taskVital: boolean) => {
+    triageTask.mutate({ id, size: taskSize, vital: taskVital });
+  }, [triageTask]);
 
   // Build calendar events per day
   const eventsPerDay = useMemo(() => {
@@ -305,7 +232,7 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
           ce = calendarQuery.data?.events[idx];
         }
         if (!ce) return false;
-        return ce.start.startsWith(dateKey);
+        return isoToLocalDateKey(ce.start) === dateKey;
       });
 
       // Fallback logic
@@ -320,35 +247,35 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
         if (placedTaskDragPreview?.taskId === task.id) {
           if (placedTaskDragPreview.dateKey === dateKey) {
             events.push({
-              id: `boulder-${task.id}`,
+              id: `task-${task.id}`,
               title: task.title,
               startHour: placedTaskDragPreview.startHour,
               duration: placedTaskDragPreview.duration,
               type: calType,
               allDay: placedTaskDragPreview.allDay,
-              projectName: task.projectId ? 'Project' : undefined,
+              investmentName: investments.find(i => i.id === task.investmentId)?.name,
             });
           }
           continue;
         }
         if (task.placement && task.placement.date === dateKey) {
           events.push({
-            id: `boulder-${task.id}`,
+            id: `task-${task.id}`,
             title: task.title,
             startHour: task.placement.startHour,
             duration: task.placement.duration,
             type: calType,
-            projectName: task.projectId ? 'Project' : undefined,
+            investmentName: investments.find(i => i.id === task.investmentId)?.name,
           });
         } else if (!task.placement && dateKey === todayKey && isOverdueOrDueToday(task.deadline)) {
           events.push({
-            id: `boulder-${task.id}`,
+            id: `task-${task.id}`,
             title: task.title,
             startHour: 0,
             duration: 24,
             type: calType,
             allDay: true,
-            projectName: task.projectId ? 'Project' : undefined,
+            investmentName: investments.find(i => i.id === task.investmentId)?.name,
           });
         }
       }
@@ -391,20 +318,11 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
 
   const focusPlacedTaskInList = useCallback(
     (taskId: string) => {
-      const task = [...allBoulders, ...allRocks, ...allPebbles, ...dueSoonTasks].find((t) => t.id === taskId);
+      const task = [...allSizedTasks, ...dueSoonTasks].find((t) => t.id === taskId);
       if (!task) return;
 
       skipClearExpandedOnNextSidebarMode.current = true;
-      if (task.classification === 'boulder') setSidebarMode('boulders');
-      else if (task.classification === 'rock') setSidebarMode('rocks');
-      else if (task.classification === 'pebble') setSidebarMode('pebbles');
-
-      const p = task.priority || 'low';
-      setPriorityFilter((prev) => (prev.length > 0 && !prev.includes(p) ? [...prev, p] : prev));
-      if (task.classification === 'pebble') {
-        const chip = task.projectId ?? STANDALONE_PROJECT_FILTER;
-        setProjectFilter((prev) => (prev.length > 0 && !prev.includes(chip) ? [...prev, chip] : prev));
-      }
+      setSidebarMode(task.vital ? 'vital' : 'other');
 
       setExpandedTaskId(taskId);
       if (isMobile) setDrawerOpen(true);
@@ -413,14 +331,14 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
         document.querySelector(`[data-task-row-id="${taskId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       });
     },
-    [allBoulders, allRocks, allPebbles, dueSoonTasks, isMobile],
+    [allSizedTasks, dueSoonTasks, isMobile],
   );
 
-  const handleBoulderDrop = useCallback((boulderId: string, startHour: number, dateKey: string) => {
-    const task = [...allBoulders, ...allRocks, ...allPebbles, ...dueSoonTasks].find(t => t.id === boulderId);
+  const handleTaskDrop = useCallback((taskId: string, startHour: number, dateKey: string) => {
+    const task = [...allSizedTasks, ...dueSoonTasks].find(t => t.id === taskId);
     if (!task) return;
     updateTask.mutate({
-      id: boulderId,
+      id: taskId,
       data: {
         placement: {
           date: dateKey,
@@ -429,45 +347,45 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
         },
       },
     });
-  }, [allBoulders, allRocks, allPebbles, dueSoonTasks, updateTask]);
+  }, [allSizedTasks, dueSoonTasks, updateTask]);
 
-  const handleBoulderMove = useCallback((boulderId: string, startHour: number, dateKey: string) => {
-    const task = [...allBoulders, ...allRocks, ...allPebbles, ...dueSoonTasks].find(t => t.id === boulderId);
+  const handleTaskMove = useCallback((taskId: string, startHour: number, dateKey: string) => {
+    const task = [...allSizedTasks, ...dueSoonTasks].find(t => t.id === taskId);
     if (!task || !task.placement) return;
     updateTask.mutate({
-      id: boulderId,
+      id: taskId,
       data: {
         placement: { ...task.placement, startHour, date: dateKey },
       },
     });
-  }, [allBoulders, allRocks, allPebbles, dueSoonTasks, updateTask]);
+  }, [allSizedTasks, dueSoonTasks, updateTask]);
 
-  const handleBoulderAllDayMove = useCallback((boulderId: string, dateKey: string) => {
-    const task = [...allBoulders, ...allRocks, ...allPebbles, ...dueSoonTasks].find(t => t.id === boulderId);
+  const handleTaskAllDayMove = useCallback((taskId: string, dateKey: string) => {
+    const task = [...allSizedTasks, ...dueSoonTasks].find(t => t.id === taskId);
     if (!task) return;
     const base = task.placement ?? { date: dateKey, startHour: 0, duration: 24 };
     updateTask.mutate({
-      id: boulderId,
+      id: taskId,
       data: {
         placement: { ...base, date: dateKey },
       },
     });
-  }, [allBoulders, allRocks, allPebbles, dueSoonTasks, updateTask]);
+  }, [allSizedTasks, dueSoonTasks, updateTask]);
 
-  const handleBoulderResize = useCallback((boulderId: string, duration: number) => {
-    const task = [...allBoulders, ...allRocks, ...allPebbles, ...dueSoonTasks].find(t => t.id === boulderId);
+  const handleTaskResize = useCallback((taskId: string, duration: number) => {
+    const task = [...allSizedTasks, ...dueSoonTasks].find(t => t.id === taskId);
     if (!task || !task.placement) return;
     updateTask.mutate({
-      id: boulderId,
+      id: taskId,
       data: {
         placement: { ...task.placement, duration },
       },
     });
-  }, [allBoulders, allRocks, allPebbles, dueSoonTasks, updateTask]);
+  }, [allSizedTasks, dueSoonTasks, updateTask]);
 
-  const handleBoulderRemove = useCallback((boulderId: string) => {
+  const handleTaskRemove = useCallback((taskId: string) => {
     updateTask.mutate({
-      id: boulderId,
+      id: taskId,
       data: { placement: null },
     });
   }, [updateTask]);
@@ -478,10 +396,6 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
     setCaptureValue('');
   };
 
-  const handleClassify = useCallback((id: string, classification: Classification) => {
-    classifyTask.mutate({ id, classification });
-  }, [classifyTask]);
-
   const navigateBack = () =>
     setStartDate((prev) => clampStartDateForCalendarScroll(addDays(prev, -1), visibleDayCount));
   const navigateForward = () =>
@@ -491,10 +405,6 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
     d.setHours(0, 0, 0, 0);
     setStartDate(clampStartDateForCalendarScroll(d, visibleDayCount));
   };
-
-  const standaloneCount = filteredBoulders.filter(b => !b.projectId).length;
-  const projectBoulderIds = new Set(filteredBoulders.filter(b => b.projectId).map(b => b.projectId));
-  const activeProjectCount = projectBoulderIds.size;
 
   const sidebarContent = (
     <>
@@ -530,9 +440,9 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
           }}
         />
 
-        {filteredInboxTasks.length > 0 && (
+        {inboxTasks.length > 0 && (
           <div style={{ marginTop: '8px' }}>
-            {filteredInboxTasks.map(task => (
+            {inboxTasks.map(task => (
               <div key={task.id} style={listCardStyle}>
                 <div style={{ ...listCardInnerStyle, alignItems: 'center', flexWrap: 'wrap', rowGap: '8px' }}>
                   <div
@@ -547,108 +457,19 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
                   >
                     {task.title}
                   </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0 }}>
-                    <button type="button" onClick={() => handleClassify(task.id, 'boulder')} style={classifyBtnStyle}>Boulder</button>
-                    <button type="button" onClick={() => handleClassify(task.id, 'rock')} style={classifyBtnStyle}>Rock</button>
-                    <button type="button" onClick={() => handleClassify(task.id, 'pebble')} style={classifyBtnStyle}>Pebble</button>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    {(['S', 'M', 'L'] as const).map(s => (
+                      <button key={s} type="button" onClick={() => handleTriage(task.id, s, false)} style={triageBtnStyle}>
+                        {s}
+                      </button>
+                    ))}
+                    <button type="button" onClick={() => handleTriage(task.id, 'M', true)} style={triageVitalBtnStyle}>
+                      Vital
+                    </button>
                   </div>
                 </div>
               </div>
             ))}
-          </div>
-        )}
-      </div>
-
-      <div style={{
-        background: '#F9F7F6',
-        padding: '12px',
-        borderRadius: '12px',
-        border: '1px solid #EFEDEB',
-        marginBottom: '16px',
-        transition: 'all 0.2s ease',
-      }}>
-        <div
-          onClick={() => setIsFilterExpanded(!isFilterExpanded)}
-          style={{
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-            cursor: 'pointer',
-            userSelect: 'none',
-          }}
-        >
-          <div style={{
-            fontSize: '12px',
-            color: '#6b7280',
-            whiteSpace: 'nowrap',
-            overflow: 'hidden',
-            textOverflow: 'ellipsis',
-            flex: 1,
-            marginRight: '12px',
-          }}>
-            {isFilterExpanded ? (
-              <span style={{ textTransform: 'uppercase', letterSpacing: '0.06em', fontSize: '10px', fontWeight: 600 }}>Filters</span>
-            ) : (
-              <span>
-                <strong style={{ color: '#1D212B', marginRight: '6px' }}>Filters:</strong>
-                {getFilterSummary()}
-              </span>
-            )}
-          </div>
-          <div style={{ fontSize: '11px', color: '#EA6657', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-            {isFilterExpanded ? 'Collapse ▲' : 'Expand ▼'}
-          </div>
-        </div>
-
-        {isFilterExpanded && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginTop: '16px' }}>
-            <div>
-              <div style={filterHeaderStyle}>Priority</div>
-              <div style={filterChipWrapStyle}>
-                {(['high', 'med', 'low'] as const).map(p => {
-                  const colors: Record<string, { bg: string; border: string }> = {
-                    high: { bg: '#E14747', border: '#E14747' },
-                    med: { bg: '#F59F0A', border: '#F59F0A' },
-                    low: { bg: '#478CD1', border: '#478CD1' },
-                  };
-                  const active = priorityFilter.includes(p as Priority);
-                  const label = p.charAt(0).toUpperCase() + p.slice(1);
-                  return (
-                    <button
-                      key={p}
-                      onClick={(e) => { e.stopPropagation(); togglePriorityFilter(p as Priority); }}
-                      style={{
-                        ...filterChipStyle,
-                        ...(active ? { background: colors[p].bg, borderColor: colors[p].border, color: '#fff' } : {}),
-                      }}
-                    >
-                      {label}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <div style={filterHeaderStyle}>Projects</div>
-              <div style={filterChipWrapStyle}>
-                <button
-                  onClick={(e) => { e.stopPropagation(); toggleProjectFilter(STANDALONE_PROJECT_FILTER); }}
-                  style={{ ...filterChipStyle, ...(projectFilter.includes(STANDALONE_PROJECT_FILTER) ? activeFilterChipStyle : {}) }}
-                >
-                  None
-                </button>
-                {projects.map(project => (
-                  <button
-                    key={project.id}
-                    onClick={(e) => { e.stopPropagation(); toggleProjectFilter(project.id); }}
-                    style={{ ...filterChipStyle, ...(projectFilter.includes(project.id) ? activeFilterChipStyle : {}) }}
-                  >
-                    {project.name}
-                  </button>
-                ))}
-              </div>
-            </div>
           </div>
         )}
       </div>
@@ -661,7 +482,7 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
         marginBottom: '12px',
         background: '#F2F0ED',
       }}>
-        {(['boulders', 'rocks', 'pebbles'] as const).map(mode => (
+        {(['vital', 'other'] as const).map(mode => (
           <div
             key={mode}
             onClick={() => setSidebarMode(mode)}
@@ -680,40 +501,19 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
               borderRadius: '12px',
             }}
           >
-            {mode}
+            {mode === 'vital' ? 'Vital' : 'Other'}
           </div>
         ))}
       </div>
 
-      {sidebarMode === 'boulders' && (
-        <BoulderSidebar
-          boulders={filteredBoulders}
-          placedBoulders={placedTasksMap}
-          activeProjectCount={activeProjectCount}
-          standaloneCount={standaloneCount}
-          expandedTaskId={expandedTaskId}
-          onExpandedTaskIdChange={setExpandedTaskId}
-          reorderContext={plannerScope}
-        />
-      )}
-      {sidebarMode === 'rocks' && (
-        <RockSidebar
-          rocks={filteredRocks}
-          placedBoulders={placedTasksMap}
-          expandedTaskId={expandedTaskId}
-          onExpandedTaskIdChange={setExpandedTaskId}
-          reorderContext={plannerScope}
-        />
-      )}
-      {sidebarMode === 'pebbles' && (
-        <PebbleSidebar
-          projectFilter={projectFilter}
-          priorityFilter={priorityFilter}
-          expandedTaskId={expandedTaskId}
-          onExpandedTaskIdChange={setExpandedTaskId}
-          plannerScope={plannerScope}
-        />
-      )}
+      <TaskSidebar
+        tasks={sidebarMode === 'vital' ? vitalTasks : otherTasks}
+        placedTasks={placedTasksMap}
+        investments={investments}
+        expandedTaskId={expandedTaskId}
+        onExpandedTaskIdChange={setExpandedTaskId}
+        reorderContext={plannerScope}
+      />
     </>
   );
 
@@ -854,11 +654,11 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
                 onPlacedTaskInList={focusPlacedTaskInList}
                 computeTimedDragPlacement={computeTimedDragPlacement}
                 computeAllDayDragDateKey={computeAllDayDragDateKey}
-                onBoulderDrop={handleBoulderDrop}
-                onBoulderMove={handleBoulderMove}
-                onBoulderAllDayMove={handleBoulderAllDayMove}
-                onBoulderResize={handleBoulderResize}
-                onBoulderRemove={handleBoulderRemove}
+                onTaskDrop={handleTaskDrop}
+                onTaskMove={handleTaskMove}
+                onTaskAllDayMove={handleTaskAllDayMove}
+                onTaskResize={handleTaskResize}
+                onTaskRemove={handleTaskRemove}
                 onPlacedTaskDragPreviewChange={setPlacedTaskDragPreview}
                 activePlacedDragTaskId={placedTaskDragPreview?.taskId ?? null}
               />
@@ -949,8 +749,8 @@ const navBtnDisabled: React.CSSProperties = {
   cursor: 'not-allowed',
 };
 
-const classifyBtnStyle: React.CSSProperties = {
-  padding: '4px 12px',
+const triageBtnStyle: React.CSSProperties = {
+  padding: '4px 10px',
   border: '1px solid #E7E3DF',
   borderRadius: '8px',
   background: '#F2F0ED',
@@ -963,36 +763,10 @@ const classifyBtnStyle: React.CSSProperties = {
   flexShrink: 0,
 };
 
-const filterHeaderStyle: React.CSSProperties = {
-  fontSize: '10px',
-  color: '#6b7280',
-  fontWeight: 500,
-  marginBottom: '8px',
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
-};
-
-const filterChipWrapStyle: React.CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: '6px',
-};
-
-const filterChipStyle: React.CSSProperties = {
-  padding: '5px 12px',
-  border: '1px solid #E7E3DF',
-  borderRadius: '999px',
-  fontSize: '12px',
-  background: '#fff',
-  color: '#1D212B',
-  fontFamily: 'inherit',
-  cursor: 'pointer',
-  fontWeight: 500,
-};
-
-const activeFilterChipStyle: React.CSSProperties = {
-  background: '#EA6657',
-  borderColor: '#EA6657',
+const triageVitalBtnStyle: React.CSSProperties = {
+  ...triageBtnStyle,
+  background: '#E14747',
+  borderColor: '#E14747',
   color: '#fff',
 };
 

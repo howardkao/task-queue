@@ -155,6 +155,71 @@ service cloud.firestore {
       allow delete: if isOwner(resource.data);
     }
 
+    // ── Investments (replaces projects in v2) ──
+
+    function investmentHouseholdMatch() {
+      return isSignedIn() &&
+        resource.data.keys().hasAny(['householdId']) &&
+        resource.data.householdId != null &&
+        resource.data.householdId == userHouseholdId();
+    }
+
+    match /investments/{investmentId} {
+      allow create: if isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        request.auth.uid in request.resource.data.assigneeUids &&
+        request.resource.data.assigneeUids.size() >= 1 &&
+        request.resource.data.householdId == userHouseholdId();
+      allow read: if isSignedIn() && (
+        isOwner(resource.data) ||
+        investmentHouseholdMatch()
+      );
+      allow update: if isSignedIn() && (
+        isOwner(resource.data) ||
+        (
+          investmentHouseholdMatch() &&
+          isExistingAssignee() &&
+          immutableSharedFieldsPreserved() &&
+          validRequestedAssignees()
+        )
+      );
+      allow delete: if isOwner(resource.data);
+    }
+
+    // ── Initiatives (nested within investments, v2) ──
+
+    match /initiatives/{initiativeId} {
+      allow create: if isSignedIn() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        request.resource.data.ownerUid == request.auth.uid &&
+        request.auth.uid in request.resource.data.assigneeUids &&
+        request.resource.data.assigneeUids.size() >= 1 &&
+        request.resource.data.householdId == userHouseholdId();
+      allow read: if isSignedIn() && (
+        isOwner(resource.data) ||
+        (
+          isSignedIn() &&
+          resource.data.keys().hasAny(['householdId']) &&
+          resource.data.householdId != null &&
+          resource.data.householdId == userHouseholdId()
+        )
+      );
+      allow update: if isSignedIn() && (
+        isOwner(resource.data) ||
+        (
+          isSignedIn() &&
+          resource.data.keys().hasAny(['householdId']) &&
+          resource.data.householdId != null &&
+          resource.data.householdId == userHouseholdId() &&
+          isExistingAssignee() &&
+          immutableSharedFieldsPreserved() &&
+          validRequestedAssignees()
+        )
+      );
+      allow delete: if isOwner(resource.data);
+    }
+
     match /activityLog/{entryId} {
       allow create: if isSignedIn() &&
         request.resource.data.ownerUid == request.auth.uid &&

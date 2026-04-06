@@ -13,33 +13,41 @@ import {
   reorderTasks,
 } from './tasks.js';
 import {
-  listProjects,
-  getProject,
-  createProject,
-  updateProject,
-  toggleProjectStatus,
-} from './projects.js';
+  listInvestments,
+  getInvestment,
+  createInvestment,
+  updateInvestment,
+  setInvestmentStatus,
+} from './investments.js';
+import {
+  listInitiatives,
+  getInitiative,
+  createInitiative,
+  updateInitiative,
+  deleteInitiative,
+} from './initiatives.js';
 
 const server = new McpServer({
   name: 'task-queue',
-  version: '1.0.0',
+  version: '2.0.0',
 });
 
 // ─── Task Tools ───────────────────────────────────────────────
 
 server.tool(
   'add_task',
-  'Create a new task. Lands in inbox (unclassified) by default, or specify classification to place directly.',
+  'Create a new task. Lands in inbox (no size) by default. Set vital flag for strategic/critical tasks. Size: S (~5 min), M (~1 hr), L (2-3 hr).',
   {
     title: z.string().describe('Task title'),
     notes: z.string().optional().describe('Optional notes or context'),
-    classification: z.enum(['unclassified', 'boulder', 'rock', 'pebble']).optional().describe('Task type. Defaults to unclassified (inbox).'),
-    priority: z.enum(['high', 'med', 'low']).optional().describe('Priority level. Defaults to low.'),
-    projectId: z.string().optional().describe('Project ID to link this task to'),
+    vital: z.boolean().optional().describe('True if strategic or critical. Defaults to false.'),
+    size: z.enum(['S', 'M', 'L']).optional().describe('Task size: S (~5 min), M (~1 hr), L (2-3 hr). Omit for inbox.'),
+    investmentId: z.string().optional().describe('Investment ID to assign this task to'),
+    initiativeId: z.string().optional().describe('Initiative ID within the investment'),
     deadline: z.string().optional().describe('Deadline as ISO date string (e.g. "2026-04-01")'),
   },
-  async ({ title, notes, classification, priority, projectId, deadline }) => {
-    const task = await createTask({ title, notes, classification, priority, projectId, deadline });
+  async ({ title, notes, vital, size, investmentId, initiativeId, deadline }) => {
+    const task = await createTask({ title, notes, vital, size, investmentId, initiativeId, deadline });
     return {
       content: [{ type: 'text', text: JSON.stringify(task, null, 2) }],
     };
@@ -48,57 +56,61 @@ server.tool(
 
 server.tool(
   'list_inbox',
-  'List all unclassified tasks in the triage inbox.',
+  'List all untriaged tasks (no size set yet).',
   {},
   async () => {
-    const tasks = await listTasks({ classification: 'unclassified', status: 'active' });
+    const tasks = await listTasks({ status: 'active' });
+    const inbox = tasks.filter(t => t.size == null);
     return {
       content: [{
         type: 'text',
-        text: tasks.length === 0
+        text: inbox.length === 0
           ? 'Inbox is empty — nothing to triage.'
-          : `${tasks.length} task(s) in inbox:\n\n${tasks.map((t, i) => `${i + 1}. "${t.title}"${t.notes ? ` — ${t.notes}` : ''} [id: ${t.id}]`).join('\n')}`,
+          : `${inbox.length} task(s) in inbox:\n\n${inbox.map((t, i) => `${i + 1}. "${t.title}"${t.notes ? ` — ${t.notes}` : ''} [id: ${t.id}]`).join('\n')}`,
       }],
     };
   }
 );
 
 server.tool(
-  'classify_task',
-  'Classify an inbox task as boulder, rock, or pebble. Optionally assign to a project and set a deadline.',
+  'triage_task',
+  'Triage an inbox task: set size, vital flag, and optionally assign to an investment/initiative.',
   {
-    taskId: z.string().describe('ID of the task to classify'),
-    classification: z.enum(['boulder', 'rock', 'pebble']).describe('Classify as boulder (deep work), rock (medium effort), or pebble (small task)'),
-    projectId: z.string().optional().describe('Project ID to link this task to'),
+    taskId: z.string().describe('ID of the task to triage'),
+    size: z.enum(['S', 'M', 'L']).describe('Task size: S (~5 min), M (~1 hr), L (2-3 hr)'),
+    vital: z.boolean().optional().describe('True if strategic or critical. Defaults to false.'),
+    investmentId: z.string().optional().describe('Investment ID to assign to'),
+    initiativeId: z.string().optional().describe('Initiative ID within the investment'),
     deadline: z.string().optional().describe('Deadline as ISO date string'),
   },
-  async ({ taskId, classification, projectId, deadline }) => {
+  async ({ taskId, size, vital, investmentId, initiativeId, deadline }) => {
     const task = await updateTask(taskId, {
-      classification,
-      projectId: projectId ?? undefined,
+      size,
+      vital: vital ?? false,
+      investmentId: investmentId ?? undefined,
+      initiativeId: initiativeId ?? undefined,
       deadline: deadline ?? undefined,
     });
     return {
-      content: [{ type: 'text', text: `Classified "${task.title}" as ${classification}${task.projectId ? ` (linked to project)` : ''}.` }],
+      content: [{ type: 'text', text: `Triaged "${task.title}" — size: ${task.size}, vital: ${task.vital}${task.investmentId ? ' [investment-linked]' : ''}.` }],
     };
   }
 );
 
 server.tool(
   'search_tasks',
-  'Search tasks by title and optionally filter by status or classification. Use this to find task IDs before reading or updating a task.',
+  'Search tasks by title. Optionally filter by status, vital flag, size, or investment.',
   {
     query: z.string().describe('Case-insensitive text to search for in the task title'),
     status: z.enum(['active', 'completed', 'iceboxed']).optional().describe('Optional status filter'),
-    classification: z.enum(['unclassified', 'boulder', 'rock', 'pebble']).optional().describe('Optional classification filter'),
+    vital: z.boolean().optional().describe('Filter by vital flag'),
+    size: z.enum(['S', 'M', 'L']).optional().describe('Filter by size'),
+    investmentId: z.string().optional().describe('Filter by investment'),
     limit: z.number().optional().describe('Maximum number of matches to return (default: 10)'),
   },
-  async ({ query, status, classification, limit }) => {
+  async ({ query, status, vital, size, investmentId, limit }) => {
     const normalized = query.trim().toLowerCase();
-    const tasks = await listTasks({
-      status,
-      classification,
-    });
+    const tasks = await listTasks({ status, vital, size, investmentId });
 
     const matches = tasks
       .filter((task) => task.title.toLowerCase().includes(normalized))
@@ -112,10 +124,10 @@ server.tool(
 
     const text = matches.map((task, index) => (
       `${index + 1}. "${task.title}" [id: ${task.id}]`
-      + ` [${task.classification}/${task.status}]`
-      + ` [sortOrder: ${task.sortOrder}]`
-      + `${task.priority !== 'low' ? ` [${task.priority}]` : ''}`
-      + `${task.projectId ? ' [project-linked]' : ''}`
+      + ` [${task.size || 'unsized'}/${task.status}]`
+      + `${task.vital ? ' [vital]' : ''}`
+      + `${task.deadline ? ` (due ${task.deadline.slice(0, 10)})` : ''}`
+      + `${task.investmentId ? ' [investment-linked]' : ''}`
       + `${task.notes ? `\n   Notes: ${task.notes}` : ''}`
     )).join('\n');
 
@@ -127,7 +139,7 @@ server.tool(
 
 server.tool(
   'get_task',
-  'Get a task\'s full details, including notes/description. Use this before revising a task based on information from another task.',
+  'Get a task\'s full details, including notes/description.',
   {
     taskId: z.string().describe('ID of the task to retrieve'),
   },
@@ -141,36 +153,29 @@ server.tool(
 
 server.tool(
   'update_task',
-  'Update an existing task. This can replace the notes/description after incorporating context from another task.',
+  'Update an existing task.',
   {
     taskId: z.string().describe('ID of the task to update'),
-    title: z.string().optional().describe('Optional new task title'),
-    notes: z.string().optional().describe('Optional full replacement for the task notes/description'),
-    classification: z.enum(['unclassified', 'boulder', 'rock', 'pebble']).optional().describe('Optional new classification'),
-    priority: z.enum(['high', 'med', 'low']).optional().describe('Optional priority level'),
-    status: z.enum(['active', 'completed', 'iceboxed']).optional().describe('Optional new status'),
-    projectId: z.string().nullable().optional().describe('Optional project link; pass null to clear'),
-    deadline: z.string().nullable().optional().describe('Optional ISO date string deadline; pass null to clear'),
-    sortOrder: z.number().optional().describe('Optional new sort order value'),
+    title: z.string().optional().describe('New task title'),
+    notes: z.string().optional().describe('Full replacement for the task notes/description'),
+    vital: z.boolean().optional().describe('Set vital flag'),
+    size: z.enum(['S', 'M', 'L']).nullable().optional().describe('Set size; null to clear'),
+    status: z.enum(['active', 'completed', 'iceboxed']).optional().describe('New status'),
+    investmentId: z.string().nullable().optional().describe('Investment link; null to clear'),
+    initiativeId: z.string().nullable().optional().describe('Initiative link; null to clear'),
+    deadline: z.string().nullable().optional().describe('ISO date deadline; null to clear'),
+    sortOrder: z.number().optional().describe('New sort order value'),
   },
-  async ({ taskId, title, notes, classification, priority, status, projectId, deadline, sortOrder }) => {
-    const updates: {
-      title?: string;
-      notes?: string;
-      classification?: 'unclassified' | 'boulder' | 'rock' | 'pebble';
-      priority?: 'high' | 'med' | 'low';
-      status?: 'active' | 'completed' | 'iceboxed';
-      projectId?: string | null;
-      deadline?: string | null;
-      sortOrder?: number;
-    } = {};
+  async ({ taskId, title, notes, vital, size, status, investmentId, initiativeId, deadline, sortOrder }) => {
+    const updates: Record<string, any> = {};
 
     if (title !== undefined) updates.title = title;
     if (notes !== undefined) updates.notes = notes;
-    if (classification !== undefined) updates.classification = classification;
-    if (priority !== undefined) updates.priority = priority;
+    if (vital !== undefined) updates.vital = vital;
+    if (size !== undefined) updates.size = size;
     if (status !== undefined) updates.status = status;
-    if (projectId !== undefined) updates.projectId = projectId;
+    if (investmentId !== undefined) updates.investmentId = investmentId;
+    if (initiativeId !== undefined) updates.initiativeId = initiativeId;
     if (deadline !== undefined) updates.deadline = deadline;
     if (sortOrder !== undefined) updates.sortOrder = sortOrder;
 
@@ -189,7 +194,7 @@ server.tool(
 
 server.tool(
   'reorder_tasks',
-  'Reorder tasks in a list. Provide task IDs in the new desired order. This updates their sortOrder values globally.',
+  'Reorder tasks in a list. Provide task IDs in the new desired order.',
   {
     taskIds: z.array(z.string()).describe('List of task IDs in the new order'),
   },
@@ -231,37 +236,44 @@ server.tool(
 );
 
 server.tool(
-  'list_boulders',
-  'List all active boulders (deep work tasks). These are candidates for daily planning.',
+  'list_vital',
+  'List all active vital tasks (strategic or critical), grouped by investment.',
   {},
   async () => {
-    const tasks = await listTasks({ classification: 'boulder', status: 'active' });
+    const tasks = await listTasks({ status: 'active', vital: true });
     if (tasks.length === 0) {
-      return { content: [{ type: 'text', text: 'No active boulders.' }] };
+      return { content: [{ type: 'text', text: 'No active vital tasks.' }] };
     }
 
-    // Group by project
-    const standalone = tasks.filter(t => !t.projectId);
-    const byProject = new Map<string, typeof tasks>();
-    for (const t of tasks.filter(t => t.projectId)) {
-      const pid = t.projectId!;
-      if (!byProject.has(pid)) byProject.set(pid, []);
-      byProject.get(pid)!.push(t);
+    const investments = await listInvestments({ status: 'active' });
+    const investmentById = new Map(investments.map(inv => [inv.id, inv]));
+
+    const orphan = tasks.filter(t => !t.investmentId);
+    const byInvestment = new Map<string, typeof tasks>();
+    for (const t of tasks.filter(t => t.investmentId)) {
+      const iid = t.investmentId!;
+      if (!byInvestment.has(iid)) byInvestment.set(iid, []);
+      byInvestment.get(iid)!.push(t);
     }
 
-    let text = `${tasks.length} active boulder(s):\n`;
+    let text = `${tasks.length} active vital task(s):\n`;
 
-    if (standalone.length > 0) {
-      text += `\nStandalone:\n${standalone.map(t => `  • "${t.title}" [sortOrder: ${t.sortOrder}]${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}`;
+    // Show in investment rank order
+    for (const inv of investments) {
+      const invTasks = byInvestment.get(inv.id);
+      if (!invTasks) continue;
+      text += `\n${inv.name}:\n${formatTaskList(invTasks)}`;
+      byInvestment.delete(inv.id);
     }
 
-    for (const [pid, projectTasks] of byProject) {
-      try {
-        const project = await getProject(pid);
-        text += `\n\n${project.name}:\n${projectTasks.map(t => `  • "${t.title}" [sortOrder: ${t.sortOrder}]${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}`;
-      } catch {
-        text += `\n\nUnknown project (${pid}):\n${projectTasks.map(t => `  • "${t.title}" [id: ${t.id}]`).join('\n')}`;
-      }
+    // Any remaining investments not in the active list
+    for (const [iid, invTasks] of byInvestment) {
+      const name = investmentById.get(iid)?.name || `Unknown (${iid})`;
+      text += `\n${name}:\n${formatTaskList(invTasks)}`;
+    }
+
+    if (orphan.length > 0) {
+      text += `\nOrphan:\n${formatTaskList(orphan)}`;
     }
 
     return { content: [{ type: 'text', text }] };
@@ -269,116 +281,131 @@ server.tool(
 );
 
 server.tool(
-  'list_rocks',
-  'List all active rocks (medium-sized tasks). These can also be scheduled on the Today calendar.',
-  {},
-  async () => {
-    const tasks = await listTasks({ classification: 'rock', status: 'active' });
-    if (tasks.length === 0) {
-      return { content: [{ type: 'text', text: 'No active rocks.' }] };
-    }
-
-    const text = tasks.map((t, i) => (
-      `${i + 1}. "${t.title}"`
-      + ` [sortOrder: ${t.sortOrder}]`
-      + `${t.priority !== 'low' ? ` [${t.priority}]` : ''}`
-      + `${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''}`
-      + `${t.projectId ? ' [project-linked]' : ' [standalone]'}`
-      + ` [id: ${t.id}]`
-    )).join('\n');
-
-    return {
-      content: [{ type: 'text', text: `${tasks.length} active rock(s):\n\n${text}` }],
-    };
-  }
-);
-
-server.tool(
-  'list_pebbles',
-  'List active pebbles in priority order. Optionally filter to only stale pebbles (older than N days).',
+  'list_other',
+  'List all active non-vital tasks (with size set), grouped by investment. Optionally filter by size or show stale tasks.',
   {
-    staleDays: z.number().optional().describe('Only show pebbles older than this many days'),
-    limit: z.number().optional().describe('Max number of pebbles to return (default: all)'),
+    size: z.enum(['S', 'M', 'L']).optional().describe('Filter by size'),
+    staleDays: z.number().optional().describe('Only show tasks older than this many days'),
+    limit: z.number().optional().describe('Max number of tasks to return'),
   },
-  async ({ staleDays, limit }) => {
-    const tasks = await listTasks({
-      classification: 'pebble',
-      status: 'active',
-      staleThresholdDays: staleDays,
-    });
+  async ({ size, staleDays, limit }) => {
+    let tasks = await listTasks({ status: 'active', vital: false });
+    // Exclude inbox (unsized)
+    tasks = tasks.filter(t => t.size != null);
 
-    const limited = limit ? tasks.slice(0, limit) : tasks;
-
-    if (limited.length === 0) {
-      return { content: [{ type: 'text', text: staleDays ? `No pebbles older than ${staleDays} days.` : 'No active pebbles.' }] };
+    if (size) {
+      tasks = tasks.filter(t => t.size === size);
+    }
+    if (staleDays) {
+      const cutoff = Date.now() - staleDays * 24 * 60 * 60 * 1000;
+      tasks = tasks.filter(t => t.createdAt && new Date(t.createdAt).getTime() < cutoff);
+    }
+    if (limit) {
+      tasks = tasks.slice(0, limit);
     }
 
-    const text = limited.map((t, i) => {
-      const age = t.createdAt ? Math.floor((Date.now() - new Date(t.createdAt).getTime()) / (1000 * 60 * 60 * 24)) : '?';
-      return `${i + 1}. "${t.title}" [sortOrder: ${t.sortOrder}]${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` ⚑ due ${t.deadline.slice(0, 10)}` : ''} (${age}d old)${t.projectId ? ' [project-linked]' : ''} [id: ${t.id}]`;
-    }).join('\n');
+    if (tasks.length === 0) {
+      return { content: [{ type: 'text', text: 'No matching tasks.' }] };
+    }
 
-    return {
-      content: [{ type: 'text', text: `${limited.length} pebble(s)${staleDays ? ` older than ${staleDays} days` : ''}:\n\n${text}` }],
-    };
+    const investments = await listInvestments({ status: 'active' });
+    const investmentById = new Map(investments.map(inv => [inv.id, inv]));
+
+    const orphan = tasks.filter(t => !t.investmentId);
+    const byInvestment = new Map<string, typeof tasks>();
+    for (const t of tasks.filter(t => t.investmentId)) {
+      const iid = t.investmentId!;
+      if (!byInvestment.has(iid)) byInvestment.set(iid, []);
+      byInvestment.get(iid)!.push(t);
+    }
+
+    let text = `${tasks.length} task(s):\n`;
+
+    for (const inv of investments) {
+      const invTasks = byInvestment.get(inv.id);
+      if (!invTasks) continue;
+      text += `\n${inv.name}:\n${formatTaskList(invTasks)}`;
+      byInvestment.delete(inv.id);
+    }
+
+    for (const [iid, invTasks] of byInvestment) {
+      const name = investmentById.get(iid)?.name || `Unknown (${iid})`;
+      text += `\n${name}:\n${formatTaskList(invTasks)}`;
+    }
+
+    if (orphan.length > 0) {
+      text += `\nOrphan:\n${formatTaskList(orphan)}`;
+    }
+
+    return { content: [{ type: 'text', text }] };
   }
 );
 
-// ─── Project Tools ────────────────────────────────────────────
+// ─── Investment Tools ────────────────────────────────────────
 
 server.tool(
-  'list_projects',
-  'List all projects with their status.',
+  'list_investments',
+  'List all investments with their status and rank.',
   {
-    status: z.enum(['active', 'on_hold']).optional().describe('Filter by status'),
+    status: z.enum(['active', 'on_hold', 'completed']).optional().describe('Filter by status'),
   },
   async ({ status }) => {
-    const projects = await listProjects(status ? { status } : undefined);
-    if (projects.length === 0) {
-      return { content: [{ type: 'text', text: 'No projects.' }] };
+    const investments = await listInvestments(status ? { status } : undefined);
+    if (investments.length === 0) {
+      return { content: [{ type: 'text', text: 'No investments.' }] };
     }
 
-    const text = projects.map(p =>
-      `• ${p.name} [${p.status}] [id: ${p.id}]`
+    const text = investments.map((inv, i) =>
+      `${i + 1}. ${inv.name} [${inv.status}] [rank: ${inv.rank}] [id: ${inv.id}]`
     ).join('\n');
 
-    return { content: [{ type: 'text', text: `${projects.length} project(s):\n\n${text}` }] };
+    return { content: [{ type: 'text', text: `${investments.length} investment(s):\n\n${text}` }] };
   }
 );
 
 server.tool(
-  'get_project',
-  'Get a project\'s full details: markdown document, associated active tasks, and completed tasks. Use this to understand a project before suggesting next steps.',
+  'get_investment',
+  'Get an investment\'s full details: markdown document, initiatives, active tasks, and completed tasks.',
   {
-    projectId: z.string().describe('Project ID'),
+    investmentId: z.string().describe('Investment ID'),
   },
-  async ({ projectId }) => {
-    const project = await getProject(projectId);
-    const activeTasks = await listTasks({ projectId, status: 'active' });
-    const completedTasks = await listTasks({ projectId, status: 'completed' });
+  async ({ investmentId }) => {
+    const investment = await getInvestment(investmentId);
+    const initiatives = await listInitiatives(investmentId);
+    const activeTasks = await listTasks({ investmentId, status: 'active' });
+    const completedTasks = await listTasks({ investmentId, status: 'completed' });
 
-    const boulders = activeTasks.filter(t => t.classification === 'boulder');
-    const rocks = activeTasks.filter(t => t.classification === 'rock');
-    const pebbles = activeTasks.filter(t => t.classification === 'pebble');
-    const unclassified = activeTasks.filter(t => t.classification === 'unclassified');
+    const vital = activeTasks.filter(t => t.vital);
+    const other = activeTasks.filter(t => !t.vital && t.size != null);
+    const inbox = activeTasks.filter(t => t.size == null);
 
-    let text = `# ${project.name}\n`;
-    text += `Status: ${project.status}\n`;
-    text += `\n---\n\n## Project Document\n\n${project.markdown}\n`;
+    let text = `# ${investment.name}\n`;
+    text += `Status: ${investment.status} | Rank: ${investment.rank}\n`;
+    text += `\n---\n\n## Document\n\n${investment.markdown}\n`;
+
+    if (initiatives.length > 0) {
+      text += `\n---\n\n## Initiatives (${initiatives.length})\n`;
+      for (const init of initiatives) {
+        const initTasks = activeTasks.filter(t => t.initiativeId === init.id);
+        text += `\n### ${init.name} [rank: ${init.rank}] [id: ${init.id}]\n`;
+        if (initTasks.length > 0) {
+          text += formatTaskList(initTasks);
+        } else {
+          text += '  (no active tasks)\n';
+        }
+      }
+    }
 
     text += `\n---\n\n## Active Tasks\n`;
 
-    if (boulders.length > 0) {
-      text += `\nBoulders (${boulders.length}):\n${boulders.map(t => `  • "${t.title}" [sortOrder: ${t.sortOrder}]${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}\n`;
+    if (vital.length > 0) {
+      text += `\nVital (${vital.length}):\n${formatTaskList(vital)}`;
     }
-    if (rocks.length > 0) {
-      text += `\nRocks (${rocks.length}):\n${rocks.map(t => `  • "${t.title}" [sortOrder: ${t.sortOrder}]${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}\n`;
+    if (other.length > 0) {
+      text += `\nOther (${other.length}):\n${formatTaskList(other)}`;
     }
-    if (pebbles.length > 0) {
-      text += `\nPebbles (${pebbles.length}):\n${pebbles.map(t => `  • "${t.title}" [sortOrder: ${t.sortOrder}]${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` (due ${t.deadline.slice(0, 10)})` : ''} [id: ${t.id}]`).join('\n')}\n`;
-    }
-    if (unclassified.length > 0) {
-      text += `\nUnclassified (${unclassified.length}):\n${unclassified.map(t => `  • "${t.title}" [id: ${t.id}]`).join('\n')}\n`;
+    if (inbox.length > 0) {
+      text += `\nInbox (${inbox.length}):\n${inbox.map(t => `  • "${t.title}" [id: ${t.id}]`).join('\n')}\n`;
     }
     if (activeTasks.length === 0) {
       text += '\nNo active tasks.\n';
@@ -396,39 +423,125 @@ server.tool(
 );
 
 server.tool(
-  'create_project',
-  'Create a new project with a name and optional initial markdown content.',
+  'create_investment',
+  'Create a new investment with a name and optional initial markdown content.',
   {
-    name: z.string().describe('Project name'),
-    markdown: z.string().optional().describe('Initial markdown content. Defaults to "# {name}\\n\\n"'),
+    name: z.string().describe('Investment name'),
+    markdown: z.string().optional().describe('Initial markdown content'),
+    familyVisible: z.boolean().optional().describe('Whether tasks default to family-visible'),
   },
-  async ({ name, markdown }) => {
-    const project = await createProject({ name, markdown });
-    return { content: [{ type: 'text', text: `Created project: "${project.name}" [id: ${project.id}]` }] };
+  async ({ name, markdown, familyVisible }) => {
+    const investment = await createInvestment({ name, markdown, familyVisible });
+    return { content: [{ type: 'text', text: `Created investment: "${investment.name}" [id: ${investment.id}]` }] };
   }
 );
 
 server.tool(
-  'update_project',
-  'Update a project\'s markdown document, name, or status.',
+  'update_investment',
+  'Update an investment\'s markdown document, name, or status.',
   {
-    projectId: z.string().describe('Project ID'),
-    name: z.string().optional().describe('New project name'),
+    investmentId: z.string().describe('Investment ID'),
+    name: z.string().optional().describe('New name'),
     markdown: z.string().optional().describe('New markdown content (replaces entire document)'),
-    status: z.enum(['active', 'on_hold']).optional().describe('New status'),
+    status: z.enum(['active', 'on_hold', 'completed']).optional().describe('New status'),
+    familyVisible: z.boolean().optional().describe('Update family visibility default'),
   },
-  async ({ projectId, name, markdown, status }) => {
-    const updates: Record<string, string | undefined> = {};
+  async ({ investmentId, name, markdown, status, familyVisible }) => {
+    if (status !== undefined) {
+      const investment = await setInvestmentStatus(investmentId, status);
+      // Also apply other updates if any
+      const otherUpdates: Record<string, any> = {};
+      if (name !== undefined) otherUpdates.name = name;
+      if (markdown !== undefined) otherUpdates.markdown = markdown;
+      if (familyVisible !== undefined) otherUpdates.familyVisible = familyVisible;
+      if (Object.keys(otherUpdates).length > 0) {
+        const updated = await updateInvestment(investmentId, otherUpdates);
+        return { content: [{ type: 'text', text: `Updated investment: "${updated.name}" [${updated.status}]` }] };
+      }
+      return { content: [{ type: 'text', text: `Updated investment: "${investment.name}" [${investment.status}]` }] };
+    }
+
+    const updates: Record<string, any> = {};
     if (name !== undefined) updates.name = name;
     if (markdown !== undefined) updates.markdown = markdown;
-    if (status !== undefined) updates.status = status;
+    if (familyVisible !== undefined) updates.familyVisible = familyVisible;
 
     if (Object.keys(updates).length === 0) {
       return { content: [{ type: 'text', text: 'No updates provided.' }] };
     }
 
-    const project = await updateProject(projectId, updates);
-    return { content: [{ type: 'text', text: `Updated project: "${project.name}" [${project.status}]` }] };
+    const investment = await updateInvestment(investmentId, updates);
+    return { content: [{ type: 'text', text: `Updated investment: "${investment.name}" [${investment.status}]` }] };
+  }
+);
+
+// ─── Initiative Tools ────────────────────────────────────────
+
+server.tool(
+  'list_initiatives',
+  'List initiatives within an investment.',
+  {
+    investmentId: z.string().describe('Investment ID'),
+  },
+  async ({ investmentId }) => {
+    const initiatives = await listInitiatives(investmentId);
+    if (initiatives.length === 0) {
+      return { content: [{ type: 'text', text: 'No initiatives in this investment.' }] };
+    }
+
+    const text = initiatives.map((init, i) =>
+      `${i + 1}. ${init.name} [rank: ${init.rank}] [id: ${init.id}]`
+    ).join('\n');
+
+    return { content: [{ type: 'text', text: `${initiatives.length} initiative(s):\n\n${text}` }] };
+  }
+);
+
+server.tool(
+  'create_initiative',
+  'Create a new initiative within an investment. Initiatives are for multi-task efforts bigger than a single L-sized task.',
+  {
+    investmentId: z.string().describe('Parent investment ID'),
+    name: z.string().describe('Initiative name'),
+    markdown: z.string().optional().describe('Initial markdown content'),
+  },
+  async ({ investmentId, name, markdown }) => {
+    const initiative = await createInitiative({ investmentId, name, markdown });
+    return { content: [{ type: 'text', text: `Created initiative: "${initiative.name}" [id: ${initiative.id}]` }] };
+  }
+);
+
+server.tool(
+  'update_initiative',
+  'Update an initiative\'s name or markdown document.',
+  {
+    initiativeId: z.string().describe('Initiative ID'),
+    name: z.string().optional().describe('New name'),
+    markdown: z.string().optional().describe('New markdown content'),
+  },
+  async ({ initiativeId, name, markdown }) => {
+    const updates: Record<string, any> = {};
+    if (name !== undefined) updates.name = name;
+    if (markdown !== undefined) updates.markdown = markdown;
+
+    if (Object.keys(updates).length === 0) {
+      return { content: [{ type: 'text', text: 'No updates provided.' }] };
+    }
+
+    const initiative = await updateInitiative(initiativeId, updates);
+    return { content: [{ type: 'text', text: `Updated initiative: "${initiative.name}"` }] };
+  }
+);
+
+server.tool(
+  'delete_initiative',
+  'Delete an initiative. Tasks linked to it are unlinked (moved back to the parent investment), not deleted.',
+  {
+    initiativeId: z.string().describe('Initiative ID to delete'),
+  },
+  async ({ initiativeId }) => {
+    await deleteInitiative(initiativeId);
+    return { content: [{ type: 'text', text: 'Initiative deleted. Linked tasks have been unlinked.' }] };
   }
 );
 
@@ -436,77 +549,43 @@ server.tool(
 
 server.tool(
   'get_today',
-  'Get a snapshot of today: active boulders and rocks to choose from, top pebbles, and inbox count. Use this to help with daily planning.',
+  'Get a snapshot of today: vital tasks to schedule, top other tasks for gaps, and inbox count. Tasks grouped by investment.',
   {},
   async () => {
-    const [boulders, rocks, pebbles, inbox] = await Promise.all([
-      listTasks({ classification: 'boulder', status: 'active' }),
-      listTasks({ classification: 'rock', status: 'active' }),
-      listTasks({ classification: 'pebble', status: 'active' }),
-      listTasks({ classification: 'unclassified', status: 'active' }),
+    const [allActive, investments] = await Promise.all([
+      listTasks({ status: 'active' }),
+      listInvestments({ status: 'active' }),
     ]);
+
+    const investmentById = new Map(investments.map(inv => [inv.id, inv]));
+
+    const inbox = allActive.filter(t => t.size == null);
+    const vital = allActive.filter(t => t.vital && t.size != null);
+    const other = allActive.filter(t => !t.vital && t.size != null);
 
     let text = '# Today\n\n';
 
-    // Inbox
     if (inbox.length > 0) {
       text += `⚠️ ${inbox.length} task(s) in inbox awaiting triage.\n\n`;
     }
 
-    // Boulders
-    text += `## Boulder Candidates (${boulders.length})\n`;
-    if (boulders.length === 0) {
-      text += 'No active boulders. Consider decomposing a project into boulders.\n';
+    // Vital tasks grouped by investment
+    text += `## Vital Tasks (${vital.length})\n`;
+    if (vital.length === 0) {
+      text += 'No vital tasks. Consider reviewing your investments.\n';
     } else {
-      for (const t of boulders) {
-        let line = `• "${t.title}" [sortOrder: ${t.sortOrder}]`;
-        if (t.priority !== 'low') line += ` [${t.priority}]`;
-        if (t.deadline) line += ` (due ${t.deadline.slice(0, 10)})`;
-        if (t.projectId) {
-          try {
-            const p = await getProject(t.projectId);
-            line += ` — ${p.name}`;
-          } catch { /* ignore */ }
-        } else {
-          line += ' — standalone';
-        }
-        line += ` [id: ${t.id}]`;
-        text += line + '\n';
-      }
+      text += formatGroupedByInvestment(vital, investments, investmentById);
     }
 
-    text += `\n## Rocks (${rocks.length})\n`;
-    if (rocks.length === 0) {
-      text += 'No active rocks.\n';
+    // Top other tasks
+    text += `\n## Other Tasks — Top 10 (${other.length} total)\n`;
+    if (other.length === 0) {
+      text += 'No other tasks.\n';
     } else {
-      for (const t of rocks) {
-        let line = `• "${t.title}" [sortOrder: ${t.sortOrder}]`;
-        if (t.priority !== 'low') line += ` [${t.priority}]`;
-        if (t.deadline) line += ` (due ${t.deadline.slice(0, 10)})`;
-        if (t.projectId) {
-          try {
-            const p = await getProject(t.projectId);
-            line += ` — ${p.name}`;
-          } catch { /* ignore */ }
-        } else {
-          line += ' — standalone';
-        }
-        line += ` [id: ${t.id}]`;
-        text += line + '\n';
-      }
-    }
-
-    // Top pebbles
-    text += `\n## Top Pebbles\n`;
-    const topPebbles = pebbles.slice(0, 10);
-    if (topPebbles.length === 0) {
-      text += 'No active pebbles.\n';
-    } else {
-      topPebbles.forEach((t, i) => {
-        text += `${i + 1}. "${t.title}" [sortOrder: ${t.sortOrder}]${t.priority !== 'low' ? ` [${t.priority}]` : ''}${t.deadline ? ` ⚑ ${t.deadline.slice(0, 10)}` : ''} [id: ${t.id}]\n`;
-      });
-      if (pebbles.length > 10) {
-        text += `\n...and ${pebbles.length - 10} more pebbles.\n`;
+      const top = other.slice(0, 10);
+      text += formatGroupedByInvestment(top, investments, investmentById);
+      if (other.length > 10) {
+        text += `\n...and ${other.length - 10} more.\n`;
       }
     }
 
@@ -515,33 +594,44 @@ server.tool(
 );
 
 server.tool(
-  'suggest_tasks_for_project',
-  'Get a project\'s full context (markdown + all tasks) formatted for you to suggest next boulders, rocks, and pebbles. After reviewing, use add_task to create the tasks the user approves.',
+  'suggest_tasks_for_investment',
+  'Get an investment\'s full context (markdown + initiatives + all tasks) formatted for you to suggest next tasks. After reviewing, use add_task to create the tasks the user approves.',
   {
-    projectId: z.string().describe('Project ID'),
+    investmentId: z.string().describe('Investment ID'),
   },
-  async ({ projectId }) => {
-    const project = await getProject(projectId);
-    const activeTasks = await listTasks({ projectId, status: 'active' });
-    const completedTasks = await listTasks({ projectId, status: 'completed' });
-    const iceboxedTasks = await listTasks({ projectId, status: 'iceboxed' });
+  async ({ investmentId }) => {
+    const investment = await getInvestment(investmentId);
+    const initiatives = await listInitiatives(investmentId);
+    const activeTasks = await listTasks({ investmentId, status: 'active' });
+    const completedTasks = await listTasks({ investmentId, status: 'completed' });
+    const iceboxedTasks = await listTasks({ investmentId, status: 'iceboxed' });
 
-    let text = `# Project: ${project.name}\n`;
-    text += `Status: ${project.status}\n\n`;
-    text += `## Document\n\n${project.markdown}\n\n`;
+    let text = `# Investment: ${investment.name}\n`;
+    text += `Status: ${investment.status}\n\n`;
+    text += `## Document\n\n${investment.markdown}\n\n`;
 
-    text += `## Current State\n\n`;
+    if (initiatives.length > 0) {
+      text += `## Initiatives\n`;
+      for (const init of initiatives) {
+        text += `\n### ${init.name} [id: ${init.id}]\n`;
+        if (init.markdown) text += `${init.markdown}\n`;
+      }
+    }
 
-    const boulders = activeTasks.filter(t => t.classification === 'boulder');
-    const rocks = activeTasks.filter(t => t.classification === 'rock');
-    const pebbles = activeTasks.filter(t => t.classification === 'pebble');
+    text += `\n## Current State\n\n`;
 
-    text += `Active boulders (${boulders.length}):\n`;
-    boulders.forEach(t => { text += `  • "${t.title}" [sortOrder: ${t.sortOrder}] [id: ${t.id}]\n`; });
-    text += `\nActive rocks (${rocks.length}):\n`;
-    rocks.forEach(t => { text += `  • "${t.title}" [sortOrder: ${t.sortOrder}] [id: ${t.id}]\n`; });
-    text += `\nActive pebbles (${pebbles.length}):\n`;
-    pebbles.forEach(t => { text += `  • "${t.title}" [sortOrder: ${t.sortOrder}] [id: ${t.id}]\n`; });
+    const vital = activeTasks.filter(t => t.vital);
+    const otherSized = activeTasks.filter(t => !t.vital && t.size != null);
+    const unsized = activeTasks.filter(t => t.size == null);
+
+    text += `Active vital (${vital.length}):\n`;
+    vital.forEach(t => { text += `  • "${t.title}" [${t.size}]${t.initiativeId ? ` [initiative: ${t.initiativeId}]` : ''} [id: ${t.id}]\n`; });
+    text += `\nActive other (${otherSized.length}):\n`;
+    otherSized.forEach(t => { text += `  • "${t.title}" [${t.size}]${t.initiativeId ? ` [initiative: ${t.initiativeId}]` : ''} [id: ${t.id}]\n`; });
+    if (unsized.length > 0) {
+      text += `\nUntriaged (${unsized.length}):\n`;
+      unsized.forEach(t => { text += `  • "${t.title}" [id: ${t.id}]\n`; });
+    }
 
     if (completedTasks.length > 0) {
       text += `\nCompleted (${completedTasks.length}):\n`;
@@ -552,11 +642,57 @@ server.tool(
       iceboxedTasks.forEach(t => { text += `  ❄ "${t.title}"\n`; });
     }
 
-    text += `\n---\n\nBased on the project document and task history above, suggest next boulders (deep work blocks), rocks (medium-sized tasks), and pebbles (small tasks) that would move this project forward. Present them for the user to approve, then use add_task to create the approved ones.`;
+    text += `\n---\n\nBased on the investment document, initiatives, and task history above, suggest next tasks with sizes (S/M/L) and whether each is vital. If the work is substantial enough for a new initiative, suggest that too. Present for the user to approve, then use add_task (or create_initiative + add_task) to create the approved ones.`;
 
     return { content: [{ type: 'text', text }] };
   }
 );
+
+// ─── Helpers ─────────────────────────────────────────────────
+
+function formatTaskList(tasks: { title: string; id: string; size: string | null; vital: boolean; deadline: string | null; sortOrder: number }[]): string {
+  return tasks.map(t => {
+    let line = `  • "${t.title}" [${t.size || '?'}]`;
+    if (t.vital) line += ' [vital]';
+    if (t.deadline) line += ` (due ${t.deadline.slice(0, 10)})`;
+    line += ` [id: ${t.id}]`;
+    return line;
+  }).join('\n') + '\n';
+}
+
+function formatGroupedByInvestment(
+  tasks: { title: string; id: string; size: string | null; vital: boolean; deadline: string | null; sortOrder: number; investmentId: string | null }[],
+  investments: { id: string; name: string }[],
+  investmentById: Map<string, { name: string }>,
+): string {
+  const orphan = tasks.filter(t => !t.investmentId);
+  const byInvestment = new Map<string, typeof tasks>();
+  for (const t of tasks.filter(t => t.investmentId)) {
+    const iid = t.investmentId!;
+    if (!byInvestment.has(iid)) byInvestment.set(iid, []);
+    byInvestment.get(iid)!.push(t);
+  }
+
+  let text = '';
+
+  for (const inv of investments) {
+    const invTasks = byInvestment.get(inv.id);
+    if (!invTasks) continue;
+    text += `\n${inv.name}:\n${formatTaskList(invTasks)}`;
+    byInvestment.delete(inv.id);
+  }
+
+  for (const [iid, invTasks] of byInvestment) {
+    const name = investmentById.get(iid)?.name || `Unknown (${iid})`;
+    text += `\n${name}:\n${formatTaskList(invTasks)}`;
+  }
+
+  if (orphan.length > 0) {
+    text += `\nOrphan:\n${formatTaskList(orphan)}`;
+  }
+
+  return text;
+}
 
 // ─── Start Server ─────────────────────────────────────────────
 

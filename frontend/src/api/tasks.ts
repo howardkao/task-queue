@@ -16,7 +16,7 @@ import {
 } from 'firebase/firestore';
 import { calculateNextOccurrence, ORDERED_CLASSIFICATIONS, sortTasksForList } from '@task-queue/shared';
 import { auth, db } from '../firebase';
-import type { Task, Classification, RecurrenceRule, FirestoreTimestampLike } from '../types';
+import type { Task, Classification, TaskSize, RecurrenceRule, FirestoreTimestampLike } from '../types';
 import { addLogEntry } from './activityLog';
 import { firestoreTimeToMs } from '../lib/firestoreTime';
 import { ensureUserHousehold } from './household';
@@ -55,11 +55,21 @@ function toTask(id: string, data: DocumentData): Task {
       : {};
   const sortOrderFamily = typeof data.sortOrderFamily === 'number' ? data.sortOrderFamily : sortBase;
 
+  // v2 fields — derive from old fields if not yet migrated
+  const classification = data.classification || 'unclassified';
+  const CLASSIFICATION_TO_SIZE: Record<string, TaskSize | null> = {
+    boulder: 'L', rock: 'M', pebble: 'S', unclassified: null,
+  };
+  const vital: boolean = data.vital === true || data.priority === 'high';
+  const size: TaskSize | null = data.size !== undefined ? data.size : (CLASSIFICATION_TO_SIZE[classification] ?? null);
+  const investmentId: string | null = data.investmentId !== undefined ? (data.investmentId || null) : (data.projectId || null);
+  const initiativeId: string | null = data.initiativeId || null;
+
   return {
     id,
     title: data.title || '',
     notes: data.notes || '',
-    classification: data.classification || 'unclassified',
+    classification,
     status: data.status || 'active',
     priority: data.priority || 'low',
     deadline: data.deadline ? (data.deadline.toDate ? data.deadline.toDate().toISOString() : data.deadline) : null,
@@ -78,6 +88,10 @@ function toTask(id: string, data: DocumentData): Task {
     assigneeUids,
     excludeFromFamily: data.excludeFromFamily === true,
     familyPinned: data.familyPinned === true,
+    vital,
+    size,
+    investmentId,
+    initiativeId,
   };
 }
 
@@ -93,12 +107,19 @@ export async function createTask(data: {
   assigneeUids?: string[];
   excludeFromFamily?: boolean;
   familyPinned?: boolean;
+  // v2 fields
+  vital?: boolean;
+  size?: TaskSize | null;
+  investmentId?: string | null;
+  initiativeId?: string | null;
 }): Promise<Task> {
   const user = requireUser();
   await ensureUserHousehold(user.uid);
   const householdId = (await getDoc(doc(db, 'users', user.uid))).data()?.householdId as string;
 
-  const classification = data.classification || 'unclassified';
+  // Derive v1 classification from v2 size for backward compat
+  const SIZE_TO_CLASSIFICATION: Record<string, Classification> = { L: 'boulder', M: 'rock', S: 'pebble' };
+  const classification = data.classification || (data.size ? SIZE_TO_CLASSIFICATION[data.size] : 'unclassified');
   const sortOrder = await getTopSortOrder(classification, user.uid, householdId);
   const sortOrderFamily = await getTopSortOrderFamily(classification, householdId);
 
@@ -108,15 +129,33 @@ export async function createTask(data: {
     throw new Error('You must be among assignees');
   }
 
+  // Derive v2 fields from v1 if not provided
+  const vital = data.vital ?? (data.priority === 'high');
+  const classificationToSize: Partial<Record<Classification, 'L' | 'M' | 'S'>> = {
+    boulder: 'L',
+    rock: 'M',
+    pebble: 'S',
+  };
+  const size = data.size !== undefined ? data.size : (data.classification ? (classificationToSize[data.classification] ?? null) : null);
+  const investmentId = data.investmentId !== undefined ? (data.investmentId || null) : (data.projectId || null);
+  const initiativeId = data.initiativeId || null;
+
   const taskData: Record<string, unknown> = {
     title: data.title.trim(),
     notes: data.notes || '',
+    // v1 fields (backward compat)
     classification,
     status: 'active',
-    priority: data.priority || 'low',
+    priority: vital ? 'high' : (data.priority || 'low'),
+    projectId: investmentId,
+    // v2 fields
+    vital,
+    size,
+    investmentId,
+    initiativeId,
+    // shared
     deadline: data.deadline ? Timestamp.fromDate(new Date(data.deadline)) : null,
     recurrence: data.recurrence || null,
-    projectId: data.projectId || null,
     lastOccurrenceCompletedAt: data.lastOccurrenceCompletedAt || null,
     ownerUid: user.uid,
     householdId,
@@ -133,11 +172,11 @@ export async function createTask(data: {
   const docRef = await addDoc(tasksRef, taskData);
   const task = toTask(docRef.id, { ...taskData, createdAt: Timestamp.now(), updatedAt: Timestamp.now() });
 
-  if (task.projectId) {
+  if (task.investmentId) {
     addLogEntry({
-      projectId: task.projectId,
+      projectId: task.investmentId,
       action: 'task_created',
-      description: `Created ${task.classification}: "${task.title}"`,
+      description: `Created task: "${task.title}"`,
       taskId: task.id,
     }).catch(() => {});
   }
@@ -228,6 +267,26 @@ export async function updateTask(id: string, data: Partial<Task>): Promise<Task>
     updates.sortOrderByAssignee = data.sortOrderByAssignee;
   }
 
+  // v2 fields
+  if (data.vital !== undefined) {
+    updates.vital = data.vital;
+    // Keep v1 priority in sync
+    updates.priority = data.vital ? 'high' : 'low';
+  }
+  if (data.size !== undefined) {
+    updates.size = data.size;
+    // Keep v1 classification in sync
+    const SIZE_TO_CLASSIFICATION: Record<string, string> = { L: 'boulder', M: 'rock', S: 'pebble' };
+    if (data.size && SIZE_TO_CLASSIFICATION[data.size]) {
+      updates.classification = SIZE_TO_CLASSIFICATION[data.size];
+    }
+  }
+  if (data.investmentId !== undefined) {
+    updates.investmentId = data.investmentId;
+    updates.projectId = data.investmentId; // Keep v1 in sync
+  }
+  if (data.initiativeId !== undefined) updates.initiativeId = data.initiativeId;
+
   await updateDoc(doc(tasksRef, id), updates as any);
   return getTask(id);
 }
@@ -242,11 +301,12 @@ export async function completeTask(id: string): Promise<{ completed: Task; nextO
     updatedAt: serverTimestamp(),
   });
 
-  if (task.projectId) {
+  const logProjectId = task.investmentId || task.projectId;
+  if (logProjectId) {
     addLogEntry({
-      projectId: task.projectId,
+      projectId: logProjectId,
       action: 'task_completed',
-      description: `Completed ${task.classification}: "${task.title}"`,
+      description: `Completed task: "${task.title}"`,
       taskId: task.id,
     }).catch(() => {});
   }
@@ -266,6 +326,10 @@ export async function completeTask(id: string): Promise<{ completed: Task; nextO
       assigneeUids: task.assigneeUids,
       excludeFromFamily: task.excludeFromFamily,
       familyPinned: task.familyPinned,
+      vital: task.vital,
+      size: task.size,
+      investmentId: task.investmentId,
+      initiativeId: task.initiativeId,
     });
   }
 
@@ -277,11 +341,12 @@ export async function iceboxTask(id: string): Promise<Task> {
   const task = await getTask(id);
   const result = await updateTask(id, { status: 'iceboxed' } as Partial<Task>);
 
-  if (task.projectId) {
+  const logProjectId = task.investmentId || task.projectId;
+  if (logProjectId) {
     addLogEntry({
-      projectId: task.projectId,
+      projectId: logProjectId,
       action: 'task_iceboxed',
-      description: `Iceboxed ${task.classification}: "${task.title}"`,
+      description: `Iceboxed task: "${task.title}"`,
       taskId: task.id,
     }).catch(() => {});
   }
@@ -294,11 +359,11 @@ export async function deleteTask(id: string): Promise<void> {
   await deleteDoc(doc(tasksRef, id));
 }
 
-export type PebbleReorderContext = 'me' | 'family';
+export type TaskReorderContext = 'me' | 'family';
 
-export async function reorderPebbles(
+export async function reorderTasks(
   order: Array<{ id: string; sortOrder: number }>,
-  context: PebbleReorderContext = 'me',
+  context: TaskReorderContext = 'me',
 ): Promise<void> {
   const user = requireUser();
   const batch = writeBatch(db);

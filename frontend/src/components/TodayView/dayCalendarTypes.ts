@@ -12,10 +12,10 @@ export interface CalEvent {
   title: string;
   startHour: number;
   duration: number;
-  type: 'meeting' | 'personal' | 'boulder' | 'rock' | 'pebble';
+  type: 'meeting' | 'personal' | 'vital' | 'task';
   allDay?: boolean;
   busy?: boolean;
-  projectName?: string;
+  investmentName?: string;
   color?: string;
   description?: string;
   location?: string;

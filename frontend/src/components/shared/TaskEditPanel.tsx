@@ -1,16 +1,17 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Trash2, Check, Snowflake, Calendar, Clock, Plus, Repeat, FileText, FolderOpen } from 'lucide-react';
+import { X, Trash2, Check, Snowflake, Calendar, Clock, Plus, Repeat, FileText } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { Task, RecurrenceRule, Classification, Priority } from '../../types';
+import type { Task, RecurrenceRule, Classification, Priority, TaskSize } from '../../types';
 import { useUpdateTask, useDeleteTask } from '../../hooks/useTasks';
-import { useProjects, useCreateProject } from '../../hooks/useProjects';
-import { ProjectPicker } from './ProjectPicker';
+import { useInvestments } from '../../hooks/useInvestments';
+import { useInitiatives } from '../../hooks/useInitiatives';
 import { TaskRecurrenceSection } from './TaskRecurrenceSection';
 import {
   buildEditableState,
   dayOfWeekFromDate,
+  normalizeRecurrence,
   parseDeadline,
-  PRIORITY_CLASSES,
+  recurrenceEquals,
   recurrenceToMode,
   type EditableTaskState,
   type RecurrenceMode,
@@ -26,8 +27,8 @@ interface TaskEditPanelProps {
 export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditPanelProps) {
   const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
-  const { data: projects = [] } = useProjects();
-  const createProject = useCreateProject();
+  const { data: investments = [] } = useInvestments('active');
+  const normalizedRecurrence = normalizeRecurrence(task.recurrence);
 
   const initialDeadline = parseDeadline(task.deadline);
   const [title, setTitle] = useState(task.title);
@@ -40,30 +41,36 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   const [showTime, setShowTime] = useState(!!initialDeadline.time);
 
   const [showNotes, setShowNotes] = useState(!!task.notes);
-  const [showProject, setShowProject] = useState(!!task.projectId);
   const [showDeadline, setShowDeadline] = useState(!!task.deadline);
-  const [showRecurrence, setShowRecurrence] = useState(!!task.recurrence);
+  const [showRecurrence, setShowRecurrence] = useState(!!normalizedRecurrence);
   const [excludeFromFamily, setExcludeFromFamily] = useState(task.excludeFromFamily);
   const [familyPinned, setFamilyPinned] = useState(task.familyPinned);
 
-  const [recMode, setRecMode] = useState<RecurrenceMode>(recurrenceToMode(task.recurrence));
+  // v2 fields
+  const [vital, setVital] = useState(task.vital);
+  const [size, setSize] = useState<TaskSize | null>(task.size);
+  const [investmentId, setInvestmentId] = useState<string | null>(task.investmentId);
+  const [initiativeId, setInitiativeId] = useState<string | null>(task.initiativeId);
+  const { data: initiatives = [] } = useInitiatives(investmentId ?? undefined);
+
+  const [recMode, setRecMode] = useState<RecurrenceMode>(recurrenceToMode(normalizedRecurrence));
   const [weeklyDays, setWeeklyDays] = useState<string[]>(
-    task.recurrence?.freq === 'weekly' && task.recurrence.days ? task.recurrence.days : [],
+    normalizedRecurrence?.freq === 'weekly' && normalizedRecurrence.days ? normalizedRecurrence.days : [],
   );
   const [periodicallyValue, setPeriodicallyValue] = useState(
-    task.recurrence?.freq === 'periodically' ? task.recurrence.interval || 7 : 7,
+    normalizedRecurrence?.freq === 'periodically' ? normalizedRecurrence.interval || 1 : 7,
   );
   const [periodicallyUnit, setPeriodicallyUnit] = useState<'hours' | 'days' | 'weeks'>(
-    task.recurrence?.freq === 'periodically' ? task.recurrence.periodUnit || 'days' : 'days',
+    normalizedRecurrence?.freq === 'periodically' ? normalizedRecurrence.periodUnit || 'days' : 'days',
   );
   const [customUnit, setCustomUnit] = useState<'weekly' | 'monthly'>(
-    task.recurrence?.freq === 'custom' ? task.recurrence.customUnit || 'weekly' : 'weekly',
+    normalizedRecurrence?.freq === 'custom' ? normalizedRecurrence.customUnit || 'weekly' : 'weekly',
   );
   const [customInterval, setCustomInterval] = useState(
-    task.recurrence?.freq === 'custom' ? task.recurrence.interval || 2 : 2,
+    normalizedRecurrence?.freq === 'custom' ? normalizedRecurrence.interval || 1 : 2,
   );
   const [customDays, setCustomDays] = useState<string[]>(
-    task.recurrence?.freq === 'custom' && task.recurrence.days ? task.recurrence.days : [],
+    normalizedRecurrence?.freq === 'custom' && normalizedRecurrence.days ? normalizedRecurrence.days : [],
   );
   const [confirmingDelete, setConfirmingDelete] = useState(false);
   const [saveState, setSaveState] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -126,6 +133,10 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
       recurrence: buildRecurrence(),
       excludeFromFamily,
       familyPinned,
+      vital,
+      size,
+      investmentId,
+      initiativeId,
     };
   }, [
     title,
@@ -139,6 +150,10 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     buildRecurrence,
     excludeFromFamily,
     familyPinned,
+    vital,
+    size,
+    investmentId,
+    initiativeId,
   ]);
 
   const buildUpdateData = useCallback((current: EditableTaskState): Partial<Task> => {
@@ -150,9 +165,14 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     if (current.priority !== saved.priority) data.priority = current.priority;
     if (current.projectId !== saved.projectId) data.projectId = current.projectId;
     if (current.deadline !== saved.deadline) data.deadline = current.deadline;
-    if (JSON.stringify(current.recurrence) !== JSON.stringify(saved.recurrence)) data.recurrence = current.recurrence;
+    if (!recurrenceEquals(current.recurrence, saved.recurrence)) data.recurrence = current.recurrence;
     if (current.excludeFromFamily !== saved.excludeFromFamily) data.excludeFromFamily = current.excludeFromFamily;
     if (current.familyPinned !== saved.familyPinned) data.familyPinned = current.familyPinned;
+    // v2 fields
+    if (current.vital !== saved.vital) data.vital = current.vital;
+    if (current.size !== saved.size) data.size = current.size;
+    if (current.investmentId !== saved.investmentId) data.investmentId = current.investmentId;
+    if (current.initiativeId !== saved.initiativeId) data.initiativeId = current.initiativeId;
     return data;
   }, []);
 
@@ -193,6 +213,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
       autosaveTimeoutRef.current = null;
     }
     const initialDeadline = parseDeadline(task.deadline);
+    const normalizedRecurrence = normalizeRecurrence(task.recurrence);
     savedStateRef.current = buildEditableState(task);
     setSaveState('idle');
     setTitle(task.title);
@@ -204,29 +225,32 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     setDeadlineTime(initialDeadline.time);
     setShowTime(!!initialDeadline.time);
     setShowNotes(!!task.notes);
-    setShowProject(!!task.projectId);
     setShowDeadline(!!task.deadline);
-    setShowRecurrence(!!task.recurrence);
+    setShowRecurrence(!!normalizedRecurrence);
     setExcludeFromFamily(task.excludeFromFamily);
     setFamilyPinned(task.familyPinned);
-    setRecMode(recurrenceToMode(task.recurrence));
+    setVital(task.vital);
+    setSize(task.size);
+    setInvestmentId(task.investmentId);
+    setInitiativeId(task.initiativeId);
+    setRecMode(recurrenceToMode(normalizedRecurrence));
     setWeeklyDays(
-      task.recurrence?.freq === 'weekly' && task.recurrence.days ? task.recurrence.days : [],
+      normalizedRecurrence?.freq === 'weekly' && normalizedRecurrence.days ? normalizedRecurrence.days : [],
     );
     setPeriodicallyValue(
-      task.recurrence?.freq === 'periodically' ? task.recurrence.interval || 7 : 7,
+      normalizedRecurrence?.freq === 'periodically' ? normalizedRecurrence.interval || 1 : 7,
     );
     setPeriodicallyUnit(
-      task.recurrence?.freq === 'periodically' ? task.recurrence.periodUnit || 'days' : 'days',
+      normalizedRecurrence?.freq === 'periodically' ? normalizedRecurrence.periodUnit || 'days' : 'days',
     );
     setCustomUnit(
-      task.recurrence?.freq === 'custom' ? task.recurrence.customUnit || 'weekly' : 'weekly',
+      normalizedRecurrence?.freq === 'custom' ? normalizedRecurrence.customUnit || 'weekly' : 'weekly',
     );
     setCustomInterval(
-      task.recurrence?.freq === 'custom' ? task.recurrence.interval || 2 : 2,
+      normalizedRecurrence?.freq === 'custom' ? normalizedRecurrence.interval || 1 : 2,
     );
     setCustomDays(
-      task.recurrence?.freq === 'custom' && task.recurrence.days ? task.recurrence.days : [],
+      normalizedRecurrence?.freq === 'custom' && normalizedRecurrence.days ? normalizedRecurrence.days : [],
     );
   }, [task]);
 
@@ -309,7 +333,6 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
         setNotes('');
         break;
       case 'project':
-        setShowProject(false);
         setProjectId('');
         break;
       case 'deadline':
@@ -328,7 +351,6 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
 
   const addLinks: { label: string; icon: React.ReactNode; action: () => void }[] = [];
   if (!showNotes) addLinks.push({ label: 'Notes', icon: <FileText className="w-3 h-3" />, action: () => setShowNotes(true) });
-  if (!showProject) addLinks.push({ label: 'Project', icon: <FolderOpen className="w-3 h-3" />, action: () => setShowProject(true) });
   if (!showDeadline) {
     addLinks.push({
       label: 'Deadline',
@@ -402,52 +424,27 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
         </div>
       )}
 
-      {showProject && (
-        <div className="mb-4">
-          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Project
-          </label>
-          <div className="flex items-center gap-2">
-            <ProjectPicker
-              projects={projects}
-              value={projectId}
-              onChange={setProjectId}
-              onCreateProject={(name) => createProject.mutateAsync({ name })}
-            />
-            <button
-              type="button"
-              onClick={() => removeField('project')}
-              className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
-              title="Remove project"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      <div className="mb-4 space-y-2">
-        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
-          Family
+      <div className="mb-4">
+        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+          Family visibility
         </label>
-        <label className="flex items-center gap-2 text-[13px] text-foreground cursor-pointer">
-          <input
-            type="checkbox"
-            checked={familyPinned}
-            onChange={(e) => setFamilyPinned(e.target.checked)}
-            className="rounded border-input"
-          />
-          Show on Family (without a family-scoped project)
-        </label>
-        <label className="flex items-center gap-2 text-[13px] text-foreground cursor-pointer">
-          <input
-            type="checkbox"
-            checked={excludeFromFamily}
-            onChange={(e) => setExcludeFromFamily(e.target.checked)}
-            className="rounded border-input"
-          />
-          Exclude from Family (even if project is family-visible)
-        </label>
+        <select
+          value={excludeFromFamily ? 'never' : familyPinned ? 'always' : 'auto'}
+          onChange={(e) => {
+            const v = e.target.value;
+            setFamilyPinned(v === 'always');
+            setExcludeFromFamily(v === 'never');
+          }}
+          className={cn(
+            'w-full h-8 px-3 text-[13px] rounded-md',
+            'bg-card border border-input text-foreground',
+            'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+          )}
+        >
+          <option value="auto">Auto (follows investment)</option>
+          <option value="always">Always show on Family</option>
+          <option value="never">Never show on Family</option>
+        </select>
       </div>
 
       {showDeadline && (
@@ -562,24 +559,35 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
       )}
 
       <div className="mb-4">
-        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-          Priority
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input
+            type="checkbox"
+            checked={vital}
+            onChange={(e) => setVital(e.target.checked)}
+            className="rounded border-input"
+          />
+          <span className="text-[13px] font-medium text-foreground">Vital</span>
         </label>
-        <div className="flex flex-wrap gap-1.5">
-          {(['high', 'med', 'low'] as const).map((p) => {
-            const active = priority === p;
-            const classes = PRIORITY_CLASSES[p];
+      </div>
+
+      <div className="mb-4">
+        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+          Size
+        </label>
+        <div className="flex rounded-full border border-border bg-card p-0.5 w-fit">
+          {([['S', 'Small'], ['M', 'Medium'], ['L', 'Large']] as const).map(([s, label]) => {
+            const active = size === s;
             return (
               <button
-                key={p}
+                key={s}
                 type="button"
-                onClick={() => setPriority(p)}
+                onClick={() => setSize(active ? null : (s as TaskSize))}
                 className={cn(
-                  'px-3 py-1 text-[12px] font-medium rounded-full border transition-all duration-150',
-                  active ? classes.active : classes.inactive,
+                  'px-4 py-1.5 text-[13px] font-medium rounded-full transition-all duration-200',
+                  active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
                 )}
               >
-                {p.charAt(0).toUpperCase() + p.slice(1)}
+                {label}
               </button>
             );
           })}
@@ -588,27 +596,49 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
 
       <div className="mb-4">
         <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-          Classification
+          Investment
         </label>
-        <div className="flex rounded-full border border-border bg-card p-0.5 w-fit">
-          {(['boulder', 'rock', 'pebble'] as const).map((type) => {
-            const active = classification === type;
-            return (
-              <button
-                key={type}
-                type="button"
-                onClick={() => setClassification(type)}
-                className={cn(
-                  'px-4 py-1.5 text-[13px] font-medium rounded-full transition-all duration-200',
-                  active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {type.charAt(0).toUpperCase() + type.slice(1)}
-              </button>
-            );
-          })}
-        </div>
+        <select
+          value={investmentId || ''}
+          onChange={(e) => {
+            const val = e.target.value || null;
+            setInvestmentId(val);
+            setInitiativeId(null);
+          }}
+          className={cn(
+            'w-full h-8 px-3 text-[13px] rounded-md',
+            'bg-card border border-input text-foreground',
+            'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+          )}
+        >
+          <option value="">No investment</option>
+          {investments.map(inv => (
+            <option key={inv.id} value={inv.id}>{inv.name}</option>
+          ))}
+        </select>
       </div>
+
+      {investmentId && initiatives.length > 0 && (
+        <div className="mb-4">
+          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
+            Initiative
+          </label>
+          <select
+            value={initiativeId || ''}
+            onChange={(e) => setInitiativeId(e.target.value || null)}
+            className={cn(
+              'w-full h-8 px-3 text-[13px] rounded-md',
+              'bg-card border border-input text-foreground',
+              'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+            )}
+          >
+            <option value="">No initiative</option>
+            {initiatives.map(init => (
+              <option key={init.id} value={init.id}>{init.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 pt-3 border-t border-border">
         {!confirmingDelete ? (

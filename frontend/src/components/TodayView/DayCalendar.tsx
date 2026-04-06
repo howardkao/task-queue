@@ -43,11 +43,11 @@ interface DayCalendarProps {
   computeAllDayDragDateKey?: (clientX: number, prevDateKey: string) => string;
   onPlacedTaskDragPreviewChange?: (preview: PlacedTaskDragPreview | null) => void;
   activePlacedDragTaskId?: string | null;
-  onBoulderDrop?: (boulderId: string, startHour: number, dateKey: string) => void;
-  onBoulderMove?: (boulderId: string, startHour: number, dateKey: string) => void;
-  onBoulderAllDayMove?: (boulderId: string, dateKey: string) => void;
-  onBoulderResize?: (boulderId: string, duration: number) => void;
-  onBoulderRemove?: (boulderId: string) => void;
+  onTaskDrop?: (taskId: string, startHour: number, dateKey: string) => void;
+  onTaskMove?: (taskId: string, startHour: number, dateKey: string) => void;
+  onTaskAllDayMove?: (taskId: string, dateKey: string) => void;
+  onTaskResize?: (taskId: string, duration: number) => void;
+  onTaskRemove?: (taskId: string) => void;
 }
 
 export function DayCalendar({
@@ -59,7 +59,7 @@ export function DayCalendar({
   computeAllDayDragDateKey,
   onPlacedTaskDragPreviewChange,
   activePlacedDragTaskId = null,
-  onBoulderDrop, onBoulderMove, onBoulderAllDayMove, onBoulderResize, onBoulderRemove,
+  onTaskDrop, onTaskMove, onTaskAllDayMove, onTaskResize, onTaskRemove,
 }: DayCalendarProps) {
   const gridRef = useRef<HTMLDivElement | null>(null);
   const [dragOverHour, setDragOverHour] = useState<number | null>(null);
@@ -72,8 +72,8 @@ export function DayCalendar({
     computeAllDayDragDateKey,
     onPlacedTaskInList,
     onPlacedTaskDragPreviewChange,
-    onBoulderMove,
-    onBoulderAllDayMove,
+    onTaskMove,
+    onTaskAllDayMove,
   });
   propsRef.current = {
     dateKey,
@@ -81,8 +81,8 @@ export function DayCalendar({
     computeAllDayDragDateKey,
     onPlacedTaskInList,
     onPlacedTaskDragPreviewChange,
-    onBoulderMove,
-    onBoulderAllDayMove,
+    onTaskMove,
+    onTaskAllDayMove,
   };
 
   useEffect(() => {
@@ -120,7 +120,7 @@ export function DayCalendar({
   }, [startHour, endHour]);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
-    if (!e.dataTransfer.types.includes('boulder-id')) return;
+    if (!e.dataTransfer.types.includes('task-id')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
     setDragOverHour(yToHour(e.clientY));
@@ -133,11 +133,11 @@ export function DayCalendar({
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragOverHour(null);
-    const boulderId = e.dataTransfer.getData('boulder-id');
-    if (!boulderId || !onBoulderDrop) return;
+    const taskId = e.dataTransfer.getData('task-id');
+    if (!taskId || !onTaskDrop) return;
     const hour = yToHour(e.clientY);
-    onBoulderDrop(boulderId, hour, dateKey);
-  }, [yToHour, onBoulderDrop, dateKey]);
+    onTaskDrop(taskId, hour, dateKey);
+  }, [yToHour, onTaskDrop, dateKey]);
 
   const setGridEl = useCallback((el: HTMLDivElement | null) => {
     gridRef.current = el;
@@ -149,7 +149,7 @@ export function DayCalendar({
 
   const attachPlacedTimedPointerSession = useCallback((e: React.PointerEvent, eventId: string, ev: CalEvent) => {
     if (e.button !== 0) return;
-    const boulderId = eventId.replace('boulder-', '');
+    const taskId = eventId.replace('task-', '');
     const startX = e.clientX;
     const startY = e.clientY;
     let longPressFired = false;
@@ -161,7 +161,7 @@ export function DayCalendar({
       const pr = propsRef.current;
       dragDateKeyRef.current = pr.dateKey;
       const init: PlacedTaskDragPreview = {
-        taskId: boulderId,
+        taskId: taskId,
         dateKey: pr.dateKey,
         startHour: ev.startHour,
         duration: ev.duration,
@@ -191,7 +191,7 @@ export function DayCalendar({
         if (next) {
           dragDateKeyRef.current = next.dateKey;
           const preview: PlacedTaskDragPreview = {
-            taskId: boulderId,
+            taskId: taskId,
             dateKey: next.dateKey,
             startHour: next.startHour,
             duration: ev.duration,
@@ -214,13 +214,13 @@ export function DayCalendar({
       const dy = pe.clientY - startY;
       if (!longPressFired) {
         if (dx * dx + dy * dy <= PRE_DRAG_THRESHOLD_SQ) {
-          pr.onPlacedTaskInList?.(boulderId);
+          pr.onPlacedTaskInList?.(taskId);
         }
       } else {
         const p = lastPreviewDuringDragRef.current;
         lastPreviewDuringDragRef.current = null;
         pr.onPlacedTaskDragPreviewChange?.(null);
-        if (p) pr.onBoulderMove?.(p.taskId, p.startHour, p.dateKey);
+        if (p) pr.onTaskMove?.(p.taskId, p.startHour, p.dateKey);
       }
     };
 
@@ -231,7 +231,7 @@ export function DayCalendar({
 
   const attachPlacedAllDayPointerSession = useCallback((e: React.PointerEvent, eventId: string) => {
     if (e.button !== 0) return;
-    const boulderId = eventId.replace('boulder-', '');
+    const taskId = eventId.replace('task-', '');
     const startX = e.clientX;
     const startY = e.clientY;
     let longPressFired = false;
@@ -243,7 +243,7 @@ export function DayCalendar({
       const pr = propsRef.current;
       dragDateKeyRef.current = pr.dateKey;
       const init: PlacedTaskDragPreview = {
-        taskId: boulderId,
+        taskId: taskId,
         dateKey: pr.dateKey,
         startHour: 0,
         duration: 24,
@@ -267,7 +267,7 @@ export function DayCalendar({
         const nextKey = pr.computeAllDayDragDateKey(pe.clientX, dragDateKeyRef.current);
         dragDateKeyRef.current = nextKey;
         const preview: PlacedTaskDragPreview = {
-          taskId: boulderId,
+          taskId: taskId,
           dateKey: nextKey,
           startHour: 0,
           duration: 24,
@@ -289,13 +289,13 @@ export function DayCalendar({
       const dy = pe.clientY - startY;
       if (!longPressFired) {
         if (dx * dx + dy * dy <= PRE_DRAG_THRESHOLD_SQ) {
-          pr.onPlacedTaskInList?.(boulderId);
+          pr.onPlacedTaskInList?.(taskId);
         }
       } else {
         const p = lastPreviewDuringDragRef.current;
         lastPreviewDuringDragRef.current = null;
         pr.onPlacedTaskDragPreviewChange?.(null);
-        if (p) pr.onBoulderAllDayMove?.(p.taskId, p.dateKey);
+        if (p) pr.onTaskAllDayMove?.(p.taskId, p.dateKey);
       }
     };
 
@@ -333,7 +333,7 @@ export function DayCalendar({
     };
 
     const handleMouseUp = () => {
-      onBoulderResize?.(eventId.replace('boulder-', ''), stateRef.currentDuration);
+      onTaskResize?.(eventId.replace('task-', ''), stateRef.currentDuration);
       setInteracting(null);
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
@@ -341,7 +341,7 @@ export function DayCalendar({
 
     window.addEventListener('mousemove', handleMouseMove);
     window.addEventListener('mouseup', handleMouseUp);
-  }, [events, endHour, onBoulderResize]);
+  }, [events, endHour, onTaskResize]);
 
   const timeColWidth = showLabels ? (compact ? 40 : 60) : 0;
 
@@ -391,7 +391,7 @@ export function DayCalendar({
         ? '0'
         : `calc(${stepScaled} * (100% / ${widthDenom}))`;
 
-    const taskId = event.id.replace('boulder-', '');
+    const taskId = event.id.replace('task-', '');
     const isActiveDrag = placed && activePlacedDragTaskId === taskId;
 
     return {
@@ -412,7 +412,7 @@ export function DayCalendar({
       pointerEvents: 'auto',
       zIndex: isActiveDrag
         ? 100
-        : (placed ? 40 : 20) + (laneCount - 1 - laneCol),
+        : (placed ? 40 : 20) + laneCol,
       userSelect: 'none',
       touchAction: isActiveDrag ? 'none' : undefined,
       cursor: placed ? 'default' : 'pointer',
@@ -435,12 +435,12 @@ export function DayCalendar({
       {maxAllDayCount > 0 && (
         <div
           onDragOver={(ev) => {
-            if (ev.dataTransfer.types.includes('boulder-id')) {
+            if (ev.dataTransfer.types.includes('task-id')) {
               ev.dataTransfer.dropEffect = 'none';
             }
           }}
           onDrop={(ev) => {
-            if (ev.dataTransfer.types.includes('boulder-id')) {
+            if (ev.dataTransfer.types.includes('task-id')) {
               ev.preventDefault();
             }
           }}
@@ -459,7 +459,7 @@ export function DayCalendar({
             const isUserTask = isPlacedTaskEventType(event.type);
             const taskChrome = isUserTask ? getPlacedTaskCalendarChrome() : null;
             const extChrome = !isUserTask ? externalCalendarChrome(event) : null;
-            const taskId = event.id.replace('boulder-', '');
+            const taskId = event.id.replace('task-', '');
             const isActiveAllDayDrag = isUserTask && activePlacedDragTaskId === taskId;
 
             return (
@@ -498,16 +498,16 @@ export function DayCalendar({
                 >
                   {isUserTask && taskChrome && (
                     <span style={{ marginRight: '6px', color: taskChrome.metaColor, flexShrink: 0 }}>
-                      {event.type === 'rock' ? '●' : event.type === 'pebble' ? '◇' : '■'}
+                      {event.type === 'vital' ? '★' : '●'}
                     </span>
                   )}
                   <span style={{ flex: 1, minWidth: 0, overflow: 'hidden', textOverflow: 'ellipsis' }}>
                     {event.title}
                   </span>
-                  {isUserTask && onBoulderRemove && (
+                  {isUserTask && onTaskRemove && (
                     <button
                       type="button"
-                      onClick={(ev) => { ev.stopPropagation(); onBoulderRemove(taskId); }}
+                      onClick={(ev) => { ev.stopPropagation(); onTaskRemove(taskId); }}
                       onPointerDown={(ev) => ev.stopPropagation()}
                       style={{
                         marginLeft: '8px',
@@ -637,7 +637,7 @@ export function DayCalendar({
         {timedEvents.map((event) => {
           const extChrome = externalCalendarChrome(event);
           const taskChrome = isPlacedTaskEventType(event.type) ? getPlacedTaskCalendarChrome() : null;
-          const taskId = event.id.replace('boulder-', '');
+          const taskId = event.id.replace('task-', '');
           return (
           <div
             key={event.id}
@@ -657,10 +657,10 @@ export function DayCalendar({
                       ...(taskChrome ? { color: taskChrome.titleColor } : {}),
                     }}>{event.title}</div>
                   </div>
-                  {onBoulderRemove && (
+                  {onTaskRemove && (
                     <button
                       type="button"
-                      onClick={(ev) => { ev.stopPropagation(); onBoulderRemove(taskId); }}
+                      onClick={(ev) => { ev.stopPropagation(); onTaskRemove(taskId); }}
                       onPointerDown={(ev) => ev.stopPropagation()}
                       style={{
                         padding: '0 6px',

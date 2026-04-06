@@ -320,7 +320,7 @@ function RailTaskCard({
   const collapsedMeta = formatCollapsedTaskMetaLine({
     deadlineLabel: formatTaskDeadlineForMeta(task.deadline),
     showRecurrence: !!task.recurrence,
-    projectName: null,
+    investmentName: null,
     prevCompletedLabel: prevMeta ? `Prev: ${prevMeta}` : null,
     extraTrailing: formatClassification(task.classification),
   });

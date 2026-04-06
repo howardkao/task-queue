@@ -1,4 +1,4 @@
-import type { Task, RecurrenceRule, Classification, Priority } from '../../types';
+import type { Task, RecurrenceRule, Classification, Priority, TaskSize } from '../../types';
 
 export const ALL_DAYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'] as const;
 export const DAY_LABELS: Record<string, string> = {
@@ -15,6 +15,45 @@ export type RecurrenceMode = '' | 'daily' | 'weekly' | 'monthly' | 'yearly' | 'p
 
 const INDEX_TO_DAY = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
+export function normalizeRecurrence(rec: RecurrenceRule | null): RecurrenceRule | null {
+  if (!rec) return null;
+
+  switch (rec.freq) {
+    case 'weekly':
+      return rec.days && rec.days.length > 0
+        ? { freq: 'weekly', days: [...rec.days] }
+        : { freq: 'weekly' };
+    case 'monthly':
+      return { freq: 'monthly' };
+    case 'yearly':
+      return { freq: 'yearly' };
+    case 'periodically':
+      return {
+        freq: 'periodically',
+        interval: rec.interval || 1,
+        periodUnit: rec.periodUnit || 'days',
+      };
+    case 'custom': {
+      const normalized: RecurrenceRule = {
+        freq: 'custom',
+        customUnit: rec.customUnit || 'weekly',
+        interval: rec.interval || 1,
+      };
+      if ((rec.customUnit || 'weekly') === 'weekly' && rec.days && rec.days.length > 0) {
+        normalized.days = [...rec.days];
+      }
+      return normalized;
+    }
+    case 'daily':
+    default:
+      return { freq: 'daily' };
+  }
+}
+
+export function recurrenceEquals(a: RecurrenceRule | null, b: RecurrenceRule | null): boolean {
+  return JSON.stringify(normalizeRecurrence(a)) === JSON.stringify(normalizeRecurrence(b));
+}
+
 export function dayOfWeekFromDate(dateStr: string): string {
   try {
     return INDEX_TO_DAY[new Date(dateStr + 'T12:00:00').getDay()];
@@ -24,8 +63,9 @@ export function dayOfWeekFromDate(dateStr: string): string {
 }
 
 export function recurrenceToMode(rec: RecurrenceRule | null): RecurrenceMode {
-  if (!rec) return '';
-  return rec.freq as RecurrenceMode;
+  const normalized = normalizeRecurrence(rec);
+  if (!normalized) return '';
+  return normalized.freq as RecurrenceMode;
 }
 
 export function parseDeadline(deadline: string | null): { date: string; time: string } {
@@ -65,18 +105,27 @@ export function parseDeadline(deadline: string | null): { date: string; time: st
 export interface EditableTaskState {
   title: string;
   notes: string;
+  /** @deprecated Use vital + size instead. */
   classification: Classification;
+  /** @deprecated Use vital instead. */
   priority: Priority;
+  /** @deprecated Use investmentId instead. */
   projectId: string | null;
   deadline: string | null;
   recurrence: RecurrenceRule | null;
   excludeFromFamily: boolean;
   familyPinned: boolean;
+  // v2 fields
+  vital: boolean;
+  size: TaskSize | null;
+  investmentId: string | null;
+  initiativeId: string | null;
 }
 
 export function buildEditableState(task: Task): EditableTaskState {
   const { date, time } = parseDeadline(task.deadline);
   const deadlineStr = date ? (time ? `${date}T${time}` : date) : null;
+  const recurrence = normalizeRecurrence(task.recurrence);
   return {
     title: task.title,
     notes: task.notes,
@@ -84,26 +133,12 @@ export function buildEditableState(task: Task): EditableTaskState {
     priority: task.priority || 'low',
     projectId: task.projectId || null,
     deadline: deadlineStr,
-    recurrence: task.recurrence || null,
+    recurrence,
     excludeFromFamily: task.excludeFromFamily,
     familyPinned: task.familyPinned,
+    vital: task.vital,
+    size: task.size,
+    investmentId: task.investmentId,
+    initiativeId: task.initiativeId,
   };
 }
-
-export const PRIORITY_CLASSES: Record<
-  Priority,
-  { active: string; inactive: string }
-> = {
-  high: {
-    active: 'bg-priority-high text-white border-priority-high',
-    inactive: 'bg-card text-foreground border-input hover:bg-priority-high-bg',
-  },
-  med: {
-    active: 'bg-priority-med text-white border-priority-med',
-    inactive: 'bg-card text-foreground border-input hover:bg-priority-med-bg',
-  },
-  low: {
-    active: 'bg-priority-low text-white border-priority-low',
-    inactive: 'bg-card text-foreground border-input hover:bg-priority-low-bg',
-  },
-};

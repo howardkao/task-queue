@@ -41,7 +41,7 @@ export function formatTaskDeadlineForMeta(deadline: string | null | undefined): 
   return `${datePart} · ${timePart}`;
 }
 
-/** Muted secondary line under task card titles (due + ↻ as one unit · project · …). */
+/** Muted secondary line under task card titles (due + ↻ as one unit · investment · …). */
 export const collapsedTaskMetaLineStyle: CSSProperties = {
   fontSize: '12px',
   color: '#9ca3af',
@@ -53,7 +53,7 @@ export type CollapsedTaskMetaParts = {
   /** Due date/time text */
   deadlineLabel?: string | null;
   showRecurrence?: boolean;
-  projectName?: string | null;
+  investmentName?: string | null;
   /** Full segment text, e.g. “Prev: Jan 1, 3:00pm” */
   prevCompletedLabel?: string | null;
   /** Appended last (e.g. classification label on project rail cards). */
@@ -73,7 +73,7 @@ export function formatCollapsedTaskMetaLine(parts: CollapsedTaskMetaParts): stri
     segments.push(chunk);
   }
 
-  if (parts.projectName?.trim()) segments.push(parts.projectName.trim());
+  if (parts.investmentName?.trim()) segments.push(parts.investmentName.trim());
   if (parts.prevCompletedLabel?.trim()) segments.push(parts.prevCompletedLabel.trim());
   if (parts.extraTrailing?.trim()) segments.push(parts.extraTrailing.trim());
   return segments.length > 0 ? segments.join(' · ') : null;

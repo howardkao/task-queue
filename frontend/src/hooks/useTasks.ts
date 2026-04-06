@@ -6,19 +6,16 @@ import {
   updateTask,
   completeTask,
   iceboxTask,
-  reorderPebbles,
+  reorderTasks,
   deleteTask,
-  getMeSortOrder,
-  type PebbleReorderContext,
+  type TaskReorderContext,
 } from '../api/tasks';
 import { useProjects } from './useProjects';
 import { useAuth } from './useAuth';
-import type { Classification, Task, RecurrenceRule, Project, PlannerScope } from '../types';
+import type { Classification, Task, TaskSize, RecurrenceRule, Project, PlannerScope } from '../types';
 import { firestoreTimeToMs } from '@/lib/firestoreTime';
 import { isTaskVisibleOnFamily } from '../taskFamilyScope';
 
-export const STANDALONE_PROJECT_FILTER = '__standalone__';
-export type TodayProjectFilter = string[];
 export type { PlannerScope } from '../types';
 
 /** One Firestore fetch for all active tasks; inbox/boulders/rocks/pebbles/due-soon derive via `select`. */
@@ -56,27 +53,39 @@ export function useInboxTasks() {
   });
 }
 
-export function useBoulders() {
+// ── v2 selectors ──
+
+export function useVitalTasks() {
   return useQuery({
     queryKey: ACTIVE_TASKS_QUERY_KEY,
     queryFn: () => listTasks({ status: 'active' }),
-    select: (tasks) => tasks.filter(t => t.classification === 'boulder'),
+    select: (tasks) => tasks.filter(t => t.vital === true),
   });
 }
 
-export function useRocks() {
+export function useOtherTasks() {
   return useQuery({
     queryKey: ACTIVE_TASKS_QUERY_KEY,
     queryFn: () => listTasks({ status: 'active' }),
-    select: (tasks) => tasks.filter(t => t.classification === 'rock'),
+    select: (tasks) => tasks.filter(t => t.vital !== true && t.size != null),
   });
 }
 
-export function usePebbles() {
+/** Untriaged tasks: no size set (inbox). */
+export function useInboxTasksV2() {
   return useQuery({
     queryKey: ACTIVE_TASKS_QUERY_KEY,
     queryFn: () => listTasks({ status: 'active' }),
-    select: (tasks) => tasks.filter(t => t.classification === 'pebble'),
+    select: (tasks) => tasks.filter(t => t.size == null),
+  });
+}
+
+export function useTasksByInvestment(investmentId: string | null) {
+  return useQuery({
+    queryKey: ACTIVE_TASKS_QUERY_KEY,
+    queryFn: () => listTasks({ status: 'active' }),
+    select: (tasks) => tasks.filter(t => t.investmentId === investmentId),
+    enabled: investmentId != null,
   });
 }
 
@@ -91,27 +100,6 @@ export function useCreateTask() {
   const qc = useQueryClient();
   return useMutation({
     mutationFn: createTask,
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ['tasks'] });
-    },
-  });
-}
-
-export function useClassifyTask() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: ({ id, classification, projectId, deadline, recurrence }: {
-      id: string;
-      classification: Classification;
-      projectId?: string | null;
-      deadline?: string | null;
-      recurrence?: RecurrenceRule | null;
-    }) => updateTask(id, {
-      classification,
-      projectId: projectId ?? undefined,
-      deadline: deadline ?? undefined,
-      recurrence: recurrence ?? undefined,
-    } as Partial<Task>),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
     },
@@ -151,8 +139,8 @@ export function useIceboxTask() {
 export function useReactivateTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, classification }: { id: string; classification: Classification }) =>
-      updateTask(id, { status: 'active', classification } as Partial<Task>),
+    mutationFn: ({ id, size }: { id: string; size?: TaskSize }) =>
+      updateTask(id, { status: 'active', ...(size !== undefined ? { size } : {}) } as Partial<Task>),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
     },
@@ -169,18 +157,31 @@ export function useDeleteTask() {
   });
 }
 
-export function useReorderPebbles(context: PebbleReorderContext = 'me') {
+/** v2 triage: set vital, size, and optionally assign to an investment/initiative. */
+export function useTriageTask() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (order: Array<{ id: string; sortOrder: number }>) => reorderPebbles(order, context),
+    mutationFn: ({ id, vital, size, investmentId, initiativeId }: {
+      id: string;
+      vital?: boolean;
+      size?: Task['size'];
+      investmentId?: string | null;
+      initiativeId?: string | null;
+    }) => updateTask(id, { vital, size, investmentId, initiativeId } as Partial<Task>),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ['tasks'] });
     },
   });
 }
 
-function filterOutOnHoldProjectTasks(tasks: Task[], activeProjectIds: Set<string>) {
-  return tasks.filter(task => !task.projectId || activeProjectIds.has(task.projectId));
+export function useReorderTasks(context: TaskReorderContext = 'me') {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (order: Array<{ id: string; sortOrder: number }>) => reorderTasks(order, context),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tasks'] });
+    },
+  });
 }
 
 /** True when the deadline is set and falls on or before the end of today (local). */
@@ -190,14 +191,6 @@ export function isOverdueOrDueToday(deadline: Task['deadline'] | undefined): boo
   const now = new Date();
   now.setHours(23, 59, 59, 999); // End of today
   return ts <= now.getTime();
-}
-
-function isDueLater(deadline: Task['deadline'] | undefined): boolean {
-  const ts = firestoreTimeToMs(deadline);
-  if (ts === 0) return false;
-  const now = new Date();
-  now.setHours(23, 59, 59, 999); // End of today
-  return ts > now.getTime();
 }
 
 function getRecurrenceCadenceHours(rule: RecurrenceRule): number {
@@ -259,42 +252,6 @@ function isFutureRecurring(task: Task): boolean {
   return false;
 }
 
-function filterByTodayProject(tasks: Task[], projectFilter: TodayProjectFilter) {
-  if (projectFilter.length === 0) return tasks;
-
-  const selected = new Set(projectFilter);
-  return tasks.filter(task => {
-    if (!task.projectId) {
-      return selected.has(STANDALONE_PROJECT_FILTER);
-    }
-    return selected.has(task.projectId);
-  });
-}
-
-function sortTodayTasks(tasks: Task[], scope: PlannerScope, uid: string) {
-  return [...tasks].sort((a, b) => {
-    const aDueLater = isDueLater(a.deadline);
-    const bDueLater = isDueLater(b.deadline);
-    if (aDueLater !== bDueLater) return aDueLater ? -1 : 1;
-
-    const aFuture = isFutureRecurring(a);
-    const bFuture = isFutureRecurring(b);
-    if (aFuture !== bFuture) return aFuture ? 1 : -1;
-
-    const aOrder =
-      scope === 'family'
-        ? (a.sortOrderFamily ?? a.sortOrder ?? 0)
-        : getMeSortOrder(a, uid);
-    const bOrder =
-      scope === 'family'
-        ? (b.sortOrderFamily ?? b.sortOrder ?? 0)
-        : getMeSortOrder(b, uid);
-    if (aOrder !== bOrder) return aOrder - bOrder;
-
-    return firestoreTimeToMs(b.createdAt) - firestoreTimeToMs(a.createdAt);
-  });
-}
-
 function filterTasksByPlannerScope(
   tasks: Task[],
   scope: PlannerScope,
@@ -307,32 +264,6 @@ function filterTasksByPlannerScope(
   return tasks.filter((t) =>
     isTaskVisibleOnFamily(t, t.projectId ? projectById.get(t.projectId) : undefined),
   );
-}
-
-function useTodayTaskList(
-  tasks: Task[],
-  projectFilter: TodayProjectFilter = [],
-  scope: PlannerScope = 'me',
-) {
-  const { user } = useAuth();
-  const uid = user?.uid ?? '';
-  const { data: activeProjects = [] } = useProjects('active');
-
-  const data = useMemo(() => {
-    if (!uid) return [];
-    const projectById = new Map(activeProjects.map((p) => [p.id, p]));
-    const activeProjectIds = new Set(activeProjects.map((project) => project.id));
-    let visibleTasks = filterOutOnHoldProjectTasks(tasks, activeProjectIds);
-    visibleTasks = filterTasksByPlannerScope(visibleTasks, scope, uid, projectById);
-    visibleTasks = visibleTasks.filter(
-      (t) => !isOverdueOrDueToday(t.deadline) && !isFutureRecurring(t),
-    );
-
-    const projectFilteredTasks = filterByTodayProject(visibleTasks, projectFilter);
-    return sortTodayTasks(projectFilteredTasks, scope, uid);
-  }, [tasks, activeProjects, projectFilter, scope, uid]);
-
-  return data;
 }
 
 export function useDueSoonTasks(scope: PlannerScope = 'me') {
@@ -350,42 +281,3 @@ export function useDueSoonTasks(scope: PlannerScope = 'me') {
   }, [allTasks, activeProjects, scope, uid]);
 }
 
-export function useTodayInboxTasks(
-  projectFilter: TodayProjectFilter = [],
-  scope: PlannerScope = 'me',
-) {
-  const inboxQuery = useInboxTasks();
-  const data = useTodayTaskList(inboxQuery.data || [], projectFilter, scope);
-
-  return { ...inboxQuery, data };
-}
-
-export function useTodayBoulders(
-  projectFilter: TodayProjectFilter = [],
-  scope: PlannerScope = 'me',
-) {
-  const bouldersQuery = useBoulders();
-  const data = useTodayTaskList(bouldersQuery.data || [], projectFilter, scope);
-
-  return { ...bouldersQuery, data };
-}
-
-export function useTodayRocks(
-  projectFilter: TodayProjectFilter = [],
-  scope: PlannerScope = 'me',
-) {
-  const rocksQuery = useRocks();
-  const data = useTodayTaskList(rocksQuery.data || [], projectFilter, scope);
-
-  return { ...rocksQuery, data };
-}
-
-export function useTodayPebbles(
-  projectFilter: TodayProjectFilter = [],
-  scope: PlannerScope = 'me',
-) {
-  const pebblesQuery = usePebbles();
-  const data = useTodayTaskList(pebblesQuery.data || [], projectFilter, scope);
-
-  return { ...pebblesQuery, data };
-}

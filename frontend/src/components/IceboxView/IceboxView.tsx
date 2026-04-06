@@ -1,7 +1,7 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useIceboxedTasks, useReactivateTask, useDeleteTask } from '../../hooks/useTasks';
-import { useProjects } from '../../hooks/useProjects';
-import type { Task, Classification } from '../../types';
+import { useInvestments } from '../../hooks/useInvestments';
+import type { Task, TaskSize } from '../../types';
 import { listCardTitleStyle } from '../shared/listCardStyles';
 import {
   collapsedTaskMetaLineStyle,
@@ -13,13 +13,12 @@ export function IceboxView() {
   const { data: tasks = [], isLoading } = useIceboxedTasks();
   const reactivateTask = useReactivateTask();
   const deleteTask = useDeleteTask();
-  const { data: projects = [] } = useProjects('active');
-  const projectMap = new Map(projects.map(p => [p.id, p.name]));
+  const { data: investments = [] } = useInvestments('active');
+  const investmentMap = useMemo(() => new Map(investments.map(i => [i.id, i.name])), [investments]);
 
-  const boulders = tasks.filter(t => t.classification === 'boulder');
-  const rocks = tasks.filter(t => t.classification === 'rock');
-  const pebbles = tasks.filter(t => t.classification === 'pebble');
-  const unclassified = tasks.filter(t => t.classification === 'unclassified');
+  const vitalTasks = tasks.filter(t => t.vital);
+  const otherTasks = tasks.filter(t => !t.vital && t.size != null);
+  const unsizedTasks = tasks.filter(t => t.size == null);
 
   return (
     <div style={{ padding: '20px 24px', maxWidth: '800px', margin: '0 auto' }}>
@@ -40,38 +39,29 @@ export function IceboxView() {
         </div>
       )}
 
-      {boulders.length > 0 && (
+      {vitalTasks.length > 0 && (
         <>
-          <h3 style={groupHeader}>Boulders</h3>
-          {boulders.map(t => (
-            <IceboxCard key={t.id} task={t} projectMap={projectMap} onReactivate={reactivateTask} onDelete={deleteTask} />
+          <h3 style={groupHeader}>Vital</h3>
+          {vitalTasks.map(t => (
+            <IceboxCard key={t.id} task={t} investmentMap={investmentMap} onReactivate={reactivateTask} onDelete={deleteTask} />
           ))}
         </>
       )}
 
-      {rocks.length > 0 && (
+      {otherTasks.length > 0 && (
         <>
-          <h3 style={groupHeader}>Rocks</h3>
-          {rocks.map(t => (
-            <IceboxCard key={t.id} task={t} projectMap={projectMap} onReactivate={reactivateTask} onDelete={deleteTask} />
+          <h3 style={groupHeader}>Other</h3>
+          {otherTasks.map(t => (
+            <IceboxCard key={t.id} task={t} investmentMap={investmentMap} onReactivate={reactivateTask} onDelete={deleteTask} />
           ))}
         </>
       )}
 
-      {pebbles.length > 0 && (
+      {unsizedTasks.length > 0 && (
         <>
-          <h3 style={groupHeader}>Pebbles</h3>
-          {pebbles.map(t => (
-            <IceboxCard key={t.id} task={t} projectMap={projectMap} onReactivate={reactivateTask} onDelete={deleteTask} />
-          ))}
-        </>
-      )}
-
-      {unclassified.length > 0 && (
-        <>
-          <h3 style={groupHeader}>Unclassified</h3>
-          {unclassified.map(t => (
-            <IceboxCard key={t.id} task={t} projectMap={projectMap} onReactivate={reactivateTask} onDelete={deleteTask} />
+          <h3 style={groupHeader}>Unsized</h3>
+          {unsizedTasks.map(t => (
+            <IceboxCard key={t.id} task={t} investmentMap={investmentMap} onReactivate={reactivateTask} onDelete={deleteTask} />
           ))}
         </>
       )}
@@ -79,55 +69,44 @@ export function IceboxView() {
   );
 }
 
-function IceboxCard({ task, projectMap, onReactivate, onDelete }: {
+function IceboxCard({ task, investmentMap, onReactivate, onDelete }: {
   task: Task;
-  projectMap: Map<string, string>;
-  onReactivate: { mutate: (args: { id: string; classification: Classification }) => void };
+  investmentMap: Map<string, string>;
+  onReactivate: { mutate: (args: { id: string; size?: TaskSize }) => void };
   onDelete: { mutate: (id: string) => void };
 }) {
   const [confirming, setConfirming] = useState(false);
-  const projectName = task.projectId ? projectMap.get(task.projectId) : null;
+  const investmentName = task.investmentId ? investmentMap.get(task.investmentId) : null;
   const deadlineLabel = formatTaskDeadlineForMeta(task.deadline);
   const collapsedMeta = formatCollapsedTaskMetaLine({
     deadlineLabel,
     showRecurrence: !!task.recurrence,
-    projectName: projectName ?? null,
+    investmentName: investmentName ?? null,
     prevCompletedLabel: null,
   });
 
   return (
     <div style={cardStyle}>
       <div style={{ flex: 1 }}>
-        <div style={listCardTitleStyle}>{task.title}</div>
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
+          <span style={listCardTitleStyle}>{task.title}</span>
+          {task.size && <span style={{ fontSize: '10px', color: '#9ca3af', fontWeight: 600 }}>{task.size}</span>}
+        </div>
         {collapsedMeta && (
           <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
         )}
-        {task.notes && (
-          <div style={{ ...collapsedTaskMetaLineStyle, marginTop: collapsedMeta ? '2px' : '3px' }}>{task.notes}</div>
-        )}
       </div>
       <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-        <button
-          onClick={() => onReactivate.mutate({ id: task.id, classification: 'boulder' })}
-          style={actionBtn}
-          title="Reactivate as boulder"
-        >
-          🪨
-        </button>
-        <button
-          onClick={() => onReactivate.mutate({ id: task.id, classification: 'rock' })}
-          style={actionBtn}
-          title="Reactivate as rock"
-        >
-          Rock
-        </button>
-        <button
-          onClick={() => onReactivate.mutate({ id: task.id, classification: 'pebble' })}
-          style={actionBtn}
-          title="Reactivate as pebble"
-        >
-          Pebble
-        </button>
+        {(['S', 'M', 'L'] as const).map(s => (
+          <button
+            key={s}
+            onClick={() => onReactivate.mutate({ id: task.id, size: s })}
+            style={actionBtn}
+            title={`Reactivate as ${s}`}
+          >
+            {s}
+          </button>
+        ))}
         {!confirming ? (
           <button
             onClick={() => setConfirming(true)}

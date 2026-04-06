@@ -7,7 +7,7 @@ export function snapToGrid(hour: number): number {
 }
 
 export function isPlacedTaskEventType(type: CalEvent['type']): boolean {
-  return type === 'boulder' || type === 'rock' || type === 'pebble';
+  return type === 'vital' || type === 'task';
 }
 
 export function externalCalendarChrome(event: CalEvent) {

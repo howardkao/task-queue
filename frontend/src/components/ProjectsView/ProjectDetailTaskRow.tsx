@@ -31,7 +31,7 @@ export function ProjectDetailTaskRow({
   const collapsedMeta = formatCollapsedTaskMetaLine({
     deadlineLabel: deadlineStr,
     showRecurrence: !!task.recurrence,
-    projectName: null,
+    investmentName: null,
     prevCompletedLabel: null,
   });
   const typeStyles = getTaskTypeStyles(task.classification);
