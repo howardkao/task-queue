@@ -1,6 +1,5 @@
-import { useState, useMemo } from 'react';
+import { useState } from 'react';
 import { useIceboxedTasks, useReactivateTask, useDeleteTask } from '../../hooks/useTasks';
-import { useInvestments } from '../../hooks/useInvestments';
 import type { Task, TaskSize } from '../../types';
 import { listCardTitleStyle } from '../shared/listCardStyles';
 import {
@@ -13,9 +12,6 @@ export function IceboxView() {
   const { data: tasks = [], isLoading } = useIceboxedTasks();
   const reactivateTask = useReactivateTask();
   const deleteTask = useDeleteTask();
-  const { data: investments = [] } = useInvestments('active');
-  const investmentMap = useMemo(() => new Map(investments.map(i => [i.id, i.name])), [investments]);
-
   const vitalTasks = tasks.filter(t => t.vital);
   const otherTasks = tasks.filter(t => !t.vital && t.size != null);
   const unsizedTasks = tasks.filter(t => t.size == null);
@@ -43,7 +39,7 @@ export function IceboxView() {
         <>
           <h3 style={groupHeader}>Vital</h3>
           {vitalTasks.map(t => (
-            <IceboxCard key={t.id} task={t} investmentMap={investmentMap} onReactivate={reactivateTask} onDelete={deleteTask} />
+            <IceboxCard key={t.id} task={t} onReactivate={reactivateTask} onDelete={deleteTask} />
           ))}
         </>
       )}
@@ -52,7 +48,7 @@ export function IceboxView() {
         <>
           <h3 style={groupHeader}>Other</h3>
           {otherTasks.map(t => (
-            <IceboxCard key={t.id} task={t} investmentMap={investmentMap} onReactivate={reactivateTask} onDelete={deleteTask} />
+            <IceboxCard key={t.id} task={t} onReactivate={reactivateTask} onDelete={deleteTask} />
           ))}
         </>
       )}
@@ -61,7 +57,7 @@ export function IceboxView() {
         <>
           <h3 style={groupHeader}>Unsized</h3>
           {unsizedTasks.map(t => (
-            <IceboxCard key={t.id} task={t} investmentMap={investmentMap} onReactivate={reactivateTask} onDelete={deleteTask} />
+            <IceboxCard key={t.id} task={t} onReactivate={reactivateTask} onDelete={deleteTask} />
           ))}
         </>
       )}
@@ -69,19 +65,16 @@ export function IceboxView() {
   );
 }
 
-function IceboxCard({ task, investmentMap, onReactivate, onDelete }: {
+function IceboxCard({ task, onReactivate, onDelete }: {
   task: Task;
-  investmentMap: Map<string, string>;
   onReactivate: { mutate: (args: { id: string; size?: TaskSize }) => void };
   onDelete: { mutate: (id: string) => void };
 }) {
   const [confirming, setConfirming] = useState(false);
-  const investmentName = task.investmentId ? investmentMap.get(task.investmentId) : null;
   const deadlineLabel = formatTaskDeadlineForMeta(task.deadline);
   const collapsedMeta = formatCollapsedTaskMetaLine({
     deadlineLabel,
     showRecurrence: !!task.recurrence,
-    investmentName: investmentName ?? null,
     prevCompletedLabel: null,
   });
 

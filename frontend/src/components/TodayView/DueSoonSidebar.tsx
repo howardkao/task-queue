@@ -1,6 +1,5 @@
 import type { Task } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
-import { useInvestments } from '../../hooks/useInvestments';
 import { useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
 import {
   listCardStyle,
@@ -34,11 +33,8 @@ export function DueSoonSidebar({
   expandedTaskId,
   onExpandedTaskIdChange,
 }: DueSoonSidebarProps) {
-  const { data: investments = [] } = useInvestments('active');
   const completeTask = useCompleteTask();
   const iceboxTask = useIceboxTask();
-
-  const investmentMap = new Map(investments.map(i => [i.id, i.name]));
   const placedIds = Object.keys(placedTasks);
 
   const handleDragStart = (e: React.DragEvent, task: Task) => {
@@ -68,16 +64,14 @@ export function DueSoonSidebar({
       {tasks.map((task) => {
         const isEditing = expandedTaskId === task.id;
         const isPlaced = placedIds.includes(task.id);
-        const investmentName = task.investmentId ? investmentMap.get(task.investmentId) : null;
         const deadlineStr = formatTaskDeadlineForMeta(task.deadline);
 
         const prevStr = task.lastOccurrenceCompletedAt
-          ? `Prev: ${formatLastCompletedLabel(task.lastOccurrenceCompletedAt)}`
+          ? `last completed ${formatLastCompletedLabel(task.lastOccurrenceCompletedAt)}`
           : null;
         const collapsedMeta = formatCollapsedTaskMetaLine({
           deadlineLabel: deadlineStr,
           showRecurrence: !!task.recurrence,
-          investmentName: investmentName ?? null,
           prevCompletedLabel: prevStr,
         });
 

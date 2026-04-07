@@ -10,6 +10,7 @@ import {
   formatTaskDeadlineForMeta,
 } from '../shared/collapsedTaskMeta';
 import { SideDrawer } from '../shared/SideDrawer';
+import { formatLastCompletedLabel } from '@/lib/firestoreTime';
 
 interface ProjectListViewProps {
   onOpenProject: (id: string) => void;
@@ -320,8 +321,7 @@ function RailTaskCard({
   const collapsedMeta = formatCollapsedTaskMetaLine({
     deadlineLabel: formatTaskDeadlineForMeta(task.deadline),
     showRecurrence: !!task.recurrence,
-    investmentName: null,
-    prevCompletedLabel: prevMeta ? `Prev: ${prevMeta}` : null,
+    prevCompletedLabel: prevMeta ? `last completed ${prevMeta}` : null,
     extraTrailing: formatClassification(task.classification),
   });
 
@@ -365,14 +365,7 @@ function formatClassification(value: Task['classification']) {
 }
 
 function formatLastOccurrenceForMeta(timestamp: unknown): string | null {
-  if (!timestamp) return null;
-  try {
-    const t = timestamp as { seconds?: number };
-    const d = t.seconds != null ? new Date(t.seconds * 1000) : new Date(timestamp as string);
-    return d.toLocaleString('en-US', { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }).toLowerCase();
-  } catch {
-    return null;
-  }
+  return formatLastCompletedLabel(timestamp) || null;
 }
 
 const layoutStyle: React.CSSProperties = {

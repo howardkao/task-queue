@@ -94,6 +94,10 @@ export function hsl(channels: string): string {
   return `hsl(${channels})`;
 }
 
+export function hslAlpha(channels: string, alpha: number): string {
+  return `hsl(${channels} / ${alpha})`;
+}
+
 /** Inline styles for calendar event blocks (external / iCal). */
 export function getCalendarEventChrome(storedColor: string | undefined | null): {
   background: string;
@@ -104,7 +108,7 @@ export function getCalendarEventChrome(storedColor: string | undefined | null): 
   const id = normalizeFeedColorId(storedColor);
   const p = CALENDAR_FEED_PALETTE[id];
   return {
-    background: hsl(p.bg),
+    background: hslAlpha(p.bg, 0.78),
     border: `1px solid ${hsl(p.foreground)}`,
     titleColor: hsl(p.border),
     metaColor: hsl(p.foreground),
@@ -120,7 +124,7 @@ export function getPlacedTaskCalendarChrome(): {
 } {
   const p = CALENDAR_FEED_PALETTE.high;
   return {
-    background: hsl(p.bg),
+    background: hslAlpha(p.bg, 0.78),
     border: `1px dashed ${hsl(p.foreground)}`,
     titleColor: hsl(p.border),
     metaColor: hsl(p.foreground),

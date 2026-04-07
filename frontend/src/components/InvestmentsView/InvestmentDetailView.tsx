@@ -3,6 +3,9 @@ import { useInvestment, useUpdateInvestment, useSetInvestmentStatus, useDeleteIn
 import { useInitiatives, useCreateInitiative } from '../../hooks/useInitiatives';
 import { useTasksByInvestment, useCompleteTask, useCreateTask, useIceboxTask } from '../../hooks/useTasks';
 import { useIsMobile } from '../../hooks/useViewport';
+import { useAuth } from '../../hooks/useAuth';
+import { reorderTasks as reorderTasksApi } from '../../api/tasks';
+import { haveSameTaskIds, mergeTasksPreservingOrder, sortTasksForScope } from '../../lib/taskOrdering';
 import type { Task, TaskSize } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
 
@@ -13,6 +16,7 @@ interface InvestmentDetailViewProps {
 
 export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailViewProps) {
   const isMobile = useIsMobile();
+  const { user } = useAuth();
   const { data: investment, isLoading } = useInvestment(investmentId);
   const updateInvestment = useUpdateInvestment();
   const setStatus = useSetInvestmentStatus();
@@ -30,10 +34,16 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
   const [newTaskTitle, setNewTaskTitle] = useState('');
   const [newTaskSize, setNewTaskSize] = useState<TaskSize>('M');
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [localOrder, setLocalOrder] = useState<Task[] | null>(null);
+  const [dragState, setDragState] = useState<{ section: 'vital' | 'other'; index: number } | null>(null);
+  const [dropGap, setDropGap] = useState<{ section: 'vital' | 'other'; index: number } | null>(null);
   const [newInitName, setNewInitName] = useState('');
   const [showInitInput, setShowInitInput] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nameSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const uid = user?.uid ?? '';
+  const orderedTasks = useMemo(() => sortTasksForScope(tasks, 'me', uid), [tasks, uid]);
+  const displayTasks = localOrder || orderedTasks;
 
   useEffect(() => {
     if (investment) {
@@ -47,6 +57,20 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
   useEffect(() => {
     setExpandedTaskId(null);
   }, [investmentId]);
+
+  useEffect(() => {
+    if (!localOrder || dragState !== null) return;
+    if (!haveSameTaskIds(orderedTasks, localOrder)) {
+      setLocalOrder(null);
+      return;
+    }
+    setLocalOrder((current) => {
+      if (!current) return current;
+      const merged = mergeTasksPreservingOrder(orderedTasks, current);
+      const changed = merged.some((task, index) => task !== current[index]);
+      return changed ? merged : current;
+    });
+  }, [dragState, localOrder, orderedTasks]);
 
   const handleMarkdownChange = useCallback(
     (value: string) => {
@@ -89,8 +113,65 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
     setShowInitInput(false);
   }, [newInitName, investmentId, createInitiative]);
 
-  const vitalTasks = useMemo(() => tasks.filter(t => t.vital), [tasks]);
-  const otherTasks = useMemo(() => tasks.filter(t => !t.vital), [tasks]);
+  const vitalTasks = useMemo(() => displayTasks.filter((task) => task.vital), [displayTasks]);
+  const otherTasks = useMemo(() => displayTasks.filter((task) => !task.vital), [displayTasks]);
+
+  const persistSectionOrder = useCallback(async (sectionTasks: Task[]) => {
+    const order = sectionTasks.map((task, index) => ({ id: task.id, sortOrder: (index + 1) * 1000 }));
+    try {
+      await reorderTasksApi(order, 'me');
+    } catch (error) {
+      console.error('Failed to persist investment task order:', error);
+    }
+  }, []);
+
+  const applySectionReorder = useCallback((sectionTasks: Task[], fromIdx: number, toIdx: number) => {
+    const reorderedSection = [...sectionTasks];
+    const [moved] = reorderedSection.splice(fromIdx, 1);
+    reorderedSection.splice(toIdx, 0, moved);
+
+    const sectionIds = new Set(sectionTasks.map((task) => task.id));
+    let nextSectionIndex = 0;
+    const merged = displayTasks.map((task) => (
+      sectionIds.has(task.id) ? reorderedSection[nextSectionIndex++]! : task
+    ));
+
+    setLocalOrder(merged);
+    persistSectionOrder(reorderedSection);
+  }, [displayTasks, persistSectionOrder]);
+
+  const handleTaskDragStart = useCallback((task: Task, section: 'vital' | 'other', index: number) => (e: React.DragEvent) => {
+    e.dataTransfer.setData('task-id', task.id);
+    e.dataTransfer.setData('task-reorder', `${section}:${index}`);
+    e.dataTransfer.effectAllowed = 'move';
+    setDragState({ section, index });
+  }, []);
+
+  const handleTaskDragOver = useCallback((section: 'vital' | 'other', index: number) => (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('task-reorder')) return;
+    if (!dragState || dragState.section !== section) return;
+    e.preventDefault();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    setDropGap({ section, index: e.clientY < midY ? index : index + 1 });
+  }, [dragState]);
+
+  const handleTaskDrop = useCallback((section: 'vital' | 'other', sectionTasks: Task[]) => () => {
+    if (!dragState || !dropGap || dragState.section !== section || dropGap.section !== section) {
+      setDragState(null);
+      setDropGap(null);
+      return;
+    }
+    const toIdx = dropGap.index > dragState.index ? dropGap.index - 1 : dropGap.index;
+    if (toIdx !== dragState.index) applySectionReorder(sectionTasks, dragState.index, toIdx);
+    setDragState(null);
+    setDropGap(null);
+  }, [applySectionReorder, dragState, dropGap]);
+
+  const handleTaskDragEnd = useCallback(() => {
+    setDragState(null);
+    setDropGap(null);
+  }, []);
 
   if (isLoading || !investment) {
     return (
@@ -222,13 +303,25 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
                 <TaskRow
                   key={task.id}
                   task={task}
+                  draggable
                   isEditing={expandedTaskId === task.id}
+                  isDragging={dragState?.section === 'vital' && vitalTasks[dragState.index]?.id === task.id}
+                  showDropBefore={dropGap?.section === 'vital' && vitalTasks.indexOf(task) === dropGap.index}
                   onToggleEdit={() => setExpandedTaskId(prev => prev === task.id ? null : task.id)}
                   onCloseEdit={() => setExpandedTaskId(null)}
                   onComplete={(id) => completeTask.mutate(id)}
                   onIcebox={(id) => iceboxTask.mutate(id)}
+                  onDragStart={handleTaskDragStart(task, 'vital', vitalTasks.indexOf(task))}
+                  onDragOver={handleTaskDragOver('vital', vitalTasks.indexOf(task))}
+                  onDrop={handleTaskDrop('vital', vitalTasks)}
+                  onDragEnd={handleTaskDragEnd}
                 />
               ))}
+              {dragState?.section === 'vital'
+                && dropGap?.section === 'vital'
+                && dropGap.index === vitalTasks.length
+                && dropGap.index !== dragState.index + 1
+                && <div style={dropIndicatorLine} />}
             </div>
           )}
 
@@ -241,13 +334,25 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
               <TaskRow
                 key={task.id}
                 task={task}
+                draggable
                 isEditing={expandedTaskId === task.id}
+                isDragging={dragState?.section === 'other' && otherTasks[dragState.index]?.id === task.id}
+                showDropBefore={dropGap?.section === 'other' && otherTasks.indexOf(task) === dropGap.index}
                 onToggleEdit={() => setExpandedTaskId(prev => prev === task.id ? null : task.id)}
                 onCloseEdit={() => setExpandedTaskId(null)}
                 onComplete={(id) => completeTask.mutate(id)}
                 onIcebox={(id) => iceboxTask.mutate(id)}
+                onDragStart={handleTaskDragStart(task, 'other', otherTasks.indexOf(task))}
+                onDragOver={handleTaskDragOver('other', otherTasks.indexOf(task))}
+                onDrop={handleTaskDrop('other', otherTasks)}
+                onDragEnd={handleTaskDragEnd}
               />
             ))}
+            {dragState?.section === 'other'
+              && dropGap?.section === 'other'
+              && dropGap.index === otherTasks.length
+              && dropGap.index !== dragState.index + 1
+              && <div style={dropIndicatorLine} />}
           </div>
         </div>
       </div>
@@ -257,34 +362,62 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
 
 function TaskRow({
   task,
+  draggable,
   isEditing,
+  isDragging,
+  showDropBefore,
   onToggleEdit,
   onCloseEdit,
   onComplete,
   onIcebox,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
 }: {
   task: Task;
+  draggable?: boolean;
   isEditing: boolean;
+  isDragging?: boolean;
+  showDropBefore?: boolean;
   onToggleEdit: () => void;
   onCloseEdit: () => void;
   onComplete: (id: string) => void;
   onIcebox: (id: string) => void;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: () => void;
+  onDragEnd?: () => void;
 }) {
   return (
-    <div style={taskRowStyle}>
-      <div onClick={onToggleEdit} style={taskTitleStyle}>
-        <span>{task.title}</span>
-        {task.size && <span style={{ color: '#9ca3af', fontSize: '11px', marginLeft: '6px' }}>{task.size}</span>}
+    <>
+      {showDropBefore && <div style={dropIndicatorLine} />}
+      <div
+        draggable={draggable}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDrop={onDrop}
+        onDragEnd={onDragEnd}
+        style={{
+          ...taskRowStyle,
+          cursor: 'grab',
+          ...(isDragging ? { opacity: 0.45 } : {}),
+        }}
+      >
+        <div onClick={onToggleEdit} style={taskTitleStyle}>
+          <span>{task.title}</span>
+          {task.size && <span style={{ color: '#9ca3af', fontSize: '11px', marginLeft: '6px' }}>{task.size}</span>}
+        </div>
+        {isEditing && (
+          <TaskEditPanel
+            task={task}
+            onClose={onCloseEdit}
+            onComplete={onComplete}
+            onIcebox={onIcebox}
+          />
+        )}
       </div>
-      {isEditing && (
-        <TaskEditPanel
-          task={task}
-          onClose={onCloseEdit}
-          onComplete={onComplete}
-          onIcebox={onIcebox}
-        />
-      )}
-    </div>
+    </>
   );
 }
 
@@ -369,4 +502,11 @@ const taskTitleStyle: React.CSSProperties = {
   fontWeight: 500,
   color: '#1D212B',
   cursor: 'pointer',
+};
+
+const dropIndicatorLine: React.CSSProperties = {
+  height: '3px',
+  background: '#EA6657',
+  borderRadius: '2px',
+  margin: '2px 0',
 };

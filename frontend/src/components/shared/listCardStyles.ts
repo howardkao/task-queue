@@ -39,6 +39,8 @@ export const calendarEventTitleStyle: CSSProperties = {
 export const calendarEventCardChrome: CSSProperties = {
   border: '1px solid #E7E3DF',
   borderRadius: '8px',
-  background: '#fff',
+  background: 'rgb(255 255 255 / 0.82)',
+  backdropFilter: 'blur(1px)',
+  WebkitBackdropFilter: 'blur(1px)',
   boxSizing: 'border-box',
 };

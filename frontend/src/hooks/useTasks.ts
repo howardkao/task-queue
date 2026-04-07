@@ -13,7 +13,7 @@ import {
 import { useProjects } from './useProjects';
 import { useAuth } from './useAuth';
 import type { Classification, Task, TaskSize, RecurrenceRule, Project, PlannerScope } from '../types';
-import { firestoreTimeToMs } from '@/lib/firestoreTime';
+import { deadlineToLocalMs } from '@/lib/firestoreTime';
 import { isTaskVisibleOnFamily } from '../taskFamilyScope';
 
 export type { PlannerScope } from '../types';
@@ -186,7 +186,7 @@ export function useReorderTasks(context: TaskReorderContext = 'me') {
 
 /** True when the deadline is set and falls on or before the end of today (local). */
 export function isOverdueOrDueToday(deadline: Task['deadline'] | undefined): boolean {
-  const ts = firestoreTimeToMs(deadline);
+  const ts = deadlineToLocalMs(deadline);
   if (ts === 0) return false;
   const now = new Date();
   now.setHours(23, 59, 59, 999); // End of today
@@ -226,7 +226,7 @@ function getRecurrenceCadenceHours(rule: RecurrenceRule): number {
 
 function isFutureRecurring(task: Task): boolean {
   if (!task.recurrence) return false;
-  const ts = firestoreTimeToMs(task.deadline);
+  const ts = deadlineToLocalMs(task.deadline);
   if (ts === 0) return false;
   
   const now = Date.now();
@@ -277,7 +277,6 @@ export function useDueSoonTasks(scope: PlannerScope = 'me') {
     const projectById = new Map(activeProjects.map((p) => [p.id, p]));
     let pool = filterTasksByPlannerScope(allTasks, scope, uid, projectById);
     const dueSoon = pool.filter((t) => isOverdueOrDueToday(t.deadline) && !isFutureRecurring(t));
-    return dueSoon.sort((a, b) => firestoreTimeToMs(a.deadline) - firestoreTimeToMs(b.deadline));
+    return dueSoon.sort((a, b) => deadlineToLocalMs(a.deadline) - deadlineToLocalMs(b.deadline));
   }, [allTasks, activeProjects, scope, uid]);
 }
-

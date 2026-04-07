@@ -3,7 +3,7 @@ import { calendarEventCardChrome, calendarEventTitleStyle } from '../shared/list
 import { getPlacedTaskCalendarChrome } from '../../theme/calendarFeedPalette';
 import type { CalEvent, PlacedTaskDragPreview } from './dayCalendarTypes';
 import { DayCalendarEventModal } from './DayCalendarEventModal';
-import { ALL_DAY_ROW_HEIGHT, PX_PER_HOUR, SLOT_HEIGHT, SNAP, PLACED_TASK_LONG_PRESS_MS, PLACED_TASK_PRE_DRAG_MOVE_PX } from './dayCalendarConstants';
+import { ALL_DAY_ROW_HEIGHT, PX_PER_HOUR, SLOT_HEIGHT, SNAP, PLACED_TASK_PRE_DRAG_MOVE_PX } from './dayCalendarConstants';
 import {
   externalCalendarChrome,
   formatHourMinute,
@@ -40,6 +40,12 @@ interface DayCalendarProps {
     prevDateKey: string,
     duration: number,
   ) => { dateKey: string; startHour: number } | null;
+  computeTimedDragPlacementIfInside?: (
+    clientX: number,
+    clientY: number,
+    prevDateKey: string,
+    duration: number,
+  ) => { dateKey: string; startHour: number } | null;
   computeAllDayDragDateKey?: (clientX: number, prevDateKey: string) => string;
   onPlacedTaskDragPreviewChange?: (preview: PlacedTaskDragPreview | null) => void;
   activePlacedDragTaskId?: string | null;
@@ -56,6 +62,7 @@ export function DayCalendar({
   registerDayGrid,
   onPlacedTaskInList,
   computeTimedDragPlacement,
+  computeTimedDragPlacementIfInside,
   computeAllDayDragDateKey,
   onPlacedTaskDragPreviewChange,
   activePlacedDragTaskId = null,
@@ -69,18 +76,22 @@ export function DayCalendar({
   const propsRef = useRef({
     dateKey,
     computeTimedDragPlacement,
+    computeTimedDragPlacementIfInside,
     computeAllDayDragDateKey,
     onPlacedTaskInList,
     onPlacedTaskDragPreviewChange,
+    onTaskDrop,
     onTaskMove,
     onTaskAllDayMove,
   });
   propsRef.current = {
     dateKey,
     computeTimedDragPlacement,
+    computeTimedDragPlacementIfInside,
     computeAllDayDragDateKey,
     onPlacedTaskInList,
     onPlacedTaskDragPreviewChange,
+    onTaskDrop,
     onTaskMove,
     onTaskAllDayMove,
   };
@@ -152,34 +163,27 @@ export function DayCalendar({
     const taskId = eventId.replace('task-', '');
     const startX = e.clientX;
     const startY = e.clientY;
-    let longPressFired = false;
-    let timerCancelled = false;
-
-    const timer = window.setTimeout(() => {
-      if (timerCancelled) return;
-      longPressFired = true;
-      const pr = propsRef.current;
-      dragDateKeyRef.current = pr.dateKey;
-      const init: PlacedTaskDragPreview = {
-        taskId: taskId,
-        dateKey: pr.dateKey,
-        startHour: ev.startHour,
-        duration: ev.duration,
-        allDay: false,
-      };
-      lastPreviewDuringDragRef.current = init;
-      pr.onPlacedTaskDragPreviewChange?.(init);
-    }, PLACED_TASK_LONG_PRESS_MS);
+    let dragStarted = false;
 
     const onMove = (pe: PointerEvent) => {
       if (pe.pointerId !== e.pointerId) return;
       const dx = pe.clientX - startX;
       const dy = pe.clientY - startY;
-      if (!longPressFired && dx * dx + dy * dy > PRE_DRAG_THRESHOLD_SQ) {
-        timerCancelled = true;
-        window.clearTimeout(timer);
+      if (!dragStarted && dx * dx + dy * dy > PRE_DRAG_THRESHOLD_SQ) {
+        dragStarted = true;
+        const pr = propsRef.current;
+        dragDateKeyRef.current = pr.dateKey;
+        const init: PlacedTaskDragPreview = {
+          taskId,
+          dateKey: pr.dateKey,
+          startHour: ev.startHour,
+          duration: ev.duration,
+          allDay: false,
+        };
+        lastPreviewDuringDragRef.current = init;
+        pr.onPlacedTaskDragPreviewChange?.(init);
       }
-      if (longPressFired) {
+      if (dragStarted) {
         const pr = propsRef.current;
         if (!pr.computeTimedDragPlacement) return;
         const next = pr.computeTimedDragPlacement(
@@ -205,14 +209,13 @@ export function DayCalendar({
 
     const onUp = (pe: PointerEvent) => {
       if (pe.pointerId !== e.pointerId) return;
-      window.clearTimeout(timer);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
       const pr = propsRef.current;
       const dx = pe.clientX - startX;
       const dy = pe.clientY - startY;
-      if (!longPressFired) {
+      if (!dragStarted) {
         if (dx * dx + dy * dy <= PRE_DRAG_THRESHOLD_SQ) {
           pr.onPlacedTaskInList?.(taskId);
         }
@@ -229,45 +232,58 @@ export function DayCalendar({
     window.addEventListener('pointercancel', onUp);
   }, []);
 
-  const attachPlacedAllDayPointerSession = useCallback((e: React.PointerEvent, eventId: string) => {
+  const attachPlacedAllDayPointerSession = useCallback((e: React.PointerEvent, eventId: string, ev: CalEvent) => {
     if (e.button !== 0) return;
     const taskId = eventId.replace('task-', '');
     const startX = e.clientX;
     const startY = e.clientY;
-    let longPressFired = false;
-    let timerCancelled = false;
-
-    const timer = window.setTimeout(() => {
-      if (timerCancelled) return;
-      longPressFired = true;
-      const pr = propsRef.current;
-      dragDateKeyRef.current = pr.dateKey;
-      const init: PlacedTaskDragPreview = {
-        taskId: taskId,
-        dateKey: pr.dateKey,
-        startHour: 0,
-        duration: 24,
-        allDay: true,
-      };
-      lastPreviewDuringDragRef.current = init;
-      pr.onPlacedTaskDragPreviewChange?.(init);
-    }, PLACED_TASK_LONG_PRESS_MS);
+    let dragStarted = false;
 
     const onMove = (pe: PointerEvent) => {
       if (pe.pointerId !== e.pointerId) return;
       const dx = pe.clientX - startX;
       const dy = pe.clientY - startY;
-      if (!longPressFired && dx * dx + dy * dy > PRE_DRAG_THRESHOLD_SQ) {
-        timerCancelled = true;
-        window.clearTimeout(timer);
-      }
-      if (longPressFired) {
+      if (!dragStarted && dx * dx + dy * dy > PRE_DRAG_THRESHOLD_SQ) {
+        dragStarted = true;
         const pr = propsRef.current;
+        dragDateKeyRef.current = pr.dateKey;
+        const init: PlacedTaskDragPreview = {
+          taskId,
+          dateKey: pr.dateKey,
+          startHour: 0,
+          duration: 24,
+          allDay: true,
+        };
+        lastPreviewDuringDragRef.current = init;
+        pr.onPlacedTaskDragPreviewChange?.(init);
+      }
+      if (dragStarted) {
+        const pr = propsRef.current;
+        const timedDuration = ev.duration >= 23.9 ? 2 : ev.duration;
+        const timedPlacement = pr.computeTimedDragPlacementIfInside?.(
+          pe.clientX,
+          pe.clientY,
+          dragDateKeyRef.current,
+          timedDuration,
+        );
+        if (timedPlacement) {
+          dragDateKeyRef.current = timedPlacement.dateKey;
+          const preview: PlacedTaskDragPreview = {
+            taskId,
+            dateKey: timedPlacement.dateKey,
+            startHour: timedPlacement.startHour,
+            duration: timedDuration,
+            allDay: false,
+          };
+          lastPreviewDuringDragRef.current = preview;
+          pr.onPlacedTaskDragPreviewChange?.(preview);
+          return;
+        }
         if (!pr.computeAllDayDragDateKey) return;
         const nextKey = pr.computeAllDayDragDateKey(pe.clientX, dragDateKeyRef.current);
         dragDateKeyRef.current = nextKey;
         const preview: PlacedTaskDragPreview = {
-          taskId: taskId,
+          taskId,
           dateKey: nextKey,
           startHour: 0,
           duration: 24,
@@ -280,14 +296,13 @@ export function DayCalendar({
 
     const onUp = (pe: PointerEvent) => {
       if (pe.pointerId !== e.pointerId) return;
-      window.clearTimeout(timer);
       window.removeEventListener('pointermove', onMove);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointercancel', onUp);
       const pr = propsRef.current;
       const dx = pe.clientX - startX;
       const dy = pe.clientY - startY;
-      if (!longPressFired) {
+      if (!dragStarted) {
         if (dx * dx + dy * dy <= PRE_DRAG_THRESHOLD_SQ) {
           pr.onPlacedTaskInList?.(taskId);
         }
@@ -295,7 +310,9 @@ export function DayCalendar({
         const p = lastPreviewDuringDragRef.current;
         lastPreviewDuringDragRef.current = null;
         pr.onPlacedTaskDragPreviewChange?.(null);
-        if (p) pr.onTaskAllDayMove?.(p.taskId, p.dateKey);
+        if (!p) return;
+        if (p.allDay) return;
+        pr.onTaskDrop?.(p.taskId, p.startHour, p.dateKey);
       }
     };
 
@@ -467,7 +484,7 @@ export function DayCalendar({
                 <div style={{ width: `${timeColWidth + 8}px`, flexShrink: 0 }} />
                 <div
                   onClick={!isUserTask ? () => setSelectedEvent(event) : undefined}
-                  onPointerDown={isUserTask ? (ev) => attachPlacedAllDayPointerSession(ev, event.id) : undefined}
+                  onPointerDown={isUserTask ? (ev) => attachPlacedAllDayPointerSession(ev, event.id, event) : undefined}
                   onContextMenu={isUserTask ? (ev) => ev.preventDefault() : undefined}
                   style={{
                     flex: 1,

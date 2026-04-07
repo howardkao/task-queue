@@ -43,8 +43,8 @@ export function TaskRecurrenceSection({
 }: TaskRecurrenceSectionProps) {
   return (
     <div className="mb-4">
-      <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-        Repeats
+      <label className="block text-[11px] font-medium text-foreground mb-2">
+        Recurrence
       </label>
       <div className="flex flex-wrap items-center gap-2 mb-3">
         <select
@@ -68,7 +68,7 @@ export function TaskRecurrenceSection({
         <button
           type="button"
           onClick={onRemoveRecurrence}
-          className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+          className="p-1.5 text-foreground/60 hover:text-foreground transition-colors"
           title="Remove recurrence"
         >
           <X className="w-3.5 h-3.5" />
@@ -77,7 +77,7 @@ export function TaskRecurrenceSection({
 
       {recMode === 'weekly' && (
         <div className="flex items-center gap-1 mb-2">
-          <span className="text-[11px] text-muted-foreground mr-1">On:</span>
+          <span className="text-[11px] text-foreground mr-1">On:</span>
           {ALL_DAYS.map((day) => (
             <button
               key={day}
@@ -98,7 +98,7 @@ export function TaskRecurrenceSection({
 
       {recMode === 'periodically' && (
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-[11px] text-muted-foreground">Reschedule</span>
+          <span className="text-[11px] text-foreground">Reschedule</span>
           <input
             type="number"
             min={1}
@@ -123,14 +123,14 @@ export function TaskRecurrenceSection({
             <option value="days">days</option>
             <option value="weeks">weeks</option>
           </select>
-          <span className="text-[11px] text-muted-foreground">after completion</span>
+          <span className="text-[11px] text-foreground">after completion</span>
         </div>
       )}
 
       {recMode === 'custom' && (
         <div className="space-y-2">
           <div className="flex flex-wrap items-center gap-2">
-            <span className="text-[11px] text-muted-foreground">Every</span>
+            <span className="text-[11px] text-foreground">Every</span>
             <input
               type="number"
               min={1}
@@ -160,7 +160,7 @@ export function TaskRecurrenceSection({
           </div>
           {customUnit === 'weekly' && (
             <div className="flex items-center gap-1">
-              <span className="text-[11px] text-muted-foreground mr-1">On:</span>
+              <span className="text-[11px] text-foreground mr-1">On:</span>
               {ALL_DAYS.map((day) => (
                 <button
                   key={day}

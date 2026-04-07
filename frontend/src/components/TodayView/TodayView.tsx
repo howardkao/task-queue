@@ -13,6 +13,7 @@ import {
   type PlannerScope,
 } from '../../hooks/useTasks';
 import { useInvestments } from '../../hooks/useInvestments';
+import { useAuth } from '../../hooks/useAuth';
 import { readPlannerStorage, writePlannerStorage } from '../../plannerStorage';
 import { useIsMobile } from '../../hooks/useViewport';
 import { useCalendarFeeds, useEventsForRange } from '../../hooks/useCalendar';
@@ -31,7 +32,7 @@ import {
   isCalendarScrollAtFutureLimit,
   isCalendarScrollAtPastLimit,
 } from '../../calendar/calendarLimits';
-import { addDays, formatDateHeader, isoToLocalDateKey, toDateKey } from './todayDateUtils';
+import { addDays, formatDateHeader, toDateKey } from './todayDateUtils';
 import {
   calendarEventTypeForTask,
   icalToCalEvents,
@@ -39,6 +40,8 @@ import {
 } from './todayCalendarBridge';
 import { PX_PER_HOUR } from './dayCalendarConstants';
 import { snapToGrid } from './dayCalendarUtils';
+import { isTaskVisibleOnFamilyV2 } from '../../taskFamilyScope';
+import { sortTasksWithinInvestments } from '../../lib/taskOrdering';
 
 type SidebarMode = 'vital' | 'other';
 
@@ -68,20 +71,44 @@ function resolveStickyDateKey(
   return prevDateKey;
 }
 
+function eventOverlapsDateKey(event: CalendarEvent, dateKey: string): boolean {
+  const dayStart = new Date(`${dateKey}T00:00:00`);
+  const dayEnd = new Date(dayStart);
+  dayEnd.setDate(dayEnd.getDate() + 1);
+
+  const eventStart = new Date(event.start);
+  const eventEnd = new Date(event.end);
+
+  return eventEnd > dayStart && eventStart < dayEnd;
+}
+
 export interface TodayViewProps {
   plannerScope?: PlannerScope;
 }
 
 export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
   const isMobile = useIsMobile();
+  const { user } = useAuth();
   const { data: investments = [] } = useInvestments('active');
   const { data: vitalTasks = [] } = useVitalTasks();
   const { data: otherTasks = [] } = useOtherTasks();
-  const allSizedTasks = useMemo(() => [...vitalTasks, ...otherTasks], [vitalTasks, otherTasks]);
   const { data: inboxTasks = [] } = useInboxTasksV2();
   const createTask = useCreateTask();
   const triageTask = useTriageTask();
   const dueSoonTasks = useDueSoonTasks(plannerScope);
+  const uid = user?.uid ?? '';
+
+  const scopedTasks = useCallback((tasks: Task[]) => {
+    const filtered = plannerScope === 'me'
+      ? tasks.filter((task) => !uid || task.assigneeUids.includes(uid))
+      : tasks.filter((task) => isTaskVisibleOnFamilyV2(task, task.investmentId ? investments.find((investment) => investment.id === task.investmentId) : undefined));
+    return sortTasksWithinInvestments(filtered, investments, plannerScope, uid);
+  }, [investments, plannerScope, uid]);
+
+  const scopedVitalTasks = useMemo(() => scopedTasks(vitalTasks), [scopedTasks, vitalTasks]);
+  const scopedOtherTasks = useMemo(() => scopedTasks(otherTasks), [scopedTasks, otherTasks]);
+  const scopedInboxTasks = useMemo(() => scopedTasks(inboxTasks), [scopedTasks, inboxTasks]);
+  const allSizedTasks = useMemo(() => [...scopedVitalTasks, ...scopedOtherTasks], [scopedVitalTasks, scopedOtherTasks]);
 
   const [sidebarMode, setSidebarMode] = useState<SidebarMode>(() => {
     const saved = readPlannerStorage(plannerScope, 'sidebarMode');
@@ -232,7 +259,7 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
           ce = calendarQuery.data?.events[idx];
         }
         if (!ce) return false;
-        return isoToLocalDateKey(ce.start) === dateKey;
+        return eventOverlapsDateKey(ce, dateKey);
       });
 
       // Fallback logic
@@ -301,6 +328,23 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
       const grid = grids.get(dateKey);
       if (!grid) return null;
       const rect = grid.getBoundingClientRect();
+      const y = clientY - rect.top;
+      let hour = wakeUpHour + y / PX_PER_HOUR;
+      hour = snapToGrid(Math.max(wakeUpHour, Math.min(hour, bedTimeHour)));
+      const startHour = Math.max(wakeUpHour, Math.min(hour, bedTimeHour - duration));
+      return { dateKey, startHour };
+    },
+    [dateKeys, wakeUpHour, bedTimeHour],
+  );
+
+  const computeTimedDragPlacementIfInside = useCallback(
+    (clientX: number, clientY: number, prevDateKey: string, duration: number): { dateKey: string; startHour: number } | null => {
+      const grids = dayGridElementsRef.current;
+      const dateKey = resolveStickyDateKey(grids, dateKeys, prevDateKey, clientX);
+      const grid = grids.get(dateKey);
+      if (!grid) return null;
+      const rect = grid.getBoundingClientRect();
+      if (clientY < rect.top || clientY > rect.bottom) return null;
       const y = clientY - rect.top;
       let hour = wakeUpHour + y / PX_PER_HOUR;
       hour = snapToGrid(Math.max(wakeUpHour, Math.min(hour, bedTimeHour)));
@@ -442,7 +486,7 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
 
         {inboxTasks.length > 0 && (
           <div style={{ marginTop: '8px' }}>
-            {inboxTasks.map(task => (
+            {scopedInboxTasks.map(task => (
               <div key={task.id} style={listCardStyle}>
                 <div style={{ ...listCardInnerStyle, alignItems: 'center', flexWrap: 'wrap', rowGap: '8px' }}>
                   <div
@@ -507,7 +551,7 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
       </div>
 
       <TaskSidebar
-        tasks={sidebarMode === 'vital' ? vitalTasks : otherTasks}
+        tasks={sidebarMode === 'vital' ? scopedVitalTasks : scopedOtherTasks}
         placedTasks={placedTasksMap}
         investments={investments}
         expandedTaskId={expandedTaskId}
@@ -653,6 +697,7 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
                 registerDayGrid={registerDayGrid}
                 onPlacedTaskInList={focusPlacedTaskInList}
                 computeTimedDragPlacement={computeTimedDragPlacement}
+                computeTimedDragPlacementIfInside={computeTimedDragPlacementIfInside}
                 computeAllDayDragDateKey={computeAllDayDragDateKey}
                 onTaskDrop={handleTaskDrop}
                 onTaskMove={handleTaskMove}

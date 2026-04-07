@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Trash2, Check, Snowflake, Calendar, Clock, Plus, Repeat, FileText } from 'lucide-react';
+import { X, Trash2, Check, Snowflake, Calendar, Clock, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Task, RecurrenceRule, Classification, Priority, TaskSize } from '../../types';
 import { useUpdateTask, useDeleteTask } from '../../hooks/useTasks';
@@ -349,32 +349,19 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     }
   };
 
-  const addLinks: { label: string; icon: React.ReactNode; action: () => void }[] = [];
-  if (!showNotes) addLinks.push({ label: 'Notes', icon: <FileText className="w-3 h-3" />, action: () => setShowNotes(true) });
-  if (!showDeadline) {
-    addLinks.push({
-      label: 'Deadline',
-      icon: <Calendar className="w-3 h-3" />,
-      action: () => {
-        setShowDeadline(true);
-        if (!deadlineDate) {
-          const now = new Date();
-          const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-          setDeadlineDate(today);
-        }
-      },
-    });
-  }
-  if (showDeadline && !showRecurrence) {
-    addLinks.push({
-      label: 'Recurrence',
-      icon: <Repeat className="w-3 h-3" />,
-      action: () => {
-        setShowRecurrence(true);
-        if (!recMode) handleRecModeChange('weekly');
-      },
-    });
-  }
+  const showFamilyVisibility = excludeFromFamily ? 'never' : familyPinned ? 'always' : 'auto';
+  const showDueField = () => {
+    setShowDeadline(true);
+    if (!deadlineDate) {
+      const now = new Date();
+      const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+      setDeadlineDate(today);
+    }
+  };
+  const showRecurrenceField = () => {
+    setShowRecurrence(true);
+    if (!recMode) handleRecModeChange('weekly');
+  };
 
   return (
     <div
@@ -395,16 +382,40 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
         placeholder="Task title..."
       />
 
+      <div className="mb-4">
+        <label className="block text-[11px] font-medium text-foreground mb-2">
+          Investment
+        </label>
+        <select
+          value={investmentId || ''}
+          onChange={(e) => {
+            const val = e.target.value || null;
+            setInvestmentId(val);
+            setInitiativeId(null);
+          }}
+          className={cn(
+            'w-full h-8 px-3 text-[13px] rounded-md',
+            'bg-card border border-input text-foreground',
+            'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+          )}
+        >
+          <option value="">Uncategorized</option>
+          {investments.map(inv => (
+            <option key={inv.id} value={inv.id}>{inv.name}</option>
+          ))}
+        </select>
+      </div>
+
       {showNotes && (
         <div className="relative mb-4">
-          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Notes
+          <label className="block text-[11px] font-medium text-foreground mb-2">
+            Context / Notes for AI
           </label>
           <div className="relative">
             <textarea
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add notes..."
+              placeholder="Add context, notes, constraints, or useful AI guidance..."
               className={cn(
                 'w-full min-h-[72px] px-3 py-2 text-[13px] text-foreground leading-relaxed',
                 'bg-card border border-input rounded-lg resize-y',
@@ -415,8 +426,8 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
             <button
               type="button"
               onClick={() => removeField('notes')}
-              className="absolute top-2 right-2 p-1 text-muted-foreground hover:text-foreground transition-colors"
-              title="Remove notes"
+              className="absolute top-2 right-2 p-1 text-foreground/60 hover:text-foreground transition-colors"
+              title="Remove context / notes"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -424,37 +435,50 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
         </div>
       )}
 
-      <div className="mb-4">
-        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-          Family visibility
-        </label>
-        <select
-          value={excludeFromFamily ? 'never' : familyPinned ? 'always' : 'auto'}
-          onChange={(e) => {
-            const v = e.target.value;
-            setFamilyPinned(v === 'always');
-            setExcludeFromFamily(v === 'never');
-          }}
+      {!showNotes && (
+        <button
+          type="button"
+          onClick={() => setShowNotes(true)}
           className={cn(
-            'w-full h-8 px-3 text-[13px] rounded-md',
-            'bg-card border border-input text-foreground',
-            'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+            'mb-4 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md',
+            'text-[12px] font-medium text-foreground hover:bg-secondary transition-all duration-150',
           )}
         >
-          <option value="auto">Auto (follows investment)</option>
-          <option value="always">Always show on Family</option>
-          <option value="never">Never show on Family</option>
-        </select>
-      </div>
+          <Plus className="w-3 h-3" />
+          Context / Notes for AI
+        </button>
+      )}
 
-      {showDeadline && (
+      {investmentId && initiatives.length > 0 && (
         <div className="mb-4">
-          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Deadline
+          <label className="block text-[11px] font-medium text-foreground mb-2">
+            Initiative
+          </label>
+          <select
+            value={initiativeId || ''}
+            onChange={(e) => setInitiativeId(e.target.value || null)}
+            className={cn(
+              'w-full h-8 px-3 text-[13px] rounded-md',
+              'bg-card border border-input text-foreground',
+              'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+            )}
+          >
+            <option value="">No initiative</option>
+            {initiatives.map(init => (
+              <option key={init.id} value={init.id}>{init.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {showDeadline ? (
+        <div className="mb-4">
+          <label className="block text-[11px] font-medium text-foreground mb-2">
+            Due
           </label>
           <div className="flex flex-wrap items-center gap-2">
             <div className="relative">
-              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/60 pointer-events-none" />
               <input
                 type="date"
                 required={false}
@@ -471,7 +495,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
             {showTime ? (
               <div className="flex items-center gap-1.5 flex-wrap">
                 <div className="relative">
-                  <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+                  <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/60 pointer-events-none" />
                   <input
                     type="time"
                     required={false}
@@ -491,7 +515,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
                     setDeadlineTime('');
                     setShowTime(false);
                   }}
-                  className="text-[11px] text-muted-foreground hover:text-foreground transition-colors px-1"
+                  className="text-[11px] text-foreground hover:underline px-1"
                 >
                   Date only
                 </button>
@@ -500,25 +524,37 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
               <button
                 type="button"
                 onClick={() => setShowTime(true)}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] text-muted-foreground hover:text-foreground transition-colors"
+                className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-foreground hover:bg-secondary rounded-md transition-colors"
               >
                 <Plus className="w-3 h-3" />
-                Add time
+                Time
               </button>
             )}
             <button
               type="button"
               onClick={() => removeField('deadline')}
-              className="p-1.5 text-muted-foreground hover:text-foreground transition-colors"
+              className="p-1.5 text-foreground/60 hover:text-foreground transition-colors"
               title="Remove deadline"
             >
               <X className="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
+      ) : (
+        <button
+          type="button"
+          onClick={showDueField}
+          className={cn(
+            'mb-4 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md',
+            'text-[12px] font-medium text-foreground hover:bg-secondary transition-all duration-150',
+          )}
+        >
+          <Plus className="w-3 h-3" />
+          Due
+        </button>
       )}
 
-      {showRecurrence && showDeadline && (
+      {showDeadline && showRecurrence && (
         <TaskRecurrenceSection
           recMode={recMode}
           onRecModeChange={handleRecModeChange}
@@ -538,107 +574,81 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
         />
       )}
 
-      {addLinks.length > 0 && (
-        <div className="flex flex-wrap gap-1.5 mb-4">
-          {addLinks.map((link) => (
-            <button
-              key={link.label}
-              type="button"
-              onClick={link.action}
-              className={cn(
-                'flex items-center gap-1 px-2.5 py-1 rounded text-[11px] font-medium',
-                'text-muted-foreground hover:text-foreground hover:bg-secondary',
-                'transition-all duration-150',
-              )}
-            >
-              <Plus className="w-3 h-3" />
-              {link.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="mb-4">
-        <label className="flex items-center gap-2 cursor-pointer">
-          <input
-            type="checkbox"
-            checked={vital}
-            onChange={(e) => setVital(e.target.checked)}
-            className="rounded border-input"
-          />
-          <span className="text-[13px] font-medium text-foreground">Vital</span>
-        </label>
-      </div>
-
-      <div className="mb-4">
-        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-          Size
-        </label>
-        <div className="flex rounded-full border border-border bg-card p-0.5 w-fit">
-          {([['S', 'Small'], ['M', 'Medium'], ['L', 'Large']] as const).map(([s, label]) => {
-            const active = size === s;
-            return (
-              <button
-                key={s}
-                type="button"
-                onClick={() => setSize(active ? null : (s as TaskSize))}
-                className={cn(
-                  'px-4 py-1.5 text-[13px] font-medium rounded-full transition-all duration-200',
-                  active ? 'bg-primary text-primary-foreground' : 'text-muted-foreground hover:text-foreground',
-                )}
-              >
-                {label}
-              </button>
-            );
-          })}
-        </div>
-      </div>
-
-      <div className="mb-4">
-        <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-          Investment
-        </label>
-        <select
-          value={investmentId || ''}
-          onChange={(e) => {
-            const val = e.target.value || null;
-            setInvestmentId(val);
-            setInitiativeId(null);
-          }}
+      {showDeadline && !showRecurrence && (
+        <button
+          type="button"
+          onClick={showRecurrenceField}
           className={cn(
-            'w-full h-8 px-3 text-[13px] rounded-md',
-            'bg-card border border-input text-foreground',
-            'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+            'mb-4 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md',
+            'text-[12px] font-medium text-foreground hover:bg-secondary transition-all duration-150',
           )}
         >
-          <option value="">No investment</option>
-          {investments.map(inv => (
-            <option key={inv.id} value={inv.id}>{inv.name}</option>
-          ))}
-        </select>
-      </div>
+          <Plus className="w-3 h-3" />
+          Recurrence
+        </button>
+      )}
 
-      {investmentId && initiatives.length > 0 && (
-        <div className="mb-4">
-          <label className="block text-[10px] font-semibold text-muted-foreground uppercase tracking-wider mb-2">
-            Initiative
-          </label>
-          <select
-            value={initiativeId || ''}
-            onChange={(e) => setInitiativeId(e.target.value || null)}
+      <div className="mb-4">
+        <div className="flex flex-wrap items-end gap-3">
+          <label
             className={cn(
-              'w-full h-8 px-3 text-[13px] rounded-md',
-              'bg-card border border-input text-foreground',
-              'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+              'flex items-center gap-2 h-8 px-3 rounded-md cursor-pointer transition-colors',
+              vital ? 'bg-[#EA6657] text-white' : 'bg-secondary text-foreground',
             )}
           >
-            <option value="">No initiative</option>
-            {initiatives.map(init => (
-              <option key={init.id} value={init.id}>{init.name}</option>
-            ))}
-          </select>
+            <input
+              type="checkbox"
+              checked={vital}
+              onChange={(e) => setVital(e.target.checked)}
+              className="rounded border-input"
+            />
+            <span className={cn('text-[13px] font-medium', vital ? 'text-white' : 'text-foreground')}>Vital?</span>
+          </label>
+
+          <div className="min-w-[132px] flex-1">
+            <label className="block text-[11px] font-medium text-foreground mb-2">
+              Time / effort
+            </label>
+            <select
+              value={size ?? ''}
+              onChange={(e) => setSize((e.target.value || null) as TaskSize | null)}
+              className={cn(
+                'w-full h-8 px-3 text-[13px] rounded-md',
+                'bg-card border border-input text-foreground',
+                'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+              )}
+            >
+              <option value="">None</option>
+              <option value="S">Small</option>
+              <option value="M">Medium</option>
+              <option value="L">Large</option>
+            </select>
+          </div>
+
+          <div className="min-w-[170px] flex-[1.4]">
+            <label className="block text-[11px] font-medium text-foreground mb-2">
+              Family visibility
+            </label>
+            <select
+              value={showFamilyVisibility}
+              onChange={(e) => {
+                const v = e.target.value;
+                setFamilyPinned(v === 'always');
+                setExcludeFromFamily(v === 'never');
+              }}
+              className={cn(
+                'w-full h-8 px-3 text-[13px] rounded-md',
+                'bg-card border border-input text-foreground',
+                'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+              )}
+            >
+              <option value="auto">Inherit from investment</option>
+              <option value="always">Always share with family</option>
+              <option value="never">Never share with family</option>
+            </select>
+          </div>
         </div>
-      )}
+      </div>
 
       <div className="flex items-center gap-2 pt-3 border-t border-border">
         {!confirmingDelete ? (

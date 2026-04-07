@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { useInvestments, useCreateInvestment, useSetInvestmentStatus, useDeleteInvestment } from '../../hooks/useInvestments';
+import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useInvestments, useCreateInvestment, useSetInvestmentStatus, useDeleteInvestment, useReorderInvestments } from '../../hooks/useInvestments';
 import { useTasks, useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
 import { useIsMobile } from '../../hooks/useViewport';
 import type { Investment, Task } from '../../types';
@@ -16,14 +16,25 @@ export function InvestmentListView({ onOpenInvestment }: InvestmentListViewProps
   const createInvestment = useCreateInvestment();
   const setStatus = useSetInvestmentStatus();
   const deleteInvestment = useDeleteInvestment();
+  const reorderInvestments = useReorderInvestments();
   const completeTask = useCompleteTask();
   const iceboxTask = useIceboxTask();
   const [newName, setNewName] = useState('');
   const [showInput, setShowInput] = useState(false);
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
+  const [localInvestments, setLocalInvestments] = useState<Investment[] | null>(null);
+  const [dragState, setDragState] = useState<{ section: 'active' | 'on_hold'; index: number } | null>(null);
+  const [dropGap, setDropGap] = useState<{ section: 'active' | 'on_hold'; index: number } | null>(null);
 
-  const activeInvestments = investments.filter(i => i.status === 'active');
-  const holdInvestments = investments.filter(i => i.status === 'on_hold');
+  const displayInvestments = localInvestments || investments;
+  const activeInvestments = useMemo(
+    () => displayInvestments.filter((investment) => investment.status === 'active'),
+    [displayInvestments],
+  );
+  const holdInvestments = useMemo(
+    () => displayInvestments.filter((investment) => investment.status === 'on_hold'),
+    [displayInvestments],
+  );
 
   const taskCountsByInvestment = new Map<string, number>();
   const unassignedTasks: Task[] = [];
@@ -41,6 +52,81 @@ export function InvestmentListView({ onOpenInvestment }: InvestmentListViewProps
     setNewName('');
     setShowInput(false);
   };
+
+  useEffect(() => {
+    if (!localInvestments || dragState !== null) return;
+    if (localInvestments.length !== investments.length) {
+      setLocalInvestments(null);
+      return;
+    }
+    const latestById = new Map(investments.map((investment) => [investment.id, investment]));
+    const merged = localInvestments.map((investment) => latestById.get(investment.id) ?? investment);
+    const changed = merged.some((investment, index) => investment !== localInvestments[index]);
+    if (changed) setLocalInvestments(merged);
+  }, [dragState, investments, localInvestments]);
+
+  const persistInvestmentOrder = useCallback((ordered: Investment[]) => {
+    reorderInvestments.mutate(ordered.map((investment, index) => ({
+      id: investment.id,
+      rank: (index + 1) * 1000,
+    })));
+  }, [reorderInvestments]);
+
+  const applyInvestmentReorder = useCallback((
+    sectionItems: Investment[],
+    fromIdx: number,
+    toIdx: number,
+  ) => {
+    const reorderedSection = [...sectionItems];
+    const [moved] = reorderedSection.splice(fromIdx, 1);
+    reorderedSection.splice(toIdx, 0, moved);
+
+    const sectionIds = new Set(sectionItems.map((investment) => investment.id));
+    let nextSectionIndex = 0;
+    const merged = displayInvestments.map((investment) => (
+      sectionIds.has(investment.id) ? reorderedSection[nextSectionIndex++]! : investment
+    ));
+
+    setLocalInvestments(merged);
+    persistInvestmentOrder(merged);
+    setDragState(null);
+    setDropGap(null);
+  }, [displayInvestments, persistInvestmentOrder]);
+
+  const handleInvestmentDragStart = useCallback((section: 'active' | 'on_hold', index: number) => (e: React.DragEvent) => {
+    e.dataTransfer.setData('investment-reorder', `${section}:${index}`);
+    e.dataTransfer.effectAllowed = 'move';
+    setDragState({ section, index });
+  }, []);
+
+  const handleInvestmentDragOver = useCallback((section: 'active' | 'on_hold', index: number) => (e: React.DragEvent) => {
+    if (!e.dataTransfer.types.includes('investment-reorder')) return;
+    if (!dragState || dragState.section !== section) return;
+    e.preventDefault();
+    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+    const midY = rect.top + rect.height / 2;
+    setDropGap({ section, index: e.clientY < midY ? index : index + 1 });
+  }, [dragState]);
+
+  const handleInvestmentDrop = useCallback((section: 'active' | 'on_hold', sectionItems: Investment[]) => () => {
+    if (!dragState || !dropGap || dragState.section !== section || dropGap.section !== section) {
+      setDragState(null);
+      setDropGap(null);
+      return;
+    }
+    const toIdx = dropGap.index > dragState.index ? dropGap.index - 1 : dropGap.index;
+    if (toIdx !== dragState.index) {
+      applyInvestmentReorder(sectionItems, dragState.index, toIdx);
+      return;
+    }
+    setDragState(null);
+    setDropGap(null);
+  }, [applyInvestmentReorder, dragState, dropGap]);
+
+  const handleInvestmentDragEnd = useCallback(() => {
+    setDragState(null);
+    setDropGap(null);
+  }, []);
 
   return (
     <div style={{ padding: '20px 24px', maxWidth: '1100px', margin: '0 auto' }}>
@@ -75,39 +161,65 @@ export function InvestmentListView({ onOpenInvestment }: InvestmentListViewProps
             <div style={panelStyle}>
               <h2 style={sectionHeader}>Active</h2>
               {activeInvestments.length === 0 && <div style={emptyStyle}>No active investments</div>}
-              {activeInvestments.map(inv => (
-                <InvestmentRow
-                  key={inv.id}
-                  investment={inv}
-                  taskCount={taskCountsByInvestment.get(inv.id) || 0}
-                  onOpen={() => onOpenInvestment(inv.id)}
-                  onToggle={() => setStatus.mutate({ id: inv.id, status: 'on_hold' })}
-                  onDelete={() => deleteInvestment.mutate(inv.id)}
-                />
+              {activeInvestments.map((inv, index) => (
+                <div key={inv.id}>
+                  {dropGap?.section === 'active' && dropGap.index === index && <div style={dropIndicatorLine} />}
+                  <InvestmentRow
+                    investment={inv}
+                    taskCount={taskCountsByInvestment.get(inv.id) || 0}
+                    draggable
+                    isDragging={dragState?.section === 'active' && dragState.index === index}
+                    onDragStart={handleInvestmentDragStart('active', index)}
+                    onDragOver={handleInvestmentDragOver('active', index)}
+                    onDrop={handleInvestmentDrop('active', activeInvestments)}
+                    onDragEnd={handleInvestmentDragEnd}
+                    onOpen={() => onOpenInvestment(inv.id)}
+                    onToggle={() => setStatus.mutate({ id: inv.id, status: 'on_hold' })}
+                    onDelete={() => deleteInvestment.mutate(inv.id)}
+                  />
+                </div>
               ))}
+              {dropGap?.section === 'active'
+                && dropGap.index === activeInvestments.length
+                && dragState?.section === 'active'
+                && dropGap.index !== dragState.index + 1
+                && <div style={dropIndicatorLine} />}
             </div>
 
             {holdInvestments.length > 0 && (
               <div style={{ ...panelStyle, marginTop: '20px' }}>
                 <h2 style={sectionHeader}>On Hold</h2>
-                {holdInvestments.map(inv => (
-                  <InvestmentRow
-                    key={inv.id}
-                    investment={inv}
-                    taskCount={taskCountsByInvestment.get(inv.id) || 0}
-                    onOpen={() => onOpenInvestment(inv.id)}
-                    onToggle={() => setStatus.mutate({ id: inv.id, status: 'active' })}
-                    onDelete={() => deleteInvestment.mutate(inv.id)}
-                  />
+                {holdInvestments.map((inv, index) => (
+                  <div key={inv.id}>
+                    {dropGap?.section === 'on_hold' && dropGap.index === index && <div style={dropIndicatorLine} />}
+                    <InvestmentRow
+                      investment={inv}
+                      taskCount={taskCountsByInvestment.get(inv.id) || 0}
+                      draggable
+                      isDragging={dragState?.section === 'on_hold' && dragState.index === index}
+                      onDragStart={handleInvestmentDragStart('on_hold', index)}
+                      onDragOver={handleInvestmentDragOver('on_hold', index)}
+                      onDrop={handleInvestmentDrop('on_hold', holdInvestments)}
+                      onDragEnd={handleInvestmentDragEnd}
+                      onOpen={() => onOpenInvestment(inv.id)}
+                      onToggle={() => setStatus.mutate({ id: inv.id, status: 'active' })}
+                      onDelete={() => deleteInvestment.mutate(inv.id)}
+                    />
+                  </div>
                 ))}
+                {dropGap?.section === 'on_hold'
+                  && dropGap.index === holdInvestments.length
+                  && dragState?.section === 'on_hold'
+                  && dropGap.index !== dragState.index + 1
+                  && <div style={dropIndicatorLine} />}
               </div>
             )}
           </div>
 
-          {/* Right: unassigned tasks */}
+          {/* Right: uncategorized tasks */}
           <div style={{ width: isMobile ? '100%' : '340px', flexShrink: 0 }}>
             <div style={panelStyle}>
-              <h2 style={sectionHeader}>Unassigned Tasks ({unassignedTasks.length})</h2>
+              <h2 style={sectionHeader}>Uncategorized Tasks ({unassignedTasks.length})</h2>
               {unassignedTasks.length === 0 && (
                 <div style={emptyStyle}>All tasks are assigned to investments</div>
               )}
@@ -141,12 +253,24 @@ export function InvestmentListView({ onOpenInvestment }: InvestmentListViewProps
 function InvestmentRow({
   investment,
   taskCount,
+  draggable,
+  isDragging,
+  onDragStart,
+  onDragOver,
+  onDrop,
+  onDragEnd,
   onOpen,
   onToggle,
   onDelete,
 }: {
   investment: Investment;
   taskCount: number;
+  draggable?: boolean;
+  isDragging?: boolean;
+  onDragStart?: (e: React.DragEvent) => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDrop?: () => void;
+  onDragEnd?: () => void;
   onOpen: () => void;
   onToggle: () => void;
   onDelete: () => void;
@@ -154,7 +278,18 @@ function InvestmentRow({
   const [confirmingDelete, setConfirmingDelete] = useState(false);
 
   return (
-    <div style={rowStyle}>
+    <div
+      draggable={draggable}
+      onDragStart={onDragStart}
+      onDragOver={onDragOver}
+      onDrop={onDrop}
+      onDragEnd={onDragEnd}
+      style={{
+        ...rowStyle,
+        cursor: 'grab',
+        ...(isDragging ? { opacity: 0.45 } : {}),
+      }}
+    >
       <div style={{ flex: 1, minWidth: 0 }}>
         <div onClick={onOpen} style={nameStyle}>{investment.name}</div>
         <div style={metaStyle}>
@@ -201,6 +336,13 @@ const rowStyle: React.CSSProperties = {
   borderRadius: '16px',
   marginBottom: '8px',
   boxShadow: '0 1px 3px rgba(0,0,0,0.06)',
+};
+
+const dropIndicatorLine: React.CSSProperties = {
+  height: '3px',
+  background: '#EA6657',
+  borderRadius: '2px',
+  margin: '2px 0 6px',
 };
 
 const nameStyle: React.CSSProperties = {
