@@ -89,6 +89,7 @@ export async function createInitiative(data: {
     markdown: data.markdown || `# ${data.name}\n\n`,
     investmentId: data.investmentId,
     rank: maxRank + 1000,
+    creatorUid: OWNER_UID,
     ownerUid: OWNER_UID,
     householdId,
     assigneeUids: [OWNER_UID],

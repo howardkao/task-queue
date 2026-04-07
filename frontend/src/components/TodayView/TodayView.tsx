@@ -40,7 +40,7 @@ import {
 } from './todayCalendarBridge';
 import { PX_PER_HOUR } from './dayCalendarConstants';
 import { snapToGrid } from './dayCalendarUtils';
-import { isTaskVisibleOnFamilyV2 } from '../../taskFamilyScope';
+import { isTaskVisibleInFamily, isTaskVisibleInMe } from '../../taskPolicy';
 import { sortTasksWithinInvestments } from '../../lib/taskOrdering';
 
 type SidebarMode = 'vital' | 'other';
@@ -100,8 +100,8 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
 
   const scopedTasks = useCallback((tasks: Task[]) => {
     const filtered = plannerScope === 'me'
-      ? tasks.filter((task) => !uid || task.assigneeUids.includes(uid))
-      : tasks.filter((task) => isTaskVisibleOnFamilyV2(task, task.investmentId ? investments.find((investment) => investment.id === task.investmentId) : undefined));
+      ? tasks.filter((task) => isTaskVisibleInMe(task, task.investmentId ? investments.find((investment) => investment.id === task.investmentId) : undefined, uid))
+      : tasks.filter((task) => isTaskVisibleInFamily(task, task.investmentId ? investments.find((investment) => investment.id === task.investmentId) : undefined));
     return sortTasksWithinInvestments(filtered, investments, plannerScope, uid);
   }, [investments, plannerScope, uid]);
 

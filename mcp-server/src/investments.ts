@@ -96,6 +96,7 @@ export async function createInvestment(data: {
     markdown: data.markdown || `# ${data.name}\n\n`,
     status: data.status || 'active',
     rank: maxRank + 1000,
+    creatorUid: OWNER_UID,
     ownerUid: OWNER_UID,
     householdId,
     assigneeUids: [OWNER_UID],

@@ -113,6 +113,7 @@ export interface EditableTaskState {
   projectId: string | null;
   deadline: string | null;
   recurrence: RecurrenceRule | null;
+  responsibleUids: string[];
   excludeFromFamily: boolean;
   familyPinned: boolean;
   // v2 fields
@@ -134,6 +135,7 @@ export function buildEditableState(task: Task): EditableTaskState {
     projectId: task.projectId || null,
     deadline: deadlineStr,
     recurrence,
+    responsibleUids: task.responsibleUids,
     excludeFromFamily: task.excludeFromFamily,
     familyPinned: task.familyPinned,
     vital: task.vital,

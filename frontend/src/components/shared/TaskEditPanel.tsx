@@ -5,6 +5,7 @@ import type { Task, RecurrenceRule, Classification, Priority, TaskSize } from '.
 import { useUpdateTask, useDeleteTask } from '../../hooks/useTasks';
 import { useInvestments } from '../../hooks/useInvestments';
 import { useInitiatives } from '../../hooks/useInitiatives';
+import { useAuth } from '../../hooks/useAuth';
 import { TaskRecurrenceSection } from './TaskRecurrenceSection';
 import {
   buildEditableState,
@@ -16,6 +17,7 @@ import {
   type EditableTaskState,
   type RecurrenceMode,
 } from './taskEditPanelModel';
+import { getTaskCreatorUid, isFamilyInvestment, isSharedTask } from '../../taskPolicy';
 
 interface TaskEditPanelProps {
   task: Task;
@@ -28,7 +30,10 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
   const { data: investments = [] } = useInvestments('active');
+  const { user } = useAuth();
   const normalizedRecurrence = normalizeRecurrence(task.recurrence);
+  const viewerUid = user?.uid ?? '';
+  const creatorUid = getTaskCreatorUid(task);
 
   const initialDeadline = parseDeadline(task.deadline);
   const [title, setTitle] = useState(task.title);
@@ -43,6 +48,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   const [showNotes, setShowNotes] = useState(!!task.notes);
   const [showDeadline, setShowDeadline] = useState(!!task.deadline);
   const [showRecurrence, setShowRecurrence] = useState(!!normalizedRecurrence);
+  const [responsibleUids, setResponsibleUids] = useState(task.responsibleUids);
   const [excludeFromFamily, setExcludeFromFamily] = useState(task.excludeFromFamily);
   const [familyPinned, setFamilyPinned] = useState(task.familyPinned);
 
@@ -52,6 +58,10 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   const [investmentId, setInvestmentId] = useState<string | null>(task.investmentId);
   const [initiativeId, setInitiativeId] = useState<string | null>(task.initiativeId);
   const { data: initiatives = [] } = useInitiatives(investmentId ?? undefined);
+  const selectedInvestment = investments.find((investment) => investment.id === investmentId) ?? null;
+  const familyInvestment = isFamilyInvestment(selectedInvestment ?? undefined);
+  const sharedTask = isSharedTask({ excludeFromFamily, familyPinned }, selectedInvestment ?? undefined);
+  const iAmResponsible = !!viewerUid && responsibleUids.includes(viewerUid);
 
   const [recMode, setRecMode] = useState<RecurrenceMode>(recurrenceToMode(normalizedRecurrence));
   const [weeklyDays, setWeeklyDays] = useState<string[]>(
@@ -131,6 +141,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
       projectId: projectId || null,
       deadline: deadlineStr,
       recurrence: buildRecurrence(),
+      responsibleUids,
       excludeFromFamily,
       familyPinned,
       vital,
@@ -148,6 +159,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     deadlineDate,
     deadlineTime,
     buildRecurrence,
+    responsibleUids,
     excludeFromFamily,
     familyPinned,
     vital,
@@ -166,6 +178,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     if (current.projectId !== saved.projectId) data.projectId = current.projectId;
     if (current.deadline !== saved.deadline) data.deadline = current.deadline;
     if (!recurrenceEquals(current.recurrence, saved.recurrence)) data.recurrence = current.recurrence;
+    if (JSON.stringify(current.responsibleUids) !== JSON.stringify(saved.responsibleUids)) data.responsibleUids = current.responsibleUids;
     if (current.excludeFromFamily !== saved.excludeFromFamily) data.excludeFromFamily = current.excludeFromFamily;
     if (current.familyPinned !== saved.familyPinned) data.familyPinned = current.familyPinned;
     // v2 fields
@@ -227,6 +240,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     setShowNotes(!!task.notes);
     setShowDeadline(!!task.deadline);
     setShowRecurrence(!!normalizedRecurrence);
+    setResponsibleUids(task.responsibleUids);
     setExcludeFromFamily(task.excludeFromFamily);
     setFamilyPinned(task.familyPinned);
     setVital(task.vital);
@@ -349,7 +363,6 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     }
   };
 
-  const showFamilyVisibility = excludeFromFamily ? 'never' : familyPinned ? 'always' : 'auto';
   const showDueField = () => {
     setShowDeadline(true);
     if (!deadlineDate) {
@@ -392,6 +405,13 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
             const val = e.target.value || null;
             setInvestmentId(val);
             setInitiativeId(null);
+            const nextInvestment = investments.find((investment) => investment.id === val) ?? null;
+            if (isFamilyInvestment(nextInvestment ?? undefined)) {
+              if (!excludeFromFamily) setResponsibleUids([]);
+            } else {
+              setExcludeFromFamily(false);
+              setResponsibleUids([creatorUid]);
+            }
           }}
           className={cn(
             'w-full h-8 px-3 text-[13px] rounded-md',
@@ -625,30 +645,66 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
             </select>
           </div>
 
-          <div className="min-w-[170px] flex-[1.4]">
-            <label className="block text-[11px] font-medium text-foreground mb-2">
-              Family visibility
-            </label>
-            <select
-              value={showFamilyVisibility}
-              onChange={(e) => {
-                const v = e.target.value;
-                setFamilyPinned(v === 'always');
-                setExcludeFromFamily(v === 'never');
-              }}
+          {familyInvestment && creatorUid === viewerUid && (
+            <label
               className={cn(
-                'w-full h-8 px-3 text-[13px] rounded-md',
-                'bg-card border border-input text-foreground',
-                'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+                'flex items-center gap-2 min-h-8 px-3 py-2 rounded-md cursor-pointer transition-colors',
+                'bg-secondary text-foreground',
               )}
             >
-              <option value="auto">Inherit from investment</option>
-              <option value="always">Always share with family</option>
-              <option value="never">Never share with family</option>
-            </select>
-          </div>
+              <input
+                type="checkbox"
+                checked={excludeFromFamily}
+                onChange={(e) => {
+                  const nextExclude = e.target.checked;
+                  setExcludeFromFamily(nextExclude);
+                  setFamilyPinned(false);
+                  setResponsibleUids(nextExclude ? [creatorUid] : []);
+                }}
+                className="rounded border-input"
+              />
+              <span className="text-[13px] font-medium">Don&apos;t share with family</span>
+            </label>
+          )}
         </div>
       </div>
+
+      <div className="mb-4 rounded-md border border-input bg-card px-3 py-2 text-[12px] text-foreground">
+        <div className="font-medium">{familyInvestment ? (sharedTask ? 'Shared with family' : 'Private to creator') : 'Private to creator'}</div>
+        <div className="mt-1 text-muted-foreground">
+          Creator: {creatorUid === viewerUid ? 'You' : creatorUid || 'Unknown'}
+        </div>
+      </div>
+
+      {familyInvestment && sharedTask && (
+        <div className="mb-4 rounded-md border border-input bg-card px-3 py-3">
+          <div className="mb-1 text-[11px] font-medium text-foreground">Responsible</div>
+          <div className="mb-2 text-[12px] text-muted-foreground">
+            {responsibleUids.length === 0
+              ? 'Unassigned'
+              : iAmResponsible
+                ? 'You are responsible'
+                : `${responsibleUids.length} responsible`}
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              if (!viewerUid) return;
+              setResponsibleUids((current) => (
+                current.includes(viewerUid)
+                  ? current.filter((uid) => uid !== viewerUid)
+                  : [...current, viewerUid]
+              ));
+            }}
+            className={cn(
+              'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md',
+              'text-[12px] font-medium text-foreground hover:bg-secondary transition-all duration-150',
+            )}
+          >
+            {iAmResponsible ? 'I am no longer responsible' : 'I am responsible'}
+          </button>
+        </div>
+      )}
 
       <div className="flex items-center gap-2 pt-3 border-t border-border">
         {!confirmingDelete ? (

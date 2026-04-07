@@ -4,10 +4,17 @@ import { useInitiatives, useCreateInitiative } from '../../hooks/useInitiatives'
 import { useTasksByInvestment, useCompleteTask, useCreateTask, useIceboxTask } from '../../hooks/useTasks';
 import { useIsMobile } from '../../hooks/useViewport';
 import { useAuth } from '../../hooks/useAuth';
-import { reorderTasks as reorderTasksApi } from '../../api/tasks';
-import { haveSameTaskIds, mergeTasksPreservingOrder, sortTasksForScope } from '../../lib/taskOrdering';
+import { reorderPrivateTaskPlacements, reorderTasks as reorderTasksApi } from '../../api/tasks';
+import {
+  computePrivatePlacementUpdates,
+  computeSharedOrderUpdates,
+  haveSameTaskIds,
+  mergeTasksPreservingOrder,
+  sortTasksForScope,
+} from '../../lib/taskOrdering';
 import type { Task, TaskSize } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
+import { isFamilyInvestment, isTaskVisibleInFamily, isTaskVisibleInMe } from '../../taskPolicy';
 
 interface InvestmentDetailViewProps {
   investmentId: string;
@@ -42,7 +49,13 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const nameSaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const uid = user?.uid ?? '';
-  const orderedTasks = useMemo(() => sortTasksForScope(tasks, 'me', uid), [tasks, uid]);
+  const visibleTasks = useMemo(() => {
+    if (!investment) return [];
+    return tasks.filter((task) =>
+      isTaskVisibleInFamily(task, investment) || isTaskVisibleInMe(task, investment, uid),
+    );
+  }, [investment, tasks, uid]);
+  const orderedTasks = useMemo(() => sortTasksForScope(visibleTasks, 'me', uid, investment ?? undefined), [visibleTasks, uid, investment]);
   const displayTasks = localOrder || orderedTasks;
 
   useEffect(() => {
@@ -117,13 +130,27 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
   const otherTasks = useMemo(() => displayTasks.filter((task) => !task.vital), [displayTasks]);
 
   const persistSectionOrder = useCallback(async (sectionTasks: Task[]) => {
-    const order = sectionTasks.map((task, index) => ({ id: task.id, sortOrder: (index + 1) * 1000 }));
     try {
-      await reorderTasksApi(order, 'me');
+      if (!investment) return;
+
+      if (isFamilyInvestment(investment)) {
+        const sharedOrder = computeSharedOrderUpdates(sectionTasks, investment);
+        const privatePlacements = computePrivatePlacementUpdates(sectionTasks, uid, investment);
+
+        if (sharedOrder.length > 0) await reorderTasksApi(sharedOrder, 'family');
+        if (privatePlacements.length > 0) await reorderPrivateTaskPlacements(privatePlacements);
+        return;
+      }
+
+      const personalOrder = sectionTasks.map((task, index) => ({
+        id: task.id,
+        sortOrder: (index + 1) * 1000,
+      }));
+      if (personalOrder.length > 0) await reorderTasksApi(personalOrder, 'me');
     } catch (error) {
       console.error('Failed to persist investment task order:', error);
     }
-  }, []);
+  }, [investment, uid]);
 
   const applySectionReorder = useCallback((sectionTasks: Task[], fromIdx: number, toIdx: number) => {
     const reorderedSection = [...sectionTasks];
@@ -214,7 +241,7 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
             checked={investment.familyVisible}
             onChange={(e) => updateInvestment.mutate({ id: investmentId, data: { familyVisible: e.target.checked } })}
           />
-          Family-visible
+          Shared with family
         </label>
         {!confirmingDelete ? (
           <button type="button" onClick={() => setConfirmingDelete(true)} style={{ ...btnSmStyle, color: '#DC2828' }}>

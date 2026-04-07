@@ -32,10 +32,27 @@ export interface Task {
   lastOccurrenceCompletedAt: string | null;
   createdAt: string | null;
   updatedAt: string | null;
+  /** Canonical creator uid. */
+  creatorUid?: string;
+  /** Legacy field; mirrors creatorUid during migration. */
   ownerUid?: string;
   householdId?: string | null;
+  /** Canonical responsible people for shared tasks. */
+  responsibleUids: string[];
+  /** Legacy field; mirrors responsibleUids during migration. */
   assigneeUids: string[];
+  /**
+   * Personal placement for private tasks inside Family investments.
+   * Keyed by uid; value anchors the task between shared tasks.
+   */
+  privatePlacementByUser: Record<string, {
+    afterSharedTaskId: string | null;
+    beforeSharedTaskId: string | null;
+    order: number;
+  }>;
+  /** When true, task stays off Family even if the investment is family-visible. */
   excludeFromFamily: boolean;
+  /** Legacy field; deprecated by policy but kept for old data compatibility. */
   familyPinned: boolean;
   // v2 fields
   vital: boolean;
@@ -52,20 +69,56 @@ function tsToISO(ts: any): string | null {
   return null;
 }
 
+const investmentsRef = db.collection('investments');
+
+function isInvestmentFamilyVisible(investmentData: any): boolean {
+  return investmentData?.familyVisible === true || investmentData?.visibility === 'shared';
+}
+
+function isTaskShared(
+  task: { excludeFromFamily: boolean; familyPinned: boolean },
+  investmentFamilyVisible: boolean,
+): boolean {
+  if (task.excludeFromFamily) return false;
+  if (investmentFamilyVisible) return true;
+  return task.familyPinned === true;
+}
+
 function toTask(id: string, data: any): Task {
-  const ownerUid = data.ownerUid as string | undefined;
-  const assigneeUids =
-    Array.isArray(data.assigneeUids) && data.assigneeUids.length > 0
-      ? [...data.assigneeUids]
-      : ownerUid
-        ? [ownerUid]
-        : [];
+  const creatorUid = (data.creatorUid as string | undefined) || (data.ownerUid as string | undefined);
+  const responsibleUids =
+    Array.isArray(data.responsibleUids)
+      ? [...data.responsibleUids]
+      : Array.isArray(data.assigneeUids)
+        ? [...data.assigneeUids]
+        : creatorUid
+          ? [creatorUid]
+          : [];
   const sortBase = typeof data.sortOrder === 'number' ? data.sortOrder : 0;
   const rawBy = data.sortOrderByAssignee;
   const sortOrderByAssignee: Record<string, number> =
     rawBy && typeof rawBy === 'object' && !Array.isArray(rawBy)
       ? Object.fromEntries(
           Object.entries(rawBy).filter(([, value]) => typeof value === 'number') as [string, number][],
+        )
+      : {};
+  const rawPrivatePlacement = data.privatePlacementByUser;
+  const privatePlacementByUser: Task['privatePlacementByUser'] =
+    rawPrivatePlacement && typeof rawPrivatePlacement === 'object' && !Array.isArray(rawPrivatePlacement)
+      ? Object.fromEntries(
+          Object.entries(rawPrivatePlacement)
+            .filter(([, value]) => value && typeof value === 'object' && !Array.isArray(value))
+            .map(([uid, value]) => {
+              const entry = value as Record<string, unknown>;
+              return [
+                uid,
+                {
+                  afterSharedTaskId: typeof entry.afterSharedTaskId === 'string' ? entry.afterSharedTaskId : null,
+                  beforeSharedTaskId: typeof entry.beforeSharedTaskId === 'string' ? entry.beforeSharedTaskId : null,
+                  order: typeof entry.order === 'number' ? entry.order : 0,
+                },
+              ];
+            }),
         )
       : {};
   // v2 fields — derive from old fields if not yet migrated
@@ -95,9 +148,12 @@ function toTask(id: string, data: any): Task {
     lastOccurrenceCompletedAt: tsToISO(data.lastOccurrenceCompletedAt),
     createdAt: tsToISO(data.createdAt),
     updatedAt: tsToISO(data.updatedAt),
-    ownerUid,
+    creatorUid,
+    ownerUid: creatorUid,
     householdId: data.householdId ?? null,
-    assigneeUids,
+    responsibleUids,
+    assigneeUids: responsibleUids,
+    privatePlacementByUser,
     excludeFromFamily: data.excludeFromFamily === true,
     familyPinned: data.familyPinned === true,
     vital,
@@ -251,6 +307,9 @@ export async function createTask(data: {
   projectId?: string;
   recurrence?: any;
   lastOccurrenceCompletedAt?: any;
+  excludeFromFamily?: boolean;
+  familyPinned?: boolean;
+  responsibleUids?: string[];
   // v2 fields
   vital?: boolean;
   size?: TaskSize | null;
@@ -270,6 +329,27 @@ export async function createTask(data: {
   const size: TaskSize | null = data.size !== undefined ? data.size : (CLASSIFICATION_TO_SIZE_MAP[classification] ?? null);
   const investmentId = data.investmentId !== undefined ? (data.investmentId || null) : (data.projectId || null);
   const initiativeId = data.initiativeId || null;
+  const excludeFromFamily = data.excludeFromFamily === true;
+  const familyPinned = data.familyPinned === true;
+
+  // Determine if this task will be shared based on investment + flags
+  let investmentFamilyVisible = false;
+  if (investmentId) {
+    const investmentSnap = await investmentsRef.doc(investmentId).get();
+    if (investmentSnap.exists) {
+      investmentFamilyVisible = isInvestmentFamilyVisible(investmentSnap.data());
+    }
+  }
+  const shared = isTaskShared({ excludeFromFamily, familyPinned }, investmentFamilyVisible);
+
+  // Per policy: shared tasks start with empty responsibleUids (Unassigned);
+  // private tasks have the creator as the implicit responsible person.
+  const responsibleUids =
+    data.responsibleUids !== undefined
+      ? [...data.responsibleUids]
+      : shared
+        ? []
+        : [OWNER_UID];
 
   const taskData: any = {
     title: data.title.trim(),
@@ -291,11 +371,14 @@ export async function createTask(data: {
     sortOrder,
     sortOrderFamily,
     sortOrderByAssignee: { [OWNER_UID]: sortOrder },
+    creatorUid: OWNER_UID,
     ownerUid: OWNER_UID,
     householdId,
-    assigneeUids: [OWNER_UID],
-    excludeFromFamily: false,
-    familyPinned: false,
+    responsibleUids,
+    assigneeUids: responsibleUids,
+    privatePlacementByUser: {},
+    excludeFromFamily,
+    familyPinned,
     createdAt: FieldValue.serverTimestamp(),
     updatedAt: FieldValue.serverTimestamp(),
   };
@@ -323,12 +406,16 @@ export async function updateTask(id: string, data: {
   deadline?: string | null;
   projectId?: string | null;
   sortOrder?: number;
+  excludeFromFamily?: boolean;
+  familyPinned?: boolean;
+  responsibleUids?: string[];
   // v2 fields
   vital?: boolean;
   size?: TaskSize | null;
   investmentId?: string | null;
   initiativeId?: string | null;
 }): Promise<Task> {
+  const currentTask = await getTask(id);
   const updates: any = { updatedAt: FieldValue.serverTimestamp() };
 
   if (data.title !== undefined) updates.title = data.title;
@@ -350,6 +437,12 @@ export async function updateTask(id: string, data: {
   if (data.sortOrder !== undefined) updates.sortOrder = data.sortOrder;
   if ((data as any).placement !== undefined) updates.placement = (data as any).placement;
   if ((data as any).lastOccurrenceCompletedAt !== undefined) updates.lastOccurrenceCompletedAt = (data as any).lastOccurrenceCompletedAt;
+  if (data.excludeFromFamily !== undefined) updates.excludeFromFamily = data.excludeFromFamily;
+  if (data.familyPinned !== undefined) updates.familyPinned = data.familyPinned;
+  if (data.responsibleUids !== undefined) {
+    updates.responsibleUids = data.responsibleUids;
+    updates.assigneeUids = data.responsibleUids;
+  }
 
   // v2 fields
   if (data.vital !== undefined) {
@@ -369,18 +462,65 @@ export async function updateTask(id: string, data: {
   }
   if (data.initiativeId !== undefined) updates.initiativeId = data.initiativeId;
 
+  // Detect shared <-> private transitions and enforce policy rules
+  const nextInvestmentId = data.investmentId !== undefined ? data.investmentId : currentTask.investmentId;
+  const nextExcludeFromFamily = data.excludeFromFamily !== undefined ? data.excludeFromFamily : currentTask.excludeFromFamily;
+  const nextFamilyPinned = data.familyPinned !== undefined ? data.familyPinned : currentTask.familyPinned;
+
+  let currentInvestmentFamilyVisible = false;
+  if (currentTask.investmentId) {
+    const snap = await investmentsRef.doc(currentTask.investmentId).get();
+    if (snap.exists) currentInvestmentFamilyVisible = isInvestmentFamilyVisible(snap.data());
+  }
+  let nextInvestmentFamilyVisible = false;
+  if (nextInvestmentId) {
+    if (nextInvestmentId === currentTask.investmentId) {
+      nextInvestmentFamilyVisible = currentInvestmentFamilyVisible;
+    } else {
+      const snap = await investmentsRef.doc(nextInvestmentId).get();
+      if (snap.exists) nextInvestmentFamilyVisible = isInvestmentFamilyVisible(snap.data());
+    }
+  }
+
+  const wasShared = isTaskShared(currentTask, currentInvestmentFamilyVisible);
+  const willBeShared = isTaskShared(
+    { excludeFromFamily: nextExcludeFromFamily, familyPinned: nextFamilyPinned },
+    nextInvestmentFamilyVisible,
+  );
+
+  if (wasShared !== willBeShared) {
+    // Shared -> Private: clear responsible, set creator
+    // Private -> Shared: clear responsible (starts Unassigned)
+    const resetResponsible = willBeShared ? [] : [currentTask.creatorUid || OWNER_UID];
+    updates.responsibleUids = resetResponsible;
+    updates.assigneeUids = resetResponsible;
+    updates.privatePlacementByUser = {};
+  }
+
   await tasksRef.doc(id).update(updates);
   return getTask(id);
 }
 
-export async function reorderTasks(order: Array<{ id: string; sortOrder: number }>): Promise<void> {
+export type TaskReorderContext = 'me' | 'family';
+
+export async function reorderTasks(
+  order: Array<{ id: string; sortOrder: number }>,
+  context: TaskReorderContext = 'me',
+): Promise<void> {
   const batch = db.batch();
   for (const item of order) {
-    batch.update(tasksRef.doc(item.id), {
-      sortOrder: item.sortOrder,
-      [`sortOrderByAssignee.${OWNER_UID}`]: item.sortOrder,
-      updatedAt: FieldValue.serverTimestamp(),
-    });
+    if (context === 'family') {
+      batch.update(tasksRef.doc(item.id), {
+        sortOrderFamily: item.sortOrder,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    } else {
+      batch.update(tasksRef.doc(item.id), {
+        sortOrder: item.sortOrder,
+        [`sortOrderByAssignee.${OWNER_UID}`]: item.sortOrder,
+        updatedAt: FieldValue.serverTimestamp(),
+      });
+    }
   }
   await batch.commit();
 }
@@ -388,9 +528,20 @@ export async function reorderTasks(order: Array<{ id: string; sortOrder: number 
 export async function completeTask(id: string): Promise<{ completed: Task; nextOccurrence: Task | null }> {
   const task = await getTask(id);
   const now = FieldValue.serverTimestamp();
+
+  // Per policy: if someone completes an Unassigned Shared task, implicitly claim responsibility
+  let investmentFamilyVisible = false;
+  if (task.investmentId) {
+    const snap = await investmentsRef.doc(task.investmentId).get();
+    if (snap.exists) investmentFamilyVisible = isInvestmentFamilyVisible(snap.data());
+  }
+  const shared = isTaskShared(task, investmentFamilyVisible);
+  const implicitClaim = shared && task.responsibleUids.length === 0;
+
   await tasksRef.doc(id).update({
     status: 'completed',
     completedAt: now,
+    ...(implicitClaim ? { responsibleUids: [OWNER_UID], assigneeUids: [OWNER_UID] } : {}),
     updatedAt: FieldValue.serverTimestamp(),
   });
 
@@ -416,6 +567,9 @@ export async function completeTask(id: string): Promise<{ completed: Task; nextO
       projectId: task.projectId || undefined,
       recurrence: task.recurrence,
       lastOccurrenceCompletedAt: now,
+      excludeFromFamily: task.excludeFromFamily,
+      familyPinned: task.familyPinned,
+      responsibleUids: task.responsibleUids,
       vital: task.vital,
       size: task.size,
       investmentId: task.investmentId,

@@ -2,8 +2,10 @@ import { useState, useCallback, useEffect, useMemo } from 'react';
 import type { Task, Investment } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
 import { useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
-import { reorderTasks as reorderTasksApi, type TaskReorderContext } from '../../api/tasks';
-import { haveSameTaskIds, mergeTasksPreservingOrder } from '../../lib/taskOrdering';
+import { useAuth } from '../../hooks/useAuth';
+import { reorderPrivateTaskPlacements, reorderTasks as reorderTasksApi, type TaskReorderContext } from '../../api/tasks';
+import { computePrivatePlacementUpdates, computeSharedOrderUpdates, haveSameTaskIds, mergeTasksPreservingOrder } from '../../lib/taskOrdering';
+import { isFamilyInvestment } from '../../taskPolicy';
 import {
   listCardStyle as cardStyle,
   listPlacedCardStyle as placedCardStyle,
@@ -40,12 +42,18 @@ export function TaskSidebar({
   onExpandedTaskIdChange,
   reorderContext = 'me',
 }: TaskSidebarProps) {
+  const { user } = useAuth();
+  const uid = user?.uid ?? '';
   const placedIds = Object.keys(placedTasks);
   const completeTask = useCompleteTask();
   const iceboxTask = useIceboxTask();
 
   const investmentMap = useMemo(
     () => new Map(investments.map(inv => [inv.id, inv.name])),
+    [investments],
+  );
+  const investmentById = useMemo(
+    () => new Map(investments.map((investment) => [investment.id, investment])),
     [investments],
   );
 
@@ -85,14 +93,28 @@ export function TaskSidebar({
 
   const persistOrder = useCallback(
     async (groupTasks: Task[]) => {
-      const order = groupTasks.map((task, index) => ({ id: task.id, sortOrder: (index + 1) * 1000 }));
       try {
-        await reorderTasksApi(order, reorderContext);
+        if (reorderContext === 'family') {
+          const order = groupTasks.map((task, index) => ({ id: task.id, sortOrder: (index + 1) * 1000 }));
+          await reorderTasksApi(order, 'family');
+          return;
+        }
+
+        const investment = groupTasks[0]?.investmentId ? investmentById.get(groupTasks[0].investmentId) : undefined;
+        if (investment && isFamilyInvestment(investment)) {
+          const sharedOrder = computeSharedOrderUpdates(groupTasks, investment);
+          const privatePlacements = computePrivatePlacementUpdates(groupTasks, uid, investment);
+          if (sharedOrder.length > 0) await reorderTasksApi(sharedOrder, 'family');
+          if (privatePlacements.length > 0) await reorderPrivateTaskPlacements(privatePlacements);
+        } else {
+          const personalOrder = groupTasks.map((task, index) => ({ id: task.id, sortOrder: (index + 1) * 1000 }));
+          if (personalOrder.length > 0) await reorderTasksApi(personalOrder, 'me');
+        }
       } catch (e) {
         console.error('Failed to persist task order:', e);
       }
     },
-    [reorderContext],
+    [investmentById, reorderContext, uid],
   );
 
   const applyGroupReorder = useCallback((

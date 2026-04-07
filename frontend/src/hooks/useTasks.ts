@@ -10,11 +10,11 @@ import {
   deleteTask,
   type TaskReorderContext,
 } from '../api/tasks';
-import { useProjects } from './useProjects';
+import { useInvestments } from './useInvestments';
 import { useAuth } from './useAuth';
-import type { Classification, Task, TaskSize, RecurrenceRule, Project, PlannerScope } from '../types';
+import type { Classification, Task, TaskSize, RecurrenceRule, PlannerScope } from '../types';
 import { deadlineToLocalMs } from '@/lib/firestoreTime';
-import { isTaskVisibleOnFamily } from '../taskFamilyScope';
+import { isTaskVisibleInFamily, isTaskVisibleInMe } from '../taskPolicy';
 
 export type { PlannerScope } from '../types';
 
@@ -256,13 +256,15 @@ function filterTasksByPlannerScope(
   tasks: Task[],
   scope: PlannerScope,
   uid: string,
-  projectById: Map<string, Project>,
+  investmentById: Map<string, { familyVisible: boolean }>,
 ): Task[] {
   if (scope === 'me') {
-    return tasks.filter((t) => t.assigneeUids.includes(uid));
+    return tasks.filter((task) =>
+      isTaskVisibleInMe(task, task.investmentId ? investmentById.get(task.investmentId) : undefined, uid),
+    );
   }
-  return tasks.filter((t) =>
-    isTaskVisibleOnFamily(t, t.projectId ? projectById.get(t.projectId) : undefined),
+  return tasks.filter((task) =>
+    isTaskVisibleInFamily(task, task.investmentId ? investmentById.get(task.investmentId) : undefined),
   );
 }
 
@@ -270,13 +272,13 @@ export function useDueSoonTasks(scope: PlannerScope = 'me') {
   const { data: allTasks = [] } = useTasks({ status: 'active' });
   const { user } = useAuth();
   const uid = user?.uid ?? '';
-  const { data: activeProjects = [] } = useProjects('active');
+  const { data: activeInvestments = [] } = useInvestments('active');
 
   return useMemo(() => {
     if (!uid) return [];
-    const projectById = new Map(activeProjects.map((p) => [p.id, p]));
-    let pool = filterTasksByPlannerScope(allTasks, scope, uid, projectById);
+    const investmentById = new Map(activeInvestments.map((investment) => [investment.id, investment]));
+    let pool = filterTasksByPlannerScope(allTasks, scope, uid, investmentById);
     const dueSoon = pool.filter((t) => isOverdueOrDueToday(t.deadline) && !isFutureRecurring(t));
     return dueSoon.sort((a, b) => deadlineToLocalMs(a.deadline) - deadlineToLocalMs(b.deadline));
-  }, [allTasks, activeProjects, scope, uid]);
+  }, [allTasks, activeInvestments, scope, uid]);
 }

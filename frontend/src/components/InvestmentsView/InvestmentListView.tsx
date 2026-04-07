@@ -2,8 +2,10 @@ import { useState, useMemo, useEffect, useCallback } from 'react';
 import { useInvestments, useCreateInvestment, useSetInvestmentStatus, useDeleteInvestment, useReorderInvestments } from '../../hooks/useInvestments';
 import { useTasks, useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
 import { useIsMobile } from '../../hooks/useViewport';
+import { useAuth } from '../../hooks/useAuth';
 import type { Investment, Task } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
+import { isTaskVisibleInMe } from '../../taskPolicy';
 
 interface InvestmentListViewProps {
   onOpenInvestment: (id: string) => void;
@@ -11,6 +13,8 @@ interface InvestmentListViewProps {
 
 export function InvestmentListView({ onOpenInvestment }: InvestmentListViewProps) {
   const isMobile = useIsMobile();
+  const { user } = useAuth();
+  const uid = user?.uid ?? '';
   const { data: investments = [], isLoading } = useInvestments();
   const { data: activeTasks = [] } = useTasks({ status: 'active' });
   const createInvestment = useCreateInvestment();
@@ -36,15 +40,28 @@ export function InvestmentListView({ onOpenInvestment }: InvestmentListViewProps
     [displayInvestments],
   );
 
-  const taskCountsByInvestment = new Map<string, number>();
-  const unassignedTasks: Task[] = [];
-  for (const task of activeTasks) {
-    if (!task.investmentId) {
-      unassignedTasks.push(task);
-      continue;
+  const investmentById = useMemo(
+    () => new Map(investments.map((inv) => [inv.id, inv])),
+    [investments],
+  );
+  const { taskCountsByInvestment, unassignedTasks } = useMemo(() => {
+    const counts = new Map<string, number>();
+    const unassigned: Task[] = [];
+    for (const task of activeTasks) {
+      if (!task.investmentId) {
+        // Apply visibility: only show tasks visible to the current user
+        if (isTaskVisibleInMe(task, undefined, uid)) {
+          unassigned.push(task);
+        }
+        continue;
+      }
+      const inv = investmentById.get(task.investmentId);
+      if (isTaskVisibleInMe(task, inv, uid)) {
+        counts.set(task.investmentId, (counts.get(task.investmentId) || 0) + 1);
+      }
     }
-    taskCountsByInvestment.set(task.investmentId, (taskCountsByInvestment.get(task.investmentId) || 0) + 1);
-  }
+    return { taskCountsByInvestment: counts, unassignedTasks: unassigned };
+  }, [activeTasks, investmentById, uid]);
 
   const handleCreate = () => {
     if (!newName.trim()) return;
@@ -294,7 +311,7 @@ function InvestmentRow({
         <div onClick={onOpen} style={nameStyle}>{investment.name}</div>
         <div style={metaStyle}>
           {taskCount} active task{taskCount !== 1 ? 's' : ''}
-          {investment.familyVisible && <span> · Family visible</span>}
+          {investment.familyVisible && <span> · Shared with family</span>}
         </div>
       </div>
       <button onClick={onToggle} style={{ ...btnStyle, fontSize: '12px', padding: '4px 10px' }}>

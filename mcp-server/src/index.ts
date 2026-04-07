@@ -36,7 +36,7 @@ const server = new McpServer({
 
 server.tool(
   'add_task',
-  'Create a new task. Lands in inbox (no size) by default. Set vital flag for strategic/critical tasks. Size: S (~5 min), M (~1 hr), L (2-3 hr).',
+  'Create a new task. Lands in inbox (no size) by default. Set vital flag for strategic/critical tasks. Size: S (~5 min), M (~1 hr), L (2-3 hr). Tasks in family investments are shared by default; set excludeFromFamily to make them private.',
   {
     title: z.string().describe('Task title'),
     notes: z.string().optional().describe('Optional notes or context'),
@@ -45,9 +45,10 @@ server.tool(
     investmentId: z.string().optional().describe('Investment ID to assign this task to'),
     initiativeId: z.string().optional().describe('Initiative ID within the investment'),
     deadline: z.string().optional().describe('Deadline as ISO date string (e.g. "2026-04-01")'),
+    excludeFromFamily: z.boolean().optional().describe('True to keep task private even in a family investment'),
   },
-  async ({ title, notes, vital, size, investmentId, initiativeId, deadline }) => {
-    const task = await createTask({ title, notes, vital, size, investmentId, initiativeId, deadline });
+  async ({ title, notes, vital, size, investmentId, initiativeId, deadline, excludeFromFamily }) => {
+    const task = await createTask({ title, notes, vital, size, investmentId, initiativeId, deadline, excludeFromFamily });
     return {
       content: [{ type: 'text', text: JSON.stringify(task, null, 2) }],
     };
@@ -153,7 +154,7 @@ server.tool(
 
 server.tool(
   'update_task',
-  'Update an existing task.',
+  'Update an existing task. When changing excludeFromFamily, the system enforces policy: shared->private clears responsible people, private->shared starts as unassigned.',
   {
     taskId: z.string().describe('ID of the task to update'),
     title: z.string().optional().describe('New task title'),
@@ -165,8 +166,9 @@ server.tool(
     initiativeId: z.string().nullable().optional().describe('Initiative link; null to clear'),
     deadline: z.string().nullable().optional().describe('ISO date deadline; null to clear'),
     sortOrder: z.number().optional().describe('New sort order value'),
+    excludeFromFamily: z.boolean().optional().describe('True to make private in a family investment; false to share'),
   },
-  async ({ taskId, title, notes, vital, size, status, investmentId, initiativeId, deadline, sortOrder }) => {
+  async ({ taskId, title, notes, vital, size, status, investmentId, initiativeId, deadline, sortOrder, excludeFromFamily }) => {
     const updates: Record<string, any> = {};
 
     if (title !== undefined) updates.title = title;
@@ -178,6 +180,7 @@ server.tool(
     if (initiativeId !== undefined) updates.initiativeId = initiativeId;
     if (deadline !== undefined) updates.deadline = deadline;
     if (sortOrder !== undefined) updates.sortOrder = sortOrder;
+    if (excludeFromFamily !== undefined) updates.excludeFromFamily = excludeFromFamily;
 
     if (Object.keys(updates).length === 0) {
       return {
@@ -194,15 +197,16 @@ server.tool(
 
 server.tool(
   'reorder_tasks',
-  'Reorder tasks in a list. Provide task IDs in the new desired order.',
+  'Reorder tasks in a list. Provide task IDs in the new desired order. Use context "family" for shared task ordering visible to everyone, or "me" for personal ordering.',
   {
     taskIds: z.array(z.string()).describe('List of task IDs in the new order'),
+    context: z.enum(['me', 'family']).optional().describe('Ordering context: "me" for personal order, "family" for shared order. Defaults to "me".'),
   },
-  async ({ taskIds }) => {
+  async ({ taskIds, context }) => {
     const order = taskIds.map((id, i) => ({ id, sortOrder: (i + 1) * 1000 }));
-    await reorderTasks(order);
+    await reorderTasks(order, context || 'me');
     return {
-      content: [{ type: 'text', text: `Reordered ${taskIds.length} task(s).` }],
+      content: [{ type: 'text', text: `Reordered ${taskIds.length} task(s) in ${context || 'me'} context.` }],
     };
   }
 );

@@ -62,14 +62,27 @@ export interface Task {
   lastOccurrenceCompletedAt?: FirestoreTimestampLike | null;
   createdAt: FirestoreTimestampLike;
   updatedAt: FirestoreTimestampLike;
-  /** Legacy / creator uid; kept for rules and migration. */
+  /** Canonical creator uid. */
+  creatorUid?: string;
+  /** Legacy field; mirrors `creatorUid` during migration. */
   ownerUid?: string;
   householdId?: string | null;
-  /** Always at least one household member. */
+  /** Canonical responsible people for shared tasks. */
+  responsibleUids: string[];
+  /** Legacy field; mirrors `responsibleUids` during migration. */
   assigneeUids: string[];
+  /**
+   * Personal placement for private tasks inside Family investments.
+   * Tasks are anchored to the gap between shared tasks rather than a flat list index.
+   */
+  privatePlacementByUser: Record<string, {
+    afterSharedTaskId: string | null;
+    beforeSharedTaskId: string | null;
+    order: number;
+  }>;
   /** When true, task stays off Family even if the investment is family-visible. */
   excludeFromFamily: boolean;
-  /** When true, task appears on Family even without a family-scoped investment. */
+  /** Legacy field; deprecated by policy but kept for old data compatibility. */
   familyPinned: boolean;
 
   // ── v2 fields ──
