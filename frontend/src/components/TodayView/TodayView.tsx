@@ -315,6 +315,22 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
     return Math.max(...eventsPerDay.map(dayEvents => dayEvents.filter(e => e.allDay).length), 0);
   }, [eventsPerDay]);
 
+  const allDayHeightsRef = useRef<Map<string, number>>(new Map());
+  const [allDayHeight, setAllDayHeight] = useState<number | undefined>(undefined);
+
+  const handleAllDayHeightMeasured = useCallback((dk: string, height: number) => {
+    const m = allDayHeightsRef.current;
+    m.set(dk, height);
+    const max = Math.max(...m.values());
+    setAllDayHeight((prev) => (prev === max ? prev : max));
+  }, []);
+
+  // Reset measurements when visible dates change
+  useEffect(() => {
+    allDayHeightsRef.current.clear();
+    setAllDayHeight(undefined);
+  }, [dateKeys.join(',')]);
+
   const registerDayGrid = useCallback((dk: string, el: HTMLDivElement | null) => {
     const m = dayGridElementsRef.current;
     if (el) m.set(dk, el);
@@ -689,6 +705,8 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
                 dateKey={dateKeys[i]}
                 events={eventsPerDay[i]}
                 maxAllDayCount={maxAllDayCount}
+                allDayHeight={allDayHeight}
+                onAllDayHeightMeasured={handleAllDayHeightMeasured}
                 startHour={wakeUpHour}
                 endHour={bedTimeHour}
                 compact

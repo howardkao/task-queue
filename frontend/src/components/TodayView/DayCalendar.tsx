@@ -27,6 +27,10 @@ interface DayCalendarProps {
   dateKey: string;
   events: CalEvent[];
   maxAllDayCount?: number;
+  /** Measured pixel height all columns should use for the all-day section. */
+  allDayHeight?: number;
+  /** Report this column's natural all-day content height to the parent. */
+  onAllDayHeightMeasured?: (dateKey: string, height: number) => void;
   startHour?: number;
   endHour?: number;
   compact?: boolean;
@@ -57,7 +61,8 @@ interface DayCalendarProps {
 }
 
 export function DayCalendar({
-  date, dateKey, events, maxAllDayCount = 0, startHour = 7, endHour = 22, compact = false,
+  date, dateKey, events, maxAllDayCount = 0, allDayHeight, onAllDayHeightMeasured,
+  startHour = 7, endHour = 22, compact = false,
   showLabels = true, isToday = false,
   registerDayGrid,
   onPlacedTaskInList,
@@ -69,6 +74,7 @@ export function DayCalendar({
   onTaskDrop, onTaskMove, onTaskAllDayMove, onTaskResize, onTaskRemove,
 }: DayCalendarProps) {
   const gridRef = useRef<HTMLDivElement | null>(null);
+  const allDaySectionRef = useRef<HTMLDivElement | null>(null);
   const [dragOverHour, setDragOverHour] = useState<number | null>(null);
   const [now, setNow] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalEvent | null>(null);
@@ -369,6 +375,12 @@ export function DayCalendar({
     };
   }, [events]);
 
+  // Measure natural all-day content height and report to parent
+  useEffect(() => {
+    if (!onAllDayHeightMeasured || !allDaySectionRef.current) return;
+    onAllDayHeightMeasured(dateKey, allDaySectionRef.current.scrollHeight);
+  }, [dateKey, allDayEvents.length, onAllDayHeightMeasured]);
+
   const timedEventsForLayout = useMemo(() => {
     if (!interacting) return timedEvents;
     return timedEvents.map((ev) =>
@@ -451,6 +463,7 @@ export function DayCalendar({
 
       {maxAllDayCount > 0 && (
         <div
+          ref={allDaySectionRef}
           onDragOver={(ev) => {
             if (ev.dataTransfer.types.includes('task-id')) {
               ev.dataTransfer.dropEffect = 'none';
@@ -469,8 +482,7 @@ export function DayCalendar({
           display: 'flex',
           flexDirection: 'column',
           gap: '2px',
-          height: `${maxAllDayCount * (ALL_DAY_ROW_HEIGHT + 4) + 8}px`,
-          overflowY: 'auto',
+          ...(allDayHeight != null ? { height: `${allDayHeight}px` } : {}),
         }}
         >
           {allDayEvents.map(event => {
