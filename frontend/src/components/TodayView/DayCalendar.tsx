@@ -469,7 +469,8 @@ export function DayCalendar({
           display: 'flex',
           flexDirection: 'column',
           gap: '2px',
-          minHeight: `${maxAllDayCount * (ALL_DAY_ROW_HEIGHT + 4) + 8}px`,
+          height: `${maxAllDayCount * (ALL_DAY_ROW_HEIGHT + 4) + 8}px`,
+          overflowY: 'auto',
         }}
         >
           {allDayEvents.map(event => {
