@@ -395,132 +395,145 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
         placeholder="Task title..."
       />
 
+      {/* Row 2: vital? | time/effort | investment chip */}
       <div className="mb-4">
-        <label className="block text-[11px] font-medium text-foreground mb-2">
-          Investment
-        </label>
-        <select
-          value={investmentId || ''}
-          onChange={(e) => {
-            const val = e.target.value || null;
-            setInvestmentId(val);
-            setInitiativeId(null);
-            const nextInvestment = investments.find((investment) => investment.id === val) ?? null;
-            if (isFamilyInvestment(nextInvestment ?? undefined)) {
-              if (!excludeFromFamily) setResponsibleUids([]);
-            } else {
-              setExcludeFromFamily(false);
-              setResponsibleUids([creatorUid]);
-            }
-          }}
-          className={cn(
-            'w-full h-8 px-3 text-[13px] rounded-md',
-            'bg-card border border-input text-foreground',
-            'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
-          )}
-        >
-          <option value="">Uncategorized</option>
-          {investments.map(inv => (
-            <option key={inv.id} value={inv.id}>{inv.name}</option>
-          ))}
-        </select>
-      </div>
-
-      {showNotes && (
-        <div className="relative mb-4">
-          <label className="block text-[11px] font-medium text-foreground mb-2">
-            Context / Notes for AI
-          </label>
-          <div className="relative">
-            <textarea
-              value={notes}
-              onChange={(e) => setNotes(e.target.value)}
-              placeholder="Add context, notes, constraints, or useful AI guidance..."
-              className={cn(
-                'w-full min-h-[72px] px-3 py-2 text-[13px] text-foreground leading-relaxed',
-                'bg-card border border-input rounded-lg resize-y',
-                'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
-                'transition-all duration-150 placeholder:text-muted-foreground',
-              )}
-            />
-            <button
-              type="button"
-              onClick={() => removeField('notes')}
-              className="absolute top-2 right-2 p-1 text-foreground/60 hover:text-foreground transition-colors"
-              title="Remove context / notes"
-            >
-              <X className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </div>
-      )}
-
-      {!showNotes && (
-        <button
-          type="button"
-          onClick={() => setShowNotes(true)}
-          className={cn(
-            'mb-4 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md',
-            'text-[12px] font-medium text-foreground hover:bg-secondary transition-all duration-150',
-          )}
-        >
-          <Plus className="w-3 h-3" />
-          Context / Notes for AI
-        </button>
-      )}
-
-      {investmentId && initiatives.length > 0 && (
-        <div className="mb-4">
-          <label className="block text-[11px] font-medium text-foreground mb-2">
-            Initiative
-          </label>
-          <select
-            value={initiativeId || ''}
-            onChange={(e) => setInitiativeId(e.target.value || null)}
+        <div className="flex flex-wrap items-center gap-3">
+          <label
             className={cn(
-              'w-full h-8 px-3 text-[13px] rounded-md',
+              'flex items-center gap-2 h-8 px-3 rounded-md cursor-pointer transition-colors',
+              vital ? 'bg-[#EA6657] text-white' : 'bg-secondary text-foreground',
+            )}
+          >
+            <input
+              type="checkbox"
+              checked={vital}
+              onChange={(e) => setVital(e.target.checked)}
+              className="rounded border-input"
+            />
+            <span className={cn('text-[13px] font-medium', vital ? 'text-white' : 'text-foreground')}>Vital?</span>
+          </label>
+
+          <select
+            value={size ?? ''}
+            onChange={(e) => setSize((e.target.value || null) as TaskSize | null)}
+            className={cn(
+              'h-8 px-3 text-[13px] rounded-md min-w-[100px]',
               'bg-card border border-input text-foreground',
               'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
             )}
           >
-            <option value="">No initiative</option>
-            {initiatives.map(init => (
-              <option key={init.id} value={init.id}>{init.name}</option>
-            ))}
+            <option value="">Size</option>
+            <option value="S">Small</option>
+            <option value="M">Medium</option>
+            <option value="L">Large</option>
           </select>
-        </div>
-      )}
 
-      {showDeadline ? (
-        <div className="mb-4">
-          <label className="block text-[11px] font-medium text-foreground mb-2">
-            Due
-          </label>
-          <div className="flex flex-wrap items-center gap-2">
+          {investmentId && selectedInvestment ? (
+            <span
+              className={cn(
+                'inline-flex items-center gap-1.5 h-8 px-3 rounded-md text-[13px] font-medium',
+                'bg-[#EA6657]/10 text-[#EA6657] border border-[#EA6657]/20',
+              )}
+            >
+              {selectedInvestment.name}
+              <button
+                type="button"
+                onClick={() => {
+                  setInvestmentId(null);
+                  setInitiativeId(null);
+                  setExcludeFromFamily(false);
+                  setResponsibleUids([creatorUid]);
+                }}
+                className="p-0.5 hover:bg-[#EA6657]/20 rounded transition-colors"
+                title="Remove investment"
+              >
+                <X className="w-3 h-3" />
+              </button>
+            </span>
+          ) : (
             <div className="relative">
-              <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/60 pointer-events-none" />
-              <input
-                type="date"
-                required={false}
-                value={deadlineDate}
-                onChange={(e) => setDeadlineDate(e.target.value)}
+              <select
+                value=""
+                onChange={(e) => {
+                  const val = e.target.value || null;
+                  setInvestmentId(val);
+                  setInitiativeId(null);
+                  const nextInvestment = investments.find((investment) => investment.id === val) ?? null;
+                  if (isFamilyInvestment(nextInvestment ?? undefined)) {
+                    if (!excludeFromFamily) setResponsibleUids([]);
+                  } else {
+                    setExcludeFromFamily(false);
+                    setResponsibleUids([creatorUid]);
+                  }
+                }}
                 className={cn(
-                  'h-8 pl-8 pr-3 text-[13px] rounded-md',
+                  'h-8 pl-7 pr-3 text-[13px] rounded-md appearance-none cursor-pointer',
                   'bg-card border border-input text-foreground',
                   'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
-                  'transition-all duration-150',
+                )}
+              >
+                <option value="">+ Investment</option>
+                {investments.map(inv => (
+                  <option key={inv.id} value={inv.id}>{inv.name}</option>
+                ))}
+              </select>
+              <Plus className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-foreground/60 pointer-events-none" />
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Row 3: notes | due (inline) */}
+      <div className="flex flex-wrap items-start gap-3 mb-4">
+        <div className="flex-1 min-w-[180px]">
+          {showNotes ? (
+            <div className="relative">
+              <textarea
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Notes..."
+                className={cn(
+                  'w-full min-h-[60px] px-3 py-2 text-[13px] text-foreground leading-relaxed',
+                  'bg-card border border-input rounded-lg resize-y',
+                  'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+                  'transition-all duration-150 placeholder:text-muted-foreground',
                 )}
               />
+              <button
+                type="button"
+                onClick={() => removeField('notes')}
+                className="absolute top-2 right-2 p-1 text-foreground/60 hover:text-foreground transition-colors"
+                title="Remove notes"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
             </div>
-            {showTime ? (
-              <div className="flex items-center gap-1.5 flex-wrap">
+          ) : (
+            <button
+              type="button"
+              onClick={() => setShowNotes(true)}
+              className={cn(
+                'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md',
+                'text-[12px] font-medium text-foreground hover:bg-secondary transition-all duration-150',
+              )}
+            >
+              <Plus className="w-3 h-3" />
+              Notes
+            </button>
+          )}
+        </div>
+
+        <div>
+          {showDeadline ? (
+            <div>
+              <div className="flex flex-wrap items-center gap-2">
                 <div className="relative">
-                  <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/60 pointer-events-none" />
+                  <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/60 pointer-events-none" />
                   <input
-                    type="time"
+                    type="date"
                     required={false}
-                    value={deadlineTime}
-                    onChange={(e) => setDeadlineTime(e.target.value)}
+                    value={deadlineDate}
+                    onChange={(e) => setDeadlineDate(e.target.value)}
                     className={cn(
                       'h-8 pl-8 pr-3 text-[13px] rounded-md',
                       'bg-card border border-input text-foreground',
@@ -529,50 +542,69 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
                     )}
                   />
                 </div>
+                {showTime ? (
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <div className="relative">
+                      <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/60 pointer-events-none" />
+                      <input
+                        type="time"
+                        required={false}
+                        value={deadlineTime}
+                        onChange={(e) => setDeadlineTime(e.target.value)}
+                        className={cn(
+                          'h-8 pl-8 pr-3 text-[13px] rounded-md',
+                          'bg-card border border-input text-foreground',
+                          'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+                          'transition-all duration-150',
+                        )}
+                      />
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setDeadlineTime('');
+                        setShowTime(false);
+                      }}
+                      className="text-[11px] text-foreground hover:underline px-1"
+                    >
+                      Date only
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setShowTime(true)}
+                    className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-foreground hover:bg-secondary rounded-md transition-colors"
+                  >
+                    <Plus className="w-3 h-3" />
+                    Time
+                  </button>
+                )}
                 <button
                   type="button"
-                  onClick={() => {
-                    setDeadlineTime('');
-                    setShowTime(false);
-                  }}
-                  className="text-[11px] text-foreground hover:underline px-1"
+                  onClick={() => removeField('deadline')}
+                  className="p-1.5 text-foreground/60 hover:text-foreground transition-colors"
+                  title="Remove deadline"
                 >
-                  Date only
+                  <X className="w-3.5 h-3.5" />
                 </button>
               </div>
-            ) : (
-              <button
-                type="button"
-                onClick={() => setShowTime(true)}
-                className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-foreground hover:bg-secondary rounded-md transition-colors"
-              >
-                <Plus className="w-3 h-3" />
-                Time
-              </button>
-            )}
+            </div>
+          ) : (
             <button
               type="button"
-              onClick={() => removeField('deadline')}
-              className="p-1.5 text-foreground/60 hover:text-foreground transition-colors"
-              title="Remove deadline"
+              onClick={showDueField}
+              className={cn(
+                'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md',
+                'text-[12px] font-medium text-foreground hover:bg-secondary transition-all duration-150',
+              )}
             >
-              <X className="w-3.5 h-3.5" />
+              <Plus className="w-3 h-3" />
+              Due
             </button>
-          </div>
-        </div>
-      ) : (
-        <button
-          type="button"
-          onClick={showDueField}
-          className={cn(
-            'mb-4 inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md',
-            'text-[12px] font-medium text-foreground hover:bg-secondary transition-all duration-150',
           )}
-        >
-          <Plus className="w-3 h-3" />
-          Due
-        </button>
-      )}
+        </div>
+      </div>
 
       {showDeadline && showRecurrence && (
         <TaskRecurrenceSection
@@ -608,66 +640,51 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
         </button>
       )}
 
-      <div className="mb-4">
-        <div className="flex flex-wrap items-end gap-3">
+      {investmentId && initiatives.length > 0 && (
+        <div className="mb-4">
+          <label className="block text-[11px] font-medium text-foreground mb-2">
+            Initiative
+          </label>
+          <select
+            value={initiativeId || ''}
+            onChange={(e) => setInitiativeId(e.target.value || null)}
+            className={cn(
+              'w-full h-8 px-3 text-[13px] rounded-md',
+              'bg-card border border-input text-foreground',
+              'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+            )}
+          >
+            <option value="">No initiative</option>
+            {initiatives.map(init => (
+              <option key={init.id} value={init.id}>{init.name}</option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {familyInvestment && creatorUid === viewerUid && (
+        <div className="mb-4">
           <label
             className={cn(
-              'flex items-center gap-2 h-8 px-3 rounded-md cursor-pointer transition-colors',
-              vital ? 'bg-[#EA6657] text-white' : 'bg-secondary text-foreground',
+              'flex items-center gap-2 min-h-8 px-3 py-2 rounded-md cursor-pointer transition-colors',
+              'bg-secondary text-foreground',
             )}
           >
             <input
               type="checkbox"
-              checked={vital}
-              onChange={(e) => setVital(e.target.checked)}
+              checked={excludeFromFamily}
+              onChange={(e) => {
+                const nextExclude = e.target.checked;
+                setExcludeFromFamily(nextExclude);
+                setFamilyPinned(false);
+                setResponsibleUids(nextExclude ? [creatorUid] : []);
+              }}
               className="rounded border-input"
             />
-            <span className={cn('text-[13px] font-medium', vital ? 'text-white' : 'text-foreground')}>Vital?</span>
+            <span className="text-[13px] font-medium">Don&apos;t share with family</span>
           </label>
-
-          <div className="min-w-[132px] flex-1">
-            <label className="block text-[11px] font-medium text-foreground mb-2">
-              Time / effort
-            </label>
-            <select
-              value={size ?? ''}
-              onChange={(e) => setSize((e.target.value || null) as TaskSize | null)}
-              className={cn(
-                'w-full h-8 px-3 text-[13px] rounded-md',
-                'bg-card border border-input text-foreground',
-                'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
-              )}
-            >
-              <option value="">None</option>
-              <option value="S">Small</option>
-              <option value="M">Medium</option>
-              <option value="L">Large</option>
-            </select>
-          </div>
-
-          {familyInvestment && creatorUid === viewerUid && (
-            <label
-              className={cn(
-                'flex items-center gap-2 min-h-8 px-3 py-2 rounded-md cursor-pointer transition-colors',
-                'bg-secondary text-foreground',
-              )}
-            >
-              <input
-                type="checkbox"
-                checked={excludeFromFamily}
-                onChange={(e) => {
-                  const nextExclude = e.target.checked;
-                  setExcludeFromFamily(nextExclude);
-                  setFamilyPinned(false);
-                  setResponsibleUids(nextExclude ? [creatorUid] : []);
-                }}
-                className="rounded border-input"
-              />
-              <span className="text-[13px] font-medium">Don&apos;t share with family</span>
-            </label>
-          )}
         </div>
-      </div>
+      )}
 
       <div className="mb-4 rounded-md border border-input bg-card px-3 py-2 text-[12px] text-foreground">
         <div className="font-medium">{familyInvestment ? (sharedTask ? 'Shared with family' : 'Private to creator') : 'Private to creator'}</div>
@@ -734,24 +751,6 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
             Delete
           </button>
         )}
-        {onComplete && (
-          <button
-            type="button"
-            onClick={() => {
-              flushAutosave();
-              onComplete(task.id);
-              onClose();
-            }}
-            className={cn(
-              'flex items-center justify-center w-8 h-8 rounded-md',
-              'text-emerald-600 hover:bg-emerald-50',
-              'transition-all duration-150',
-            )}
-            title="Complete"
-          >
-            <Check className="w-4 h-4" />
-          </button>
-        )}
         {onIcebox && (
           <button
             type="button"
@@ -786,20 +785,6 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
           )}
           {saveState === 'error' && <span className="text-destructive">Save failed</span>}
         </div>
-
-        <div className="flex-1 min-w-[8px]" />
-
-        <button
-          type="button"
-          onClick={handleClose}
-          className={cn(
-            'shrink-0 px-3 py-1.5 rounded-md text-[13px] font-medium',
-            'border border-border bg-background text-foreground',
-            'hover:bg-secondary transition-all duration-150',
-          )}
-        >
-          Done
-        </button>
       </div>
     </div>
   );

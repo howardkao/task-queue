@@ -431,9 +431,21 @@ function TaskRow({
           ...(isDragging ? { opacity: 0.45 } : {}),
         }}
       >
-        <div onClick={onToggleEdit} style={taskTitleStyle}>
-          <span>{task.title}</span>
-          {task.size && <span style={{ color: '#9ca3af', fontSize: '11px', marginLeft: '6px' }}>{task.size}</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div onClick={onToggleEdit} style={{ ...taskTitleStyle, flex: 1, minWidth: 0 }}>
+            <span>{task.title}</span>
+            {task.size && <span style={{ color: '#9ca3af', fontSize: '11px', marginLeft: '6px' }}>{task.size}</span>}
+          </div>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onComplete(task.id);
+            }}
+            style={completeButtonStyle}
+            title="Complete"
+          >
+            &#10003;
+          </button>
         </div>
         {isEditing && (
           <TaskEditPanel
@@ -536,4 +548,21 @@ const dropIndicatorLine: React.CSSProperties = {
   background: '#EA6657',
   borderRadius: '2px',
   margin: '2px 0',
+};
+
+const completeButtonStyle: React.CSSProperties = {
+  flexShrink: 0,
+  width: '24px',
+  height: '24px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: '6px',
+  border: '1px solid #d1d5db',
+  background: 'transparent',
+  color: '#9ca3af',
+  fontSize: '12px',
+  cursor: 'pointer',
+  lineHeight: 1,
+  marginRight: '8px',
 };

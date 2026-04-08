@@ -267,7 +267,7 @@ export function TaskSidebar({
                 >
                   <div style={cardInner}>
                     <div
-                      style={{ flex: 1, cursor: 'pointer' }}
+                      style={{ flex: 1, cursor: 'pointer', minWidth: 0 }}
                       onClick={() => onExpandedTaskIdChange(isEditing ? null : task.id)}
                     >
                       <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
@@ -289,6 +289,16 @@ export function TaskSidebar({
                         <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
                       )}
                     </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        completeTask.mutate(task.id);
+                      }}
+                      style={completeButtonStyle}
+                      title="Complete"
+                    >
+                      &#10003;
+                    </button>
                   </div>
                   {isEditing && (
                     <TaskEditPanel
@@ -353,4 +363,20 @@ const dropIndicatorLine: React.CSSProperties = {
   background: '#EA6657',
   borderRadius: '2px',
   margin: '2px 0',
+};
+
+const completeButtonStyle: React.CSSProperties = {
+  flexShrink: 0,
+  width: '24px',
+  height: '24px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: '6px',
+  border: '1px solid #d1d5db',
+  background: 'transparent',
+  color: '#9ca3af',
+  fontSize: '12px',
+  cursor: 'pointer',
+  lineHeight: 1,
 };

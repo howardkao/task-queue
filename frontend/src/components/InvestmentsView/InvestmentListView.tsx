@@ -242,12 +242,24 @@ export function InvestmentListView({ onOpenInvestment }: InvestmentListViewProps
               )}
               {unassignedTasks.map(task => (
                 <div key={task.id} style={unassignedTaskRowStyle}>
-                  <div
-                    onClick={() => setExpandedTaskId(prev => prev === task.id ? null : task.id)}
-                    style={unassignedTaskTitleStyle}
-                  >
-                    <span>{task.title}</span>
-                    {task.size && <span style={{ color: '#9ca3af', fontSize: '11px', marginLeft: '6px' }}>{task.size}</span>}
+                  <div style={{ display: 'flex', alignItems: 'center' }}>
+                    <div
+                      onClick={() => setExpandedTaskId(prev => prev === task.id ? null : task.id)}
+                      style={{ ...unassignedTaskTitleStyle, flex: 1, minWidth: 0 }}
+                    >
+                      <span>{task.title}</span>
+                      {task.size && <span style={{ color: '#9ca3af', fontSize: '11px', marginLeft: '6px' }}>{task.size}</span>}
+                    </div>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        completeTask.mutate(task.id);
+                      }}
+                      style={completeButtonStyle}
+                      title="Complete"
+                    >
+                      &#10003;
+                    </button>
                   </div>
                   {expandedTaskId === task.id && (
                     <TaskEditPanel
@@ -428,4 +440,21 @@ const unassignedTaskTitleStyle: React.CSSProperties = {
   fontWeight: 500,
   color: '#1D212B',
   cursor: 'pointer',
+};
+
+const completeButtonStyle: React.CSSProperties = {
+  flexShrink: 0,
+  width: '24px',
+  height: '24px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: '6px',
+  border: '1px solid #d1d5db',
+  background: 'transparent',
+  color: '#9ca3af',
+  fontSize: '12px',
+  cursor: 'pointer',
+  lineHeight: 1,
+  marginRight: '8px',
 };
