@@ -1,11 +1,10 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react';
 import { X, Trash2, Check, Snowflake, Calendar, Clock, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { Task, RecurrenceRule, Classification, Priority, TaskSize } from '../../types';
 import { useUpdateTask, useDeleteTask } from '../../hooks/useTasks';
 import { useInvestments } from '../../hooks/useInvestments';
 import { useInitiatives } from '../../hooks/useInitiatives';
-import { useAuth } from '../../hooks/useAuth';
 import { TaskRecurrenceSection } from './TaskRecurrenceSection';
 import {
   buildEditableState,
@@ -17,22 +16,23 @@ import {
   type EditableTaskState,
   type RecurrenceMode,
 } from './taskEditPanelModel';
-import { getTaskCreatorUid, isFamilyInvestment, isSharedTask } from '../../taskPolicy';
+import { getTaskCreatorUid, isFamilyInvestment } from '../../taskPolicy';
+import { TASK_TITLE_FIELD_RIGHT_INSET_PX } from './taskTitleFieldConstants';
 
 interface TaskEditPanelProps {
   task: Task;
   onClose: () => void;
   onComplete?: (id: string) => void;
   onIcebox?: (id: string) => void;
+  /** When true, removes top border so the panel flows seamlessly from a hidden collapsed row. */
+  seamless?: boolean;
 }
 
-export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditPanelProps) {
+export function TaskEditPanel({ task, onClose, onComplete: _onComplete, onIcebox, seamless }: TaskEditPanelProps) {
   const updateTask = useUpdateTask();
   const deleteTask = useDeleteTask();
   const { data: investments = [] } = useInvestments('active');
-  const { user } = useAuth();
   const normalizedRecurrence = normalizeRecurrence(task.recurrence);
-  const viewerUid = user?.uid ?? '';
   const creatorUid = getTaskCreatorUid(task);
 
   const initialDeadline = parseDeadline(task.deadline);
@@ -59,9 +59,6 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   const [initiativeId, setInitiativeId] = useState<string | null>(task.initiativeId);
   const { data: initiatives = [] } = useInitiatives(investmentId ?? undefined);
   const selectedInvestment = investments.find((investment) => investment.id === investmentId) ?? null;
-  const familyInvestment = isFamilyInvestment(selectedInvestment ?? undefined);
-  const sharedTask = isSharedTask({ excludeFromFamily, familyPinned }, selectedInvestment ?? undefined);
-  const iAmResponsible = !!viewerUid && responsibleUids.includes(viewerUid);
 
   const [recMode, setRecMode] = useState<RecurrenceMode>(recurrenceToMode(normalizedRecurrence));
   const [weeklyDays, setWeeklyDays] = useState<string[]>(
@@ -89,14 +86,38 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   const latestSaveIdRef = useRef(0);
 
   const titleRef = useRef<HTMLTextAreaElement>(null);
-  const autoResize = useCallback((el: HTMLTextAreaElement | null) => {
-    if (!el) return;
+  const titleRowRef = useRef<HTMLDivElement>(null);
+  const titleMeasureRef = useRef<HTMLSpanElement>(null);
+
+  const syncTitleFieldLayout = useCallback(() => {
+    const el = titleRef.current;
+    const wrap = titleRowRef.current;
+    const mirror = titleMeasureRef.current;
+    if (!el || !wrap || !mirror) return;
+    const cs = getComputedStyle(wrap);
+    const pl = parseFloat(cs.paddingLeft) || 0;
+    const pr = parseFloat(cs.paddingRight) || 0;
+    const maxW = wrap.clientWidth - pl - pr;
+    const needed = Math.ceil(mirror.getBoundingClientRect().width);
+    const w = Math.min(Math.max(needed, 1), maxW);
+    el.style.width = `${w}px`;
     el.style.height = 'auto';
     el.style.height = `${el.scrollHeight}px`;
   }, []);
+
+  useLayoutEffect(() => {
+    if (seamless) return;
+    syncTitleFieldLayout();
+  }, [title, seamless, syncTitleFieldLayout]);
+
   useEffect(() => {
-    autoResize(titleRef.current);
-  }, [title, autoResize]);
+    if (seamless) return;
+    const wrap = titleRowRef.current;
+    if (!wrap) return;
+    const ro = new ResizeObserver(() => syncTitleFieldLayout());
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [seamless, syncTitleFieldLayout]);
 
   const buildRecurrence = useCallback((): RecurrenceRule | null => {
     if (!showRecurrence) return null;
@@ -171,7 +192,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
   const buildUpdateData = useCallback((current: EditableTaskState): Partial<Task> => {
     const data: Partial<Task> = {};
     const saved = savedStateRef.current;
-    if (current.title !== saved.title) data.title = current.title;
+    if (!seamless && current.title !== saved.title) data.title = current.title;
     if (current.notes !== saved.notes) data.notes = current.notes;
     if (current.classification !== saved.classification) data.classification = current.classification;
     if (current.priority !== saved.priority) data.priority = current.priority;
@@ -187,7 +208,7 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     if (current.investmentId !== saved.investmentId) data.investmentId = current.investmentId;
     if (current.initiativeId !== saved.initiativeId) data.initiativeId = current.initiativeId;
     return data;
-  }, []);
+  }, [seamless]);
 
   const persistDraft = useCallback(
     async (current: EditableTaskState) => {
@@ -303,11 +324,6 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
     [buildCurrentState, persistDraft],
   );
 
-  const handleClose = () => {
-    flushAutosave();
-    onClose();
-  };
-
   const handleDelete = () => {
     deleteTask.mutate(task.id);
     onClose();
@@ -378,22 +394,43 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
 
   return (
     <div
-      className="p-4 bg-card border-t border-border animate-in slide-in-from-top-2 duration-200"
+      className={cn(
+        'p-4 bg-card animate-in slide-in-from-top-2 duration-200',
+        !seamless && 'border-t border-border',
+      )}
       onClick={(e) => e.stopPropagation()}
     >
-      <textarea
-        ref={titleRef}
-        value={title}
-        onChange={(e) => setTitle(e.target.value)}
-        rows={1}
-        className={cn(
-          'w-full px-3 py-2 mb-4 text-[15px] font-semibold text-foreground leading-snug',
-          'bg-transparent border-0 resize-none overflow-hidden',
-          'focus:outline-none',
-          'placeholder:text-muted-foreground',
-        )}
-        placeholder="Task title..."
-      />
+      {!seamless && (
+        <div
+          ref={titleRowRef}
+          className="relative mb-4 w-full box-border"
+          style={{ paddingRight: TASK_TITLE_FIELD_RIGHT_INSET_PX }}
+        >
+          <span
+            ref={titleMeasureRef}
+            aria-hidden
+            className={cn(
+              'invisible absolute left-0 top-0 -z-10 whitespace-pre-wrap px-3 py-2',
+              'text-[15px] font-semibold text-foreground leading-snug w-max max-w-none pointer-events-none',
+            )}
+          >
+            {title.length > 0 ? title : '\u00a0'}
+          </span>
+          <textarea
+            ref={titleRef}
+            value={title}
+            onChange={(e) => setTitle(e.target.value)}
+            rows={1}
+            className={cn(
+              'block min-w-0 max-w-full px-3 py-2 text-[15px] font-semibold text-foreground leading-snug',
+              'bg-transparent border-0 resize-none overflow-hidden',
+              'focus:outline-none',
+              'placeholder:text-muted-foreground',
+            )}
+            placeholder="Task title..."
+          />
+        </div>
+      )}
 
       {/* Row 2: vital? | time/effort | investment chip */}
       <div className="mb-4">
@@ -423,9 +460,9 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
             )}
           >
             <option value="">Size</option>
-            <option value="S">Small</option>
-            <option value="M">Medium</option>
-            <option value="L">Large</option>
+            <option value="S">S (&lt;15 min)</option>
+            <option value="M">M (&lt;1 hr)</option>
+            <option value="L">L (&lt;3 hrs)</option>
           </select>
 
           {investmentId && selectedInvestment ? (
@@ -659,67 +696,6 @@ export function TaskEditPanel({ task, onClose, onComplete, onIcebox }: TaskEditP
               <option key={init.id} value={init.id}>{init.name}</option>
             ))}
           </select>
-        </div>
-      )}
-
-      {familyInvestment && creatorUid === viewerUid && (
-        <div className="mb-4">
-          <label
-            className={cn(
-              'flex items-center gap-2 min-h-8 px-3 py-2 rounded-md cursor-pointer transition-colors',
-              'bg-secondary text-foreground',
-            )}
-          >
-            <input
-              type="checkbox"
-              checked={excludeFromFamily}
-              onChange={(e) => {
-                const nextExclude = e.target.checked;
-                setExcludeFromFamily(nextExclude);
-                setFamilyPinned(false);
-                setResponsibleUids(nextExclude ? [creatorUid] : []);
-              }}
-              className="rounded border-input"
-            />
-            <span className="text-[13px] font-medium">Don&apos;t share with family</span>
-          </label>
-        </div>
-      )}
-
-      <div className="mb-4 rounded-md border border-input bg-card px-3 py-2 text-[12px] text-foreground">
-        <div className="font-medium">{familyInvestment ? (sharedTask ? 'Shared with family' : 'Private to creator') : 'Private to creator'}</div>
-        <div className="mt-1 text-muted-foreground">
-          Creator: {creatorUid === viewerUid ? 'You' : creatorUid || 'Unknown'}
-        </div>
-      </div>
-
-      {familyInvestment && sharedTask && (
-        <div className="mb-4 rounded-md border border-input bg-card px-3 py-3">
-          <div className="mb-1 text-[11px] font-medium text-foreground">Responsible</div>
-          <div className="mb-2 text-[12px] text-muted-foreground">
-            {responsibleUids.length === 0
-              ? 'Unassigned'
-              : iAmResponsible
-                ? 'You are responsible'
-                : `${responsibleUids.length} responsible`}
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (!viewerUid) return;
-              setResponsibleUids((current) => (
-                current.includes(viewerUid)
-                  ? current.filter((uid) => uid !== viewerUid)
-                  : [...current, viewerUid]
-              ));
-            }}
-            className={cn(
-              'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md',
-              'text-[12px] font-medium text-foreground hover:bg-secondary transition-all duration-150',
-            )}
-          >
-            {iAmResponsible ? 'I am no longer responsible' : 'I am responsible'}
-          </button>
         </div>
       )}
 

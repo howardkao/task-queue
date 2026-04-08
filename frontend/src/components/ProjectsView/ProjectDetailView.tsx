@@ -3,6 +3,7 @@ import { useProject, useUpdateProject, useToggleProjectStatus, useDeleteProject 
 import { useTasks, useCompleteTask, useCreateTask, useIceboxTask } from '../../hooks/useTasks';
 import { useProjectActivityLog } from '../../hooks/useActivityLog';
 import { useIsMobile } from '../../hooks/useViewport';
+import { useAuth } from '../../hooks/useAuth';
 import type { Classification } from '../../types';
 import { ProjectActivitySection } from './ProjectActivitySection';
 import { ProjectDetailTaskRail } from './ProjectDetailTaskRail';
@@ -15,6 +16,7 @@ interface ProjectDetailViewProps {
 
 export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps) {
   const isMobile = useIsMobile();
+  const { user } = useAuth();
   const { data: project, isLoading } = useProject(projectId);
   const updateProject = useUpdateProject();
   const toggleStatus = useToggleProjectStatus();
@@ -206,6 +208,9 @@ export function ProjectDetailView({ projectId, onBack }: ProjectDetailViewProps)
           completedTasks={completedTasks}
           expandedTaskId={expandedTaskId}
           onExpandedTaskIdChange={setExpandedTaskId}
+          familyVisibleParent={project.familyVisible === true}
+          viewerUid={user?.uid ?? ''}
+          viewerEmail={user?.email}
         />
       </div>
 

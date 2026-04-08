@@ -42,6 +42,7 @@ import { PX_PER_HOUR } from './dayCalendarConstants';
 import { snapToGrid } from './dayCalendarUtils';
 import { isTaskVisibleInFamily, isTaskVisibleInMe } from '../../taskPolicy';
 import { sortTasksWithinInvestments } from '../../lib/taskOrdering';
+import { defaultPlacementDurationHoursForTaskSize } from '../../lib/taskSizePlacement';
 
 type SidebarMode = 'vital' | 'other';
 
@@ -119,6 +120,7 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
   const skipClearExpandedOnNextSidebarMode = useRef(false);
   const dayGridElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const [placedTaskDragPreview, setPlacedTaskDragPreview] = useState<PlacedTaskDragPreview | null>(null);
+  const sidebarDropDurationHoursRef = useRef(2);
   const [dayCount, setDayCount] = useState(() => {
     const saved = readPlannerStorage(plannerScope, 'dayCount');
     return saved ? parseInt(saved, 10) : 3;
@@ -187,6 +189,9 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
   }, [isMobile]);
 
   const dateKeys = useMemo(() => visibleDates.map(toDateKey), [visibleDates]);
+  const calendarAllDayLayoutSyncKey = useMemo(() => dateKeys.join(','), [dateKeys]);
+  const dateKeysRef = useRef(dateKeys);
+  dateKeysRef.current = dateKeys;
   const todayKey = toDateKey(new Date());
 
   const updateTask = useUpdateTask();
@@ -319,8 +324,17 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
   const [allDayHeight, setAllDayHeight] = useState<number | undefined>(undefined);
 
   const handleAllDayHeightMeasured = useCallback((dk: string, height: number) => {
+    const allowed = new Set(dateKeysRef.current);
+    if (!allowed.has(dk)) return;
     const m = allDayHeightsRef.current;
+    for (const k of [...m.keys()]) {
+      if (!allowed.has(k)) m.delete(k);
+    }
     m.set(dk, height);
+    if (m.size === 0) {
+      setAllDayHeight(undefined);
+      return;
+    }
     const max = Math.max(...m.values());
     setAllDayHeight((prev) => (prev === max ? prev : max));
   }, []);
@@ -394,20 +408,30 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
     [allSizedTasks, dueSoonTasks, isMobile],
   );
 
+  const handleSidebarCalendarDragStart = useCallback((task: Task) => {
+    sidebarDropDurationHoursRef.current = defaultPlacementDurationHoursForTaskSize(task.size);
+  }, []);
+
+  const handleSidebarCalendarDragEnd = useCallback(() => {
+    sidebarDropDurationHoursRef.current = 2;
+  }, []);
+
   const handleTaskDrop = useCallback((taskId: string, startHour: number, dateKey: string) => {
     const task = [...allSizedTasks, ...dueSoonTasks].find(t => t.id === taskId);
     if (!task) return;
+    const duration = task.placement?.duration ?? defaultPlacementDurationHoursForTaskSize(task.size);
+    const clampedStart = Math.max(wakeUpHour, Math.min(startHour, bedTimeHour - duration));
     updateTask.mutate({
       id: taskId,
       data: {
         placement: {
           date: dateKey,
-          startHour,
-          duration: task.placement?.duration ?? 2,
+          startHour: clampedStart,
+          duration,
         },
       },
     });
-  }, [allSizedTasks, dueSoonTasks, updateTask]);
+  }, [allSizedTasks, dueSoonTasks, updateTask, wakeUpHour, bedTimeHour]);
 
   const handleTaskMove = useCallback((taskId: string, startHour: number, dateKey: string) => {
     const task = [...allSizedTasks, ...dueSoonTasks].find(t => t.id === taskId);
@@ -472,8 +496,11 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
         <DueSoonSidebar
           tasks={dueSoonTasks}
           placedTasks={placedTasksMap}
+          investments={investments}
           expandedTaskId={expandedTaskId}
           onExpandedTaskIdChange={setExpandedTaskId}
+          onCalendarDragFromSidebarStart={handleSidebarCalendarDragStart}
+          onCalendarDragFromSidebarEnd={handleSidebarCalendarDragEnd}
         />
       )}
 
@@ -573,6 +600,8 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
         expandedTaskId={expandedTaskId}
         onExpandedTaskIdChange={setExpandedTaskId}
         reorderContext={plannerScope}
+        onCalendarDragFromSidebarStart={handleSidebarCalendarDragStart}
+        onCalendarDragFromSidebarEnd={handleSidebarCalendarDragEnd}
       />
     </>
   );
@@ -706,6 +735,7 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
                 events={eventsPerDay[i]}
                 maxAllDayCount={maxAllDayCount}
                 allDayHeight={allDayHeight}
+                allDayLayoutSyncKey={calendarAllDayLayoutSyncKey}
                 onAllDayHeightMeasured={handleAllDayHeightMeasured}
                 startHour={wakeUpHour}
                 endHour={bedTimeHour}
@@ -724,6 +754,7 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
                 onTaskRemove={handleTaskRemove}
                 onPlacedTaskDragPreviewChange={setPlacedTaskDragPreview}
                 activePlacedDragTaskId={placedTaskDragPreview?.taskId ?? null}
+                sidebarDropDurationHoursRef={sidebarDropDurationHoursRef}
               />
             ))}
           </div>

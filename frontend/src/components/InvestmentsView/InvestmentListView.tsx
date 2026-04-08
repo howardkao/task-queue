@@ -5,6 +5,10 @@ import { useIsMobile } from '../../hooks/useViewport';
 import { useAuth } from '../../hooks/useAuth';
 import type { Investment, Task } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
+import { sizeBadgeStyle } from '../shared/collapsedTaskMeta';
+import { listCardCompleteButtonStyle } from '../shared/listCardStyles';
+import { InlineEditableTitle } from '../shared/InlineEditableTitle';
+import { onExpandedTaskHeaderBackgroundClick } from '../shared/expandedTaskHeader';
 import { isTaskVisibleInMe } from '../../taskPolicy';
 
 interface InvestmentListViewProps {
@@ -240,37 +244,53 @@ export function InvestmentListView({ onOpenInvestment }: InvestmentListViewProps
               {unassignedTasks.length === 0 && (
                 <div style={emptyStyle}>All tasks are assigned to investments</div>
               )}
-              {unassignedTasks.map(task => (
-                <div key={task.id} style={unassignedTaskRowStyle}>
-                  <div style={{ display: 'flex', alignItems: 'center' }}>
+              {unassignedTasks.map(task => {
+                const isEditing = expandedTaskId === task.id;
+                return (
+                  <div key={task.id} style={unassignedTaskRowStyle}>
                     <div
-                      onClick={() => setExpandedTaskId(prev => prev === task.id ? null : task.id)}
-                      style={{ ...unassignedTaskTitleStyle, flex: 1, minWidth: 0 }}
+                      style={{ display: 'flex', alignItems: 'center' }}
+                      onClick={(e) =>
+                        onExpandedTaskHeaderBackgroundClick(e, isEditing, () =>
+                          setExpandedTaskId(null),
+                        )
+                      }
                     >
-                      <span>{task.title}</span>
-                      {task.size && <span style={{ color: '#9ca3af', fontSize: '11px', marginLeft: '6px' }}>{task.size}</span>}
+                      <div
+                        onClick={isEditing ? undefined : () => setExpandedTaskId(task.id)}
+                        style={{ ...unassignedTaskTitleStyle, flex: 1, minWidth: 0, cursor: isEditing ? undefined : 'pointer' }}
+                      >
+                        {isEditing ? (
+                          <InlineEditableTitle taskId={task.id} initialTitle={task.title} style={unassignedTaskTitleStyle} />
+                        ) : (
+                          <span>{task.title}</span>
+                        )}
+                      </div>
+                      {task.size && <span style={sizeBadgeStyle}>{task.size}</span>}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          completeTask.mutate(task.id);
+                        }}
+                        style={listCardCompleteButtonStyle}
+                        title="Complete"
+                      >
+                        &#10003;
+                      </button>
                     </div>
-                    <button
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        completeTask.mutate(task.id);
-                      }}
-                      style={completeButtonStyle}
-                      title="Complete"
-                    >
-                      &#10003;
-                    </button>
+                    {isEditing && (
+                      <TaskEditPanel
+                        task={task}
+                        onClose={() => setExpandedTaskId(null)}
+                        onComplete={(id) => completeTask.mutate(id)}
+                        onIcebox={(id) => iceboxTask.mutate(id)}
+                        seamless
+                      />
+                    )}
                   </div>
-                  {expandedTaskId === task.id && (
-                    <TaskEditPanel
-                      task={task}
-                      onClose={() => setExpandedTaskId(null)}
-                      onComplete={(id) => completeTask.mutate(id)}
-                      onIcebox={(id) => iceboxTask.mutate(id)}
-                    />
-                  )}
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         </div>
@@ -440,21 +460,4 @@ const unassignedTaskTitleStyle: React.CSSProperties = {
   fontWeight: 500,
   color: '#1D212B',
   cursor: 'pointer',
-};
-
-const completeButtonStyle: React.CSSProperties = {
-  flexShrink: 0,
-  width: '24px',
-  height: '24px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  borderRadius: '6px',
-  border: '1px solid #d1d5db',
-  background: 'transparent',
-  color: '#9ca3af',
-  fontSize: '12px',
-  cursor: 'pointer',
-  lineHeight: 1,
-  marginRight: '8px',
 };

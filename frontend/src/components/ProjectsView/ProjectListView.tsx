@@ -1,15 +1,19 @@
 import { useMemo, useState, useEffect } from 'react';
 import { useProjects, useCreateProject, useToggleProjectStatus, useDeleteProject } from '../../hooks/useProjects';
+import { useInvestments } from '../../hooks/useInvestments';
+import { useAuth } from '../../hooks/useAuth';
 import { useTasks, useUpdateTask, useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
 import { useIsMobile } from '../../hooks/useViewport';
 import type { Project, Task } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
+import { onExpandedTaskHeaderBackgroundClick } from '../shared/expandedTaskHeader';
 import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
   formatTaskDeadlineForMeta,
 } from '../shared/collapsedTaskMeta';
 import { SideDrawer } from '../shared/SideDrawer';
+import { TaskCollapsedSharingIndicator } from '../shared/TaskCollapsedSharingIndicator';
 import { formatLastCompletedLabel } from '@/lib/firestoreTime';
 
 interface ProjectListViewProps {
@@ -312,6 +316,13 @@ function RailTaskCard({
   onComplete: (id: string) => void;
   onIcebox: (id: string) => void;
 }) {
+  const { user } = useAuth();
+  const { data: investments = [] } = useInvestments('active');
+  const investment = task.investmentId
+    ? investments.find((inv) => inv.id === task.investmentId)
+    : undefined;
+  const familyVisibleParent = investment?.familyVisible === true;
+
   const handleDragStart = (e: React.DragEvent) => {
     e.dataTransfer.setData(PROJECT_TASK_DRAG_TYPE, task.id);
     e.dataTransfer.effectAllowed = 'move';
@@ -331,8 +342,11 @@ function RailTaskCard({
         draggable
         onDragStart={handleDragStart}
         style={railTaskInnerStyle}
+        onClick={(e) =>
+          onExpandedTaskHeaderBackgroundClick(e, isEditing, onCloseEdit)
+        }
       >
-        <div style={dragHandleStyle}>⠿</div>
+        <div style={dragHandleStyle} data-task-card-drag-handle>⠿</div>
         <div style={{ flex: 1, minWidth: 0 }}>
           <div onClick={onToggleEdit} style={railTaskTitleStyle}>
             {task.title}
@@ -341,6 +355,13 @@ function RailTaskCard({
             <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
           )}
         </div>
+        <TaskCollapsedSharingIndicator
+          task={task}
+          familyVisibleParent={familyVisibleParent}
+          viewerUid={user?.uid ?? ''}
+          viewerEmail={user?.email}
+          style={{ marginLeft: 'auto' }}
+        />
       </div>
 
       {isEditing && (

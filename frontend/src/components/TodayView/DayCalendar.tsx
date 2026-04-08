@@ -1,4 +1,5 @@
-import { useMemo, useRef, useCallback, useState, useEffect } from 'react';
+import type { MutableRefObject } from 'react';
+import { useMemo, useRef, useCallback, useState, useEffect, useLayoutEffect } from 'react';
 import { calendarEventCardChrome, calendarEventTitleStyle } from '../shared/listCardStyles';
 import { getPlacedTaskCalendarChrome } from '../../theme/calendarFeedPalette';
 import type { CalEvent, PlacedTaskDragPreview } from './dayCalendarTypes';
@@ -29,6 +30,8 @@ interface DayCalendarProps {
   maxAllDayCount?: number;
   /** Measured pixel height all columns should use for the all-day section. */
   allDayHeight?: number;
+  /** Changes when the set of visible calendar days changes; forces a fresh all-day height measure. */
+  allDayLayoutSyncKey: string;
   /** Report this column's natural all-day content height to the parent. */
   onAllDayHeightMeasured?: (dateKey: string, height: number) => void;
   startHour?: number;
@@ -58,10 +61,12 @@ interface DayCalendarProps {
   onTaskAllDayMove?: (taskId: string, dateKey: string) => void;
   onTaskResize?: (taskId: string, duration: number) => void;
   onTaskRemove?: (taskId: string) => void;
+  /** Hours for sidebar→calendar drag preview and drop clamping; defaults to 2 when unset. */
+  sidebarDropDurationHoursRef?: MutableRefObject<number>;
 }
 
 export function DayCalendar({
-  date, dateKey, events, maxAllDayCount = 0, allDayHeight, onAllDayHeightMeasured,
+  date, dateKey, events, maxAllDayCount = 0, allDayHeight, allDayLayoutSyncKey, onAllDayHeightMeasured,
   startHour = 7, endHour = 22, compact = false,
   showLabels = true, isToday = false,
   registerDayGrid,
@@ -72,6 +77,7 @@ export function DayCalendar({
   onPlacedTaskDragPreviewChange,
   activePlacedDragTaskId = null,
   onTaskDrop, onTaskMove, onTaskAllDayMove, onTaskResize, onTaskRemove,
+  sidebarDropDurationHoursRef,
 }: DayCalendarProps) {
   const gridRef = useRef<HTMLDivElement | null>(null);
   const allDaySectionRef = useRef<HTMLDivElement | null>(null);
@@ -136,12 +142,17 @@ export function DayCalendar({
     return snapToGrid(Math.max(startHour, Math.min(hour, endHour)));
   }, [startHour, endHour]);
 
+  const dropDurationHours = () => sidebarDropDurationHoursRef?.current ?? 2;
+
   const handleDragOver = useCallback((e: React.DragEvent) => {
     if (!e.dataTransfer.types.includes('task-id')) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'move';
-    setDragOverHour(yToHour(e.clientY));
-  }, [yToHour]);
+    const duration = dropDurationHours();
+    let hour = yToHour(e.clientY);
+    hour = Math.max(startHour, Math.min(hour, endHour - duration));
+    setDragOverHour(hour);
+  }, [yToHour, startHour, endHour, sidebarDropDurationHoursRef]);
 
   const handleDragLeave = useCallback(() => {
     setDragOverHour(null);
@@ -152,9 +163,11 @@ export function DayCalendar({
     setDragOverHour(null);
     const taskId = e.dataTransfer.getData('task-id');
     if (!taskId || !onTaskDrop) return;
-    const hour = yToHour(e.clientY);
+    const duration = dropDurationHours();
+    let hour = yToHour(e.clientY);
+    hour = Math.max(startHour, Math.min(hour, endHour - duration));
     onTaskDrop(taskId, hour, dateKey);
-  }, [yToHour, onTaskDrop, dateKey]);
+  }, [yToHour, onTaskDrop, dateKey, startHour, endHour, sidebarDropDurationHoursRef]);
 
   const setGridEl = useCallback((el: HTMLDivElement | null) => {
     gridRef.current = el;
@@ -375,11 +388,16 @@ export function DayCalendar({
     };
   }, [events]);
 
-  // Measure natural all-day content height and report to parent
-  useEffect(() => {
+  // Measure all-day content height after layout; re-run when visible range, events, or column width change.
+  useLayoutEffect(() => {
     if (!onAllDayHeightMeasured || !allDaySectionRef.current) return;
-    onAllDayHeightMeasured(dateKey, allDaySectionRef.current.scrollHeight);
-  }, [dateKey, allDayEvents.length, onAllDayHeightMeasured]);
+    const el = allDaySectionRef.current;
+    const report = () => onAllDayHeightMeasured(dateKey, el.scrollHeight);
+    report();
+    const ro = new ResizeObserver(() => report());
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [dateKey, allDayEvents.length, allDayLayoutSyncKey, onAllDayHeightMeasured]);
 
   const timedEventsForLayout = useMemo(() => {
     if (!interacting) return timedEvents;
@@ -623,35 +641,45 @@ export function DayCalendar({
           </div>
         )}
 
-        {dragOverHour !== null && (
-          <>
-            <div style={{
-              position: 'absolute',
-              top: `${(dragOverHour - startHour) * PX_PER_HOUR}px`,
-              left: `${timeColWidth}px`,
-              right: '0',
-              height: '2px',
-              background: '#EA6657',
-              zIndex: 20,
-              pointerEvents: 'none',
-            }} />
-            <div style={{
-              position: 'absolute',
-              top: `${(dragOverHour - startHour) * PX_PER_HOUR - 10}px`,
-              left: '2px',
-              fontSize: '10px',
-              fontWeight: 500,
-              color: '#EA6657',
-              zIndex: 20,
-              pointerEvents: 'none',
-              background: 'transparent',
-              padding: '1px 4px',
-              borderRadius: '4px',
-            }}>
-              {formatHourMinute(dragOverHour)}
-            </div>
-          </>
-        )}
+        {dragOverHour !== null && (() => {
+          const duration = sidebarDropDurationHoursRef?.current ?? 2;
+          const top = (dragOverHour - startHour) * PX_PER_HOUR;
+          const rawHeight = duration * PX_PER_HOUR - 4;
+          const gridHeight = (endHour - startHour) * PX_PER_HOUR;
+          const heightPx = Math.max(Math.min(rawHeight, gridHeight - top), 24);
+          return (
+            <>
+              <div style={{
+                position: 'absolute',
+                top: `${top}px`,
+                left: `${timeColWidth + TIMED_TRACK_LEFT_GUTTER_PX}px`,
+                right: `${TIMED_TRACK_RIGHT_MARGIN_PX}px`,
+                height: `${heightPx}px`,
+                background: 'rgba(234, 102, 87, 0.2)',
+                borderRadius: '6px',
+                border: '1px dashed rgba(234, 102, 87, 0.5)',
+                zIndex: 20,
+                pointerEvents: 'none',
+                boxSizing: 'border-box',
+              }} />
+              <div style={{
+                position: 'absolute',
+                top: `${top - 10}px`,
+                left: `${Math.max(2, timeColWidth - 48)}px`,
+                fontSize: '10px',
+                fontWeight: 500,
+                color: '#EA6657',
+                zIndex: 21,
+                pointerEvents: 'none',
+                background: 'rgba(255,255,255,0.92)',
+                padding: '1px 4px',
+                borderRadius: '4px',
+              }}>
+                {formatHourMinute(dragOverHour)}
+              </div>
+            </>
+          );
+        })()}
 
         <div
           style={{

@@ -1,17 +1,24 @@
-import type { Task } from '../../types';
+import { useCallback, useMemo } from 'react';
+import type { Task, Investment } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
+import { useAuth } from '../../hooks/useAuth';
 import { useCompleteTask, useIceboxTask } from '../../hooks/useTasks';
 import {
   listCardStyle,
   listPlacedCardStyle,
   listCardInnerStyle,
   listCardTitleStyle,
+  listCardCompleteButtonStyle,
 } from '../shared/listCardStyles';
 import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
   formatTaskDeadlineForMeta,
+  sizeBadgeStyle,
 } from '../shared/collapsedTaskMeta';
+import { InlineEditableTitle } from '../shared/InlineEditableTitle';
+import { onExpandedTaskHeaderBackgroundClick } from '../shared/expandedTaskHeader';
+import { TaskCollapsedSharingIndicator } from '../shared/TaskCollapsedSharingIndicator';
 import { formatLastCompletedLabel } from '@/lib/firestoreTime';
 
 interface PlacedTaskInfo {
@@ -23,16 +30,28 @@ interface PlacedTaskInfo {
 interface DueSoonSidebarProps {
   tasks: Task[];
   placedTasks: Record<string, PlacedTaskInfo>;
+  investments: Investment[];
   expandedTaskId: string | null;
   onExpandedTaskIdChange: (taskId: string | null) => void;
+  onCalendarDragFromSidebarStart?: (task: Task) => void;
+  onCalendarDragFromSidebarEnd?: () => void;
 }
 
 export function DueSoonSidebar({
   tasks,
   placedTasks,
+  investments,
   expandedTaskId,
   onExpandedTaskIdChange,
+  onCalendarDragFromSidebarStart,
+  onCalendarDragFromSidebarEnd,
 }: DueSoonSidebarProps) {
+  const { user } = useAuth();
+  const uid = user?.uid ?? '';
+  const investmentById = useMemo(
+    () => new Map(investments.map((inv) => [inv.id, inv])),
+    [investments],
+  );
   const completeTask = useCompleteTask();
   const iceboxTask = useIceboxTask();
   const placedIds = Object.keys(placedTasks);
@@ -41,8 +60,13 @@ export function DueSoonSidebar({
     if (task.size != null) {
       e.dataTransfer.setData('task-id', task.id);
       e.dataTransfer.effectAllowed = 'move';
+      onCalendarDragFromSidebarStart?.(task);
     }
   };
+
+  const handleDragEnd = useCallback(() => {
+    onCalendarDragFromSidebarEnd?.();
+  }, [onCalendarDragFromSidebarEnd]);
 
   if (tasks.length === 0) return null;
 
@@ -83,35 +107,64 @@ export function DueSoonSidebar({
               data-task-row-id={task.id}
               draggable={calendarDraggable}
               onDragStart={(e) => handleDragStart(e, task)}
+              onDragEnd={calendarDraggable ? handleDragEnd : undefined}
               style={{
                 ...listCardStyle,
                 cursor: calendarDraggable ? 'grab' : undefined,
                 ...(isPlaced ? listPlacedCardStyle : {}),
               }}
             >
-              <div style={listCardInnerStyle}>
-                {calendarDraggable && (
-                  <div style={{
-                    display: 'flex',
-                    flexDirection: 'column',
-                    alignItems: 'center',
-                    gap: '2px',
-                    flexShrink: 0,
-                  }}>
-                    <span style={{ ...dragHandle, color: isPlaced ? '#E7E3DF' : '#EFEDEB' }}>⠿</span>
-                  </div>
-                )}
+              <div
+                style={listCardInnerStyle}
+                onClick={(e) =>
+                  onExpandedTaskHeaderBackgroundClick(e, isEditing, () =>
+                    onExpandedTaskIdChange(null),
+                  )
+                }
+              >
                 <div
-                  style={{ flex: 1, cursor: 'pointer' }}
-                  onClick={() => onExpandedTaskIdChange(isEditing ? null : task.id)}
+                  style={{ flex: 1, minWidth: 0, cursor: isEditing ? undefined : 'pointer' }}
+                  onClick={isEditing ? undefined : () => onExpandedTaskIdChange(task.id)}
                 >
-                  <div style={{ ...listCardTitleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>
-                    {task.title}
-                  </div>
-                  {collapsedMeta && (
-                    <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
+                  {isEditing ? (
+                    <InlineEditableTitle
+                      taskId={task.id}
+                      initialTitle={task.title}
+                      style={{ ...listCardTitleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}
+                    />
+                  ) : (
+                    <>
+                      <span style={{ ...listCardTitleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>
+                        {task.title}
+                      </span>
+                      {collapsedMeta && (
+                        <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
+                      )}
+                    </>
                   )}
                 </div>
+                <TaskCollapsedSharingIndicator
+                  task={task}
+                  familyVisibleParent={
+                    task.investmentId
+                      ? investmentById.get(task.investmentId)?.familyVisible === true
+                      : false
+                  }
+                  viewerUid={uid}
+                  viewerEmail={user?.email}
+                />
+                {task.size && <span style={sizeBadgeStyle}>{task.size}</span>}
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    completeTask.mutate(task.id);
+                  }}
+                  style={listCardCompleteButtonStyle}
+                  title="Complete"
+                >
+                  &#10003;
+                </button>
               </div>
 
               {isEditing && (
@@ -120,6 +173,7 @@ export function DueSoonSidebar({
                   onClose={() => onExpandedTaskIdChange(null)}
                   onComplete={(id) => completeTask.mutate(id)}
                   onIcebox={(id) => iceboxTask.mutate(id)}
+                  seamless
                 />
               )}
             </div>
@@ -129,11 +183,3 @@ export function DueSoonSidebar({
     </div>
   );
 }
-
-const dragHandle: React.CSSProperties = {
-  color: '#EFEDEB',
-  fontSize: '16px',
-  userSelect: 'none',
-  flexShrink: 0,
-  marginTop: '1px',
-};

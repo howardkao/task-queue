@@ -60,6 +60,19 @@ export type CollapsedTaskMetaParts = {
 };
 
 /** Due and ↻ are one segment (no dot between them); other parts joined with · */
+/** Size badge style for collapsed task rows — small pill with muted text. */
+export const sizeBadgeStyle: CSSProperties = {
+  fontSize: '10px',
+  fontWeight: 700,
+  color: '#6b7280',
+  background: '#f3f4f6',
+  borderRadius: '4px',
+  padding: '1px 6px',
+  lineHeight: '16px',
+  flexShrink: 0,
+};
+
+/** Due and ↻ are one segment (no dot between them); other parts joined with · */
 export function formatCollapsedTaskMetaLine(parts: CollapsedTaskMetaParts): string | null {
   const segments: string[] = [];
 

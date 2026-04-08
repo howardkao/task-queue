@@ -4,7 +4,11 @@ import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
   formatTaskDeadlineForMeta,
+  sizeBadgeStyle,
 } from '../shared/collapsedTaskMeta';
+import { InlineEditableTitle } from '../shared/InlineEditableTitle';
+import { onExpandedTaskHeaderBackgroundClick } from '../shared/expandedTaskHeader';
+import { TaskCollapsedSharingIndicator } from '../shared/TaskCollapsedSharingIndicator';
 import {
   getTaskTypeStyles,
   taskDragHandleStyle,
@@ -19,12 +23,18 @@ export function ProjectDetailTaskRow({
   onExpandedTaskIdChange,
   onComplete,
   onIcebox,
+  familyVisibleParent,
+  viewerUid,
+  viewerEmail,
 }: {
   task: Task;
   expandedTaskId: string | null;
   onExpandedTaskIdChange: (taskId: string | null) => void;
   onComplete: (id: string) => void;
   onIcebox: (id: string) => void;
+  familyVisibleParent: boolean;
+  viewerUid: string;
+  viewerEmail: string | null | undefined;
 }) {
   const editing = expandedTaskId === task.id;
   const deadlineStr = formatTaskDeadlineForMeta(task.deadline);
@@ -46,6 +56,9 @@ export function ProjectDetailTaskRow({
       <div
         draggable
         onDragStart={handleDragStart}
+        onClick={(e) =>
+          onExpandedTaskHeaderBackgroundClick(e, editing, () => onExpandedTaskIdChange(null))
+        }
         style={{
           ...taskRowCardStyle,
           borderColor: typeStyles.border,
@@ -58,27 +71,38 @@ export function ProjectDetailTaskRow({
         }}
       >
         <span
+          data-task-card-drag-handle
           style={{ ...taskDragHandleStyle, color: typeStyles.handle }}
           onMouseDown={(e) => e.stopPropagation()}
         >
           ⠿
         </span>
         <div
-          style={{ flex: 1, minWidth: 0, cursor: 'pointer' }}
-          onClick={() => onExpandedTaskIdChange(editing ? null : task.id)}
+          style={{ flex: 1, minWidth: 0, cursor: editing ? undefined : 'pointer' }}
+          onClick={editing ? undefined : () => onExpandedTaskIdChange(task.id)}
         >
-          <div
-            style={{
-              fontSize: '13px',
-              color: '#1D212B',
-              fontWeight: 500,
-              borderBottom: editing ? '1px dashed #EA6657' : '1px dashed transparent',
-            }}
-          >
-            {task.title}
-          </div>
-          {collapsedMeta && <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>}
+          {editing ? (
+            <InlineEditableTitle
+              taskId={task.id}
+              initialTitle={task.title}
+              style={{ fontSize: '13px', color: '#1D212B', fontWeight: 500 }}
+            />
+          ) : (
+            <>
+              <div style={{ fontSize: '13px', color: '#1D212B', fontWeight: 500 }}>
+                {task.title}
+              </div>
+              {collapsedMeta && <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>}
+            </>
+          )}
         </div>
+        <TaskCollapsedSharingIndicator
+          task={task}
+          familyVisibleParent={familyVisibleParent}
+          viewerUid={viewerUid}
+          viewerEmail={viewerEmail}
+        />
+        {task.size && <span style={sizeBadgeStyle}>{task.size}</span>}
       </div>
       {editing && (
         <TaskEditPanel
@@ -86,6 +110,7 @@ export function ProjectDetailTaskRow({
           onClose={() => onExpandedTaskIdChange(null)}
           onComplete={onComplete}
           onIcebox={onIcebox}
+          seamless
         />
       )}
     </div>

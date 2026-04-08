@@ -29,6 +29,23 @@ export const listCardTitleStyle: CSSProperties = {
   fontWeight: 500,
 };
 
+/** Checkmark complete control on list task cards (Today sidebar, etc.). */
+export const listCardCompleteButtonStyle: CSSProperties = {
+  flexShrink: 0,
+  width: '24px',
+  height: '24px',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRadius: '6px',
+  border: '1px solid #d1d5db',
+  background: 'transparent',
+  color: '#9ca3af',
+  fontSize: '12px',
+  cursor: 'pointer',
+  lineHeight: 1,
+};
+
 /** Titles on the day grid (tasks + external events), smaller than list cards. */
 export const calendarEventTitleStyle: CSSProperties = {
   ...listCardTitleStyle,

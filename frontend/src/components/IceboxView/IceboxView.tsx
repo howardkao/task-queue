@@ -1,15 +1,25 @@
-import { useState } from 'react';
+import { useState, useMemo } from 'react';
 import { useIceboxedTasks, useReactivateTask, useDeleteTask } from '../../hooks/useTasks';
+import { useInvestments } from '../../hooks/useInvestments';
+import { useAuth } from '../../hooks/useAuth';
 import type { Task, TaskSize } from '../../types';
 import { listCardTitleStyle } from '../shared/listCardStyles';
 import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
   formatTaskDeadlineForMeta,
+  sizeBadgeStyle,
 } from '../shared/collapsedTaskMeta';
+import { TaskCollapsedSharingIndicator } from '../shared/TaskCollapsedSharingIndicator';
 
 export function IceboxView() {
   const { data: tasks = [], isLoading } = useIceboxedTasks();
+  const { data: investments = [] } = useInvestments('active');
+  const { user } = useAuth();
+  const investmentById = useMemo(
+    () => new Map(investments.map((inv) => [inv.id, inv])),
+    [investments],
+  );
   const reactivateTask = useReactivateTask();
   const deleteTask = useDeleteTask();
   const vitalTasks = tasks.filter(t => t.vital);
@@ -39,7 +49,17 @@ export function IceboxView() {
         <>
           <h3 style={groupHeader}>Vital</h3>
           {vitalTasks.map(t => (
-            <IceboxCard key={t.id} task={t} onReactivate={reactivateTask} onDelete={deleteTask} />
+            <IceboxCard
+              key={t.id}
+              task={t}
+              onReactivate={reactivateTask}
+              onDelete={deleteTask}
+              familyVisibleParent={
+                t.investmentId ? investmentById.get(t.investmentId)?.familyVisible === true : false
+              }
+              viewerUid={user?.uid ?? ''}
+              viewerEmail={user?.email}
+            />
           ))}
         </>
       )}
@@ -48,7 +68,17 @@ export function IceboxView() {
         <>
           <h3 style={groupHeader}>Other</h3>
           {otherTasks.map(t => (
-            <IceboxCard key={t.id} task={t} onReactivate={reactivateTask} onDelete={deleteTask} />
+            <IceboxCard
+              key={t.id}
+              task={t}
+              onReactivate={reactivateTask}
+              onDelete={deleteTask}
+              familyVisibleParent={
+                t.investmentId ? investmentById.get(t.investmentId)?.familyVisible === true : false
+              }
+              viewerUid={user?.uid ?? ''}
+              viewerEmail={user?.email}
+            />
           ))}
         </>
       )}
@@ -57,7 +87,17 @@ export function IceboxView() {
         <>
           <h3 style={groupHeader}>Unsized</h3>
           {unsizedTasks.map(t => (
-            <IceboxCard key={t.id} task={t} onReactivate={reactivateTask} onDelete={deleteTask} />
+            <IceboxCard
+              key={t.id}
+              task={t}
+              onReactivate={reactivateTask}
+              onDelete={deleteTask}
+              familyVisibleParent={
+                t.investmentId ? investmentById.get(t.investmentId)?.familyVisible === true : false
+              }
+              viewerUid={user?.uid ?? ''}
+              viewerEmail={user?.email}
+            />
           ))}
         </>
       )}
@@ -65,10 +105,13 @@ export function IceboxView() {
   );
 }
 
-function IceboxCard({ task, onReactivate, onDelete }: {
+function IceboxCard({ task, onReactivate, onDelete, familyVisibleParent, viewerUid, viewerEmail }: {
   task: Task;
   onReactivate: { mutate: (args: { id: string; size?: TaskSize }) => void };
   onDelete: { mutate: (id: string) => void };
+  familyVisibleParent: boolean;
+  viewerUid: string;
+  viewerEmail: string | null | undefined;
 }) {
   const [confirming, setConfirming] = useState(false);
   const deadlineLabel = formatTaskDeadlineForMeta(task.deadline);
@@ -81,9 +124,17 @@ function IceboxCard({ task, onReactivate, onDelete }: {
   return (
     <div style={cardStyle}>
       <div style={{ flex: 1 }}>
-        <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-          <span style={listCardTitleStyle}>{task.title}</span>
-          {task.size && <span style={{ fontSize: '10px', color: '#9ca3af', fontWeight: 600 }}>{task.size}</span>}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <span style={listCardTitleStyle}>{task.title}</span>
+          </div>
+          <TaskCollapsedSharingIndicator
+            task={task}
+            familyVisibleParent={familyVisibleParent}
+            viewerUid={viewerUid}
+            viewerEmail={viewerEmail}
+          />
+          {task.size && <span style={sizeBadgeStyle}>{task.size}</span>}
         </div>
         {collapsedMeta && (
           <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>

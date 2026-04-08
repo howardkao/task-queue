@@ -11,12 +11,17 @@ import {
   listPlacedCardStyle as placedCardStyle,
   listCardInnerStyle as cardInner,
   listCardTitleStyle as titleStyle,
+  listCardCompleteButtonStyle,
 } from '../shared/listCardStyles';
 import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
   formatTaskDeadlineForMeta,
+  sizeBadgeStyle,
 } from '../shared/collapsedTaskMeta';
+import { InlineEditableTitle } from '../shared/InlineEditableTitle';
+import { onExpandedTaskHeaderBackgroundClick } from '../shared/expandedTaskHeader';
+import { TaskCollapsedSharingIndicator } from '../shared/TaskCollapsedSharingIndicator';
 import { formatLastCompletedLabel } from '@/lib/firestoreTime';
 
 interface PlacedTaskInfo {
@@ -32,6 +37,9 @@ interface TaskSidebarProps {
   expandedTaskId: string | null;
   onExpandedTaskIdChange: (taskId: string | null) => void;
   reorderContext?: TaskReorderContext;
+  /** While dragging a task toward the calendar, report duration (hours) for drop preview and clamping. */
+  onCalendarDragFromSidebarStart?: (task: Task) => void;
+  onCalendarDragFromSidebarEnd?: () => void;
 }
 
 export function TaskSidebar({
@@ -41,6 +49,8 @@ export function TaskSidebar({
   expandedTaskId,
   onExpandedTaskIdChange,
   reorderContext = 'me',
+  onCalendarDragFromSidebarStart,
+  onCalendarDragFromSidebarEnd,
 }: TaskSidebarProps) {
   const { user } = useAuth();
   const uid = user?.uid ?? '';
@@ -141,6 +151,7 @@ export function TaskSidebar({
     e.dataTransfer.setData('task-reorder', `${groupKey}:${index}`);
     e.dataTransfer.effectAllowed = 'move';
     setDragState({ groupKey, index });
+    onCalendarDragFromSidebarStart?.(task);
   };
 
   const handleDragOver = useCallback((e: React.DragEvent, groupKey: string, index: number) => {
@@ -167,7 +178,8 @@ export function TaskSidebar({
   const handleDragEnd = useCallback(() => {
     setDragState(null);
     setDropGap(null);
-  }, []);
+    onCalendarDragFromSidebarEnd?.();
+  }, [onCalendarDragFromSidebarEnd]);
 
   useEffect(() => {
     if (!localOrder || dragState !== null) return;
@@ -265,36 +277,53 @@ export function TaskSidebar({
                     ...(dragState?.groupKey === group.key && dragState.index === idx ? { opacity: 0.4 } : {}),
                   }}
                 >
-                  <div style={cardInner}>
+                  <div
+                    style={cardInner}
+                    onClick={(e) =>
+                      onExpandedTaskHeaderBackgroundClick(e, isEditing, () =>
+                        onExpandedTaskIdChange(null),
+                      )
+                    }
+                  >
                     <div
-                      style={{ flex: 1, cursor: 'pointer', minWidth: 0 }}
-                      onClick={() => onExpandedTaskIdChange(isEditing ? null : task.id)}
+                      style={{ flex: 1, minWidth: 0, cursor: isEditing ? undefined : 'pointer' }}
+                      onClick={isEditing ? undefined : () => onExpandedTaskIdChange(task.id)}
                     >
-                      <div style={{ display: 'flex', alignItems: 'baseline', gap: '6px' }}>
-                        <span style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>
-                          {task.title}
-                        </span>
-                        {task.size && (
-                          <span style={{
-                            fontSize: '10px',
-                            color: '#9ca3af',
-                            flexShrink: 0,
-                            fontWeight: 600,
-                          }}>
-                            {task.size}
+                      {isEditing ? (
+                        <InlineEditableTitle
+                          taskId={task.id}
+                          initialTitle={task.title}
+                          style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}
+                        />
+                      ) : (
+                        <>
+                          <span style={{ ...titleStyle, color: isPlaced ? '#9ca3af' : '#1D212B' }}>
+                            {task.title}
                           </span>
-                        )}
-                      </div>
-                      {collapsedMeta && (
-                        <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
+                          {collapsedMeta && (
+                            <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
+                          )}
+                        </>
                       )}
                     </div>
+                    <TaskCollapsedSharingIndicator
+                      task={task}
+                      familyVisibleParent={
+                        task.investmentId
+                          ? investmentById.get(task.investmentId)?.familyVisible === true
+                          : false
+                      }
+                      viewerUid={uid}
+                      viewerEmail={user?.email}
+                    />
+                    {task.size && <span style={sizeBadgeStyle}>{task.size}</span>}
                     <button
+                      type="button"
                       onClick={(e) => {
                         e.stopPropagation();
                         completeTask.mutate(task.id);
                       }}
-                      style={completeButtonStyle}
+                      style={listCardCompleteButtonStyle}
                       title="Complete"
                     >
                       &#10003;
@@ -306,6 +335,7 @@ export function TaskSidebar({
                       onClose={() => onExpandedTaskIdChange(null)}
                       onComplete={(id) => completeTask.mutate(id)}
                       onIcebox={(id) => iceboxTask.mutate(id)}
+                      seamless
                     />
                   )}
                 </div>
@@ -365,18 +395,3 @@ const dropIndicatorLine: React.CSSProperties = {
   margin: '2px 0',
 };
 
-const completeButtonStyle: React.CSSProperties = {
-  flexShrink: 0,
-  width: '24px',
-  height: '24px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  borderRadius: '6px',
-  border: '1px solid #d1d5db',
-  background: 'transparent',
-  color: '#9ca3af',
-  fontSize: '12px',
-  cursor: 'pointer',
-  lineHeight: 1,
-};

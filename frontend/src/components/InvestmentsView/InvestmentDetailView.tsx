@@ -14,6 +14,11 @@ import {
 } from '../../lib/taskOrdering';
 import type { Task, TaskSize } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
+import { sizeBadgeStyle } from '../shared/collapsedTaskMeta';
+import { listCardCompleteButtonStyle } from '../shared/listCardStyles';
+import { InlineEditableTitle } from '../shared/InlineEditableTitle';
+import { onExpandedTaskHeaderBackgroundClick } from '../shared/expandedTaskHeader';
+import { TaskCollapsedSharingIndicator } from '../shared/TaskCollapsedSharingIndicator';
 import { isFamilyInvestment, isTaskVisibleInFamily, isTaskVisibleInMe } from '../../taskPolicy';
 
 interface InvestmentDetailViewProps {
@@ -342,6 +347,9 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
                   onDragOver={handleTaskDragOver('vital', vitalTasks.indexOf(task))}
                   onDrop={handleTaskDrop('vital', vitalTasks)}
                   onDragEnd={handleTaskDragEnd}
+                  familyVisibleParent={investment.familyVisible === true}
+                  viewerUid={user?.uid ?? ''}
+                  viewerEmail={user?.email}
                 />
               ))}
               {dragState?.section === 'vital'
@@ -373,6 +381,9 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
                 onDragOver={handleTaskDragOver('other', otherTasks.indexOf(task))}
                 onDrop={handleTaskDrop('other', otherTasks)}
                 onDragEnd={handleTaskDragEnd}
+                familyVisibleParent={investment.familyVisible === true}
+                viewerUid={user?.uid ?? ''}
+                viewerEmail={user?.email}
               />
             ))}
             {dragState?.section === 'other'
@@ -401,6 +412,9 @@ function TaskRow({
   onDragOver,
   onDrop,
   onDragEnd,
+  familyVisibleParent,
+  viewerUid,
+  viewerEmail,
 }: {
   task: Task;
   draggable?: boolean;
@@ -415,6 +429,9 @@ function TaskRow({
   onDragOver?: (e: React.DragEvent) => void;
   onDrop?: () => void;
   onDragEnd?: () => void;
+  familyVisibleParent: boolean;
+  viewerUid: string;
+  viewerEmail: string | null | undefined;
 }) {
   return (
     <>
@@ -431,17 +448,36 @@ function TaskRow({
           ...(isDragging ? { opacity: 0.45 } : {}),
         }}
       >
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <div onClick={onToggleEdit} style={{ ...taskTitleStyle, flex: 1, minWidth: 0 }}>
-            <span>{task.title}</span>
-            {task.size && <span style={{ color: '#9ca3af', fontSize: '11px', marginLeft: '6px' }}>{task.size}</span>}
+        <div
+          style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+          onClick={(e) =>
+            onExpandedTaskHeaderBackgroundClick(e, isEditing, onCloseEdit)
+          }
+        >
+          <div
+            onClick={isEditing ? undefined : onToggleEdit}
+            style={{ ...taskTitleStyle, flex: 1, minWidth: 0, cursor: isEditing ? undefined : 'pointer' }}
+          >
+            {isEditing ? (
+              <InlineEditableTitle taskId={task.id} initialTitle={task.title} style={taskTitleStyle} />
+            ) : (
+              <span>{task.title}</span>
+            )}
           </div>
+          <TaskCollapsedSharingIndicator
+            task={task}
+            familyVisibleParent={familyVisibleParent}
+            viewerUid={viewerUid}
+            viewerEmail={viewerEmail}
+          />
+          {task.size && <span style={sizeBadgeStyle}>{task.size}</span>}
           <button
+            type="button"
             onClick={(e) => {
               e.stopPropagation();
               onComplete(task.id);
             }}
-            style={completeButtonStyle}
+            style={listCardCompleteButtonStyle}
             title="Complete"
           >
             &#10003;
@@ -453,6 +489,7 @@ function TaskRow({
             onClose={onCloseEdit}
             onComplete={onComplete}
             onIcebox={onIcebox}
+            seamless
           />
         )}
       </div>
@@ -550,19 +587,3 @@ const dropIndicatorLine: React.CSSProperties = {
   margin: '2px 0',
 };
 
-const completeButtonStyle: React.CSSProperties = {
-  flexShrink: 0,
-  width: '24px',
-  height: '24px',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  borderRadius: '6px',
-  border: '1px solid #d1d5db',
-  background: 'transparent',
-  color: '#9ca3af',
-  fontSize: '12px',
-  cursor: 'pointer',
-  lineHeight: 1,
-  marginRight: '8px',
-};

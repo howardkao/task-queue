@@ -26,6 +26,9 @@ export function ProjectDetailTaskRail({
   completedTasks,
   expandedTaskId,
   onExpandedTaskIdChange,
+  familyVisibleParent,
+  viewerUid,
+  viewerEmail,
 }: {
   isMobile: boolean;
   newTaskTitle: string;
@@ -44,6 +47,9 @@ export function ProjectDetailTaskRail({
   completedTasks: Task[];
   expandedTaskId: string | null;
   onExpandedTaskIdChange: (taskId: string | null) => void;
+  familyVisibleParent: boolean;
+  viewerUid: string;
+  viewerEmail: string | null | undefined;
 }) {
   return (
     <div style={{ width: isMobile ? '100%' : '320px', flexShrink: 0 }}>
@@ -102,6 +108,9 @@ export function ProjectDetailTaskRail({
             onExpandedTaskIdChange={onExpandedTaskIdChange}
             onComplete={onCompleteTask}
             onIcebox={onIceboxTask}
+            familyVisibleParent={familyVisibleParent}
+            viewerUid={viewerUid}
+            viewerEmail={viewerEmail}
           />
         ))}
       </div>
@@ -117,6 +126,9 @@ export function ProjectDetailTaskRail({
             onExpandedTaskIdChange={onExpandedTaskIdChange}
             onComplete={onCompleteTask}
             onIcebox={onIceboxTask}
+            familyVisibleParent={familyVisibleParent}
+            viewerUid={viewerUid}
+            viewerEmail={viewerEmail}
           />
         ))}
       </div>
@@ -132,6 +144,9 @@ export function ProjectDetailTaskRail({
             onExpandedTaskIdChange={onExpandedTaskIdChange}
             onComplete={onCompleteTask}
             onIcebox={onIceboxTask}
+            familyVisibleParent={familyVisibleParent}
+            viewerUid={viewerUid}
+            viewerEmail={viewerEmail}
           />
         ))}
       </div>
@@ -147,6 +162,9 @@ export function ProjectDetailTaskRail({
             onExpandedTaskIdChange={onExpandedTaskIdChange}
             onComplete={onCompleteTask}
             onIcebox={onIceboxTask}
+            familyVisibleParent={familyVisibleParent}
+            viewerUid={viewerUid}
+            viewerEmail={viewerEmail}
           />
         ))}
       </div>
