@@ -4,6 +4,7 @@ import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
   formatTaskDeadlineForMeta,
+  formatTaskSizeForUi,
   sizeBadgeStyle,
 } from '../shared/collapsedTaskMeta';
 import { InlineEditableTitle } from '../shared/InlineEditableTitle';
@@ -102,7 +103,9 @@ export function ProjectDetailTaskRow({
           viewerUid={viewerUid}
           viewerEmail={viewerEmail}
         />
-        {task.size && <span style={sizeBadgeStyle}>{task.size}</span>}
+        {task.size && (
+          <span style={sizeBadgeStyle}>{formatTaskSizeForUi(task.size)}</span>
+        )}
       </div>
       {editing && (
         <TaskEditPanel

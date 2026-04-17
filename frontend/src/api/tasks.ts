@@ -83,8 +83,17 @@ function toTask(id: string, data: DocumentData): Task {
   const CLASSIFICATION_TO_SIZE: Record<string, TaskSize | null> = {
     boulder: 'L', rock: 'M', pebble: 'S', unclassified: null,
   };
-  const vital: boolean = data.vital === true || data.priority === 'high';
   const size: TaskSize | null = data.size !== undefined ? data.size : (CLASSIFICATION_TO_SIZE[classification] ?? null);
+  const vital: boolean | null = (() => {
+    if (data.vital === true || data.priority === 'high') return true;
+    if (data.vital === false) return false;
+    if (data.vital === null) return null;
+    // Field missing: if the doc has an explicit v2 `size` field, do not infer importance (partial triage).
+    if (data.size !== undefined) return null;
+    // Legacy: size only from classification, no `size` field — default non-vital when sized
+    if (size != null) return false;
+    return null;
+  })();
   const investmentId: string | null = data.investmentId !== undefined ? (data.investmentId || null) : (data.projectId || null);
   const initiativeId: string | null = data.initiativeId || null;
 
@@ -134,7 +143,7 @@ export async function createTask(data: {
   excludeFromFamily?: boolean;
   familyPinned?: boolean;
   // v2 fields
-  vital?: boolean;
+  vital?: boolean | null;
   size?: TaskSize | null;
   investmentId?: string | null;
   initiativeId?: string | null;
@@ -149,8 +158,12 @@ export async function createTask(data: {
   const sortOrder = await getTopSortOrder(classification, user.uid, householdId);
   const sortOrderFamily = await getTopSortOrderFamily(classification, householdId);
 
-  // Derive v2 fields from v1 if not provided
-  const vital = data.vital ?? (data.priority === 'high');
+  // Derive v2 fields from v1 if not provided — default null (inbox) unless priority forces vital
+  const vital: boolean | null =
+    data.vital === true ? true
+    : data.vital === false ? false
+    : data.vital === null ? null
+    : (data.priority === 'high' ? true : null);
   const classificationToSize: Partial<Record<Classification, 'L' | 'M' | 'S'>> = {
     boulder: 'L',
     rock: 'M',
@@ -189,7 +202,7 @@ export async function createTask(data: {
     // v1 fields (backward compat)
     classification,
     status: 'active',
-    priority: vital ? 'high' : (data.priority || 'low'),
+    priority: vital === true ? 'high' : (data.priority || 'low'),
     projectId: investmentId,
     // v2 fields
     vital,
@@ -356,7 +369,7 @@ export async function updateTask(id: string, data: Partial<Task>): Promise<Task>
   if (data.vital !== undefined) {
     updates.vital = data.vital;
     // Keep v1 priority in sync
-    updates.priority = data.vital ? 'high' : 'low';
+    updates.priority = data.vital === true ? 'high' : 'low';
   }
   if (data.size !== undefined) {
     updates.size = data.size;

@@ -120,12 +120,17 @@ function AppContent() {
       fontFamily: "'DM Sans', sans-serif",
       background: '#ffffff',
       color: '#1D212B',
+      height: '100vh',
       minHeight: '100vh',
+      display: 'flex',
+      flexDirection: 'column',
+      overflow: 'hidden',
     }}>
       <div style={{
         display: 'flex',
         alignItems: 'center',
         borderBottom: '1px solid #E7E3DF',
+        flexShrink: 0,
       }}>
         <div style={{ flex: 1 }}>
           <TabBar tabs={tabs} activeTab={activeTab} onTabChange={handleTabChange} />
@@ -179,25 +184,27 @@ function AppContent() {
         </div>
       </SideDrawer>
 
-      <Suspense fallback={<SectionLoading />}>
-        {activeTab === 'me' && <TodayView plannerScope="me" />}
-        {activeTab === 'family' && <TodayView plannerScope="family" />}
+      <div style={{ flex: 1, minHeight: 0, overflow: 'hidden' }}>
+        <Suspense fallback={<SectionLoading />}>
+          {activeTab === 'me' && <TodayView plannerScope="me" />}
+          {activeTab === 'family' && <TodayView plannerScope="family" />}
 
-        {activeTab === 'icebox' && (
-          <IceboxView />
-        )}
+          {activeTab === 'icebox' && (
+            <IceboxView />
+          )}
 
-        {activeTab === 'investments' && !openInvestmentId && (
-          <InvestmentListView onOpenInvestment={setOpenInvestmentId} />
-        )}
+          {activeTab === 'investments' && !openInvestmentId && (
+            <InvestmentListView onOpenInvestment={setOpenInvestmentId} />
+          )}
 
-        {activeTab === 'investments' && openInvestmentId && (
-          <InvestmentDetailView
-            investmentId={openInvestmentId}
-            onBack={() => setOpenInvestmentId(null)}
-          />
-        )}
-      </Suspense>
+          {activeTab === 'investments' && openInvestmentId && (
+            <InvestmentDetailView
+              investmentId={openInvestmentId}
+              onBack={() => setOpenInvestmentId(null)}
+            />
+          )}
+        </Suspense>
+      </div>
 
       {showAdmin && (
         <Suspense fallback={null}>
@@ -228,10 +235,12 @@ function FullPageLoading() {
 function SectionLoading() {
   return (
     <div style={{
+      height: '100%',
       padding: '24px 16px',
       color: '#9ca3af',
       fontSize: '14px',
       textAlign: 'center',
+      boxSizing: 'border-box',
     }}>
       Loading...
     </div>

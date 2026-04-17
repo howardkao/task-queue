@@ -87,8 +87,8 @@ export interface Task {
 
   // ── v2 fields ──
 
-  /** Strategic or critical — gets scheduled first. */
-  vital: boolean;
+  /** Strategic or critical — gets scheduled first. Null = not chosen yet (inbox triage). */
+  vital: boolean | null;
   /** Effort: S (~5 min), M (~1 hr), L (2-3 hr). Null = untriaged. */
   size: TaskSize | null;
   /** Investment this task belongs to (replaces projectId). */

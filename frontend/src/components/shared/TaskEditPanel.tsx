@@ -17,6 +17,7 @@ import {
   type RecurrenceMode,
 } from './taskEditPanelModel';
 import { getTaskCreatorUid, isFamilyInvestment } from '../../taskPolicy';
+import { formatTaskSizeForUi } from './collapsedTaskMeta';
 import { TASK_TITLE_FIELD_RIGHT_INSET_PX } from './taskTitleFieldConstants';
 
 interface TaskEditPanelProps {
@@ -438,16 +439,16 @@ export function TaskEditPanel({ task, onClose, onComplete: _onComplete, onIcebox
           <label
             className={cn(
               'flex items-center gap-2 h-8 px-3 rounded-md cursor-pointer transition-colors',
-              vital ? 'bg-[#EA6657] text-white' : 'bg-secondary text-foreground',
+              vital === true ? 'bg-[#EA6657] text-white' : 'bg-secondary text-foreground',
             )}
           >
             <input
               type="checkbox"
-              checked={vital}
-              onChange={(e) => setVital(e.target.checked)}
+              checked={vital === true}
+              onChange={(e) => setVital(e.target.checked ? true : false)}
               className="rounded border-input"
             />
-            <span className={cn('text-[13px] font-medium', vital ? 'text-white' : 'text-foreground')}>Vital?</span>
+            <span className={cn('text-[13px] font-medium', vital === true ? 'text-white' : 'text-foreground')}>Vital?</span>
           </label>
 
           <select
@@ -460,9 +461,9 @@ export function TaskEditPanel({ task, onClose, onComplete: _onComplete, onIcebox
             )}
           >
             <option value="">Size</option>
-            <option value="S">S (&lt;15 min)</option>
-            <option value="M">M (&lt;1 hr)</option>
-            <option value="L">L (&lt;3 hrs)</option>
+            <option value="S">{formatTaskSizeForUi('S')}</option>
+            <option value="M">{formatTaskSizeForUi('M')}</option>
+            <option value="L">{formatTaskSizeForUi('L')}</option>
           </select>
 
           {investmentId && selectedInvestment ? (
@@ -520,127 +521,130 @@ export function TaskEditPanel({ task, onClose, onComplete: _onComplete, onIcebox
         </div>
       </div>
 
-      {/* Row 3: notes | due (inline) */}
-      <div className="flex flex-wrap items-start gap-3 mb-4">
-        <div className="flex-1 min-w-[180px]">
-          {showNotes ? (
-            <div className="relative">
-              <textarea
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Notes..."
-                className={cn(
-                  'w-full min-h-[60px] px-3 py-2 text-[13px] text-foreground leading-relaxed',
-                  'bg-card border border-input rounded-lg resize-y',
-                  'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
-                  'transition-all duration-150 placeholder:text-muted-foreground',
-                )}
-              />
+      {/* Notes / due: add-links on one row (collapsed only); fields stacked full-width below */}
+      <div className="mb-4 space-y-3">
+        {(!showNotes || !showDeadline) && (
+          <div className="flex flex-wrap items-center gap-3">
+            {!showNotes && (
               <button
                 type="button"
-                onClick={() => removeField('notes')}
-                className="absolute top-2 right-2 p-1 text-foreground/60 hover:text-foreground transition-colors"
-                title="Remove notes"
+                onClick={() => setShowNotes(true)}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md',
+                  'text-[12px] font-medium text-foreground hover:bg-secondary transition-all duration-150',
+                )}
+              >
+                <Plus className="w-3 h-3" />
+                Notes
+              </button>
+            )}
+            {!showDeadline && (
+              <button
+                type="button"
+                onClick={showDueField}
+                className={cn(
+                  'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md',
+                  'text-[12px] font-medium text-foreground hover:bg-secondary transition-all duration-150',
+                )}
+              >
+                <Plus className="w-3 h-3" />
+                Due
+              </button>
+            )}
+          </div>
+        )}
+
+        {showNotes && (
+          <div className="relative w-full">
+            <textarea
+              value={notes}
+              onChange={(e) => setNotes(e.target.value)}
+              placeholder="Notes..."
+              className={cn(
+                'w-full min-h-[60px] px-3 py-2 text-[13px] text-foreground leading-relaxed',
+                'bg-card border border-input rounded-lg resize-y',
+                'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+                'transition-all duration-150 placeholder:text-muted-foreground',
+              )}
+            />
+            <button
+              type="button"
+              onClick={() => removeField('notes')}
+              className="absolute top-2 right-2 p-1 text-foreground/60 hover:text-foreground transition-colors"
+              title="Remove notes"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        )}
+
+        {showDeadline && (
+          <div className="w-full">
+            <div className="flex flex-wrap items-center gap-2">
+              <div className="relative">
+                <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/60 pointer-events-none" />
+                <input
+                  type="date"
+                  required={false}
+                  value={deadlineDate}
+                  onChange={(e) => setDeadlineDate(e.target.value)}
+                  className={cn(
+                    'h-8 pl-8 pr-3 text-[13px] rounded-md',
+                    'bg-card border border-input text-foreground',
+                    'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+                    'transition-all duration-150',
+                  )}
+                />
+              </div>
+              {showTime ? (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <div className="relative">
+                    <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/60 pointer-events-none" />
+                    <input
+                      type="time"
+                      required={false}
+                      value={deadlineTime}
+                      onChange={(e) => setDeadlineTime(e.target.value)}
+                      className={cn(
+                        'h-8 pl-8 pr-3 text-[13px] rounded-md',
+                        'bg-card border border-input text-foreground',
+                        'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
+                        'transition-all duration-150',
+                      )}
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDeadlineTime('');
+                      setShowTime(false);
+                    }}
+                    className="text-[11px] text-foreground hover:underline px-1"
+                  >
+                    Date only
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowTime(true)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-foreground hover:bg-secondary rounded-md transition-colors"
+                >
+                  <Plus className="w-3 h-3" />
+                  Time
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => removeField('deadline')}
+                className="p-1.5 text-foreground/60 hover:text-foreground transition-colors"
+                title="Remove deadline"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setShowNotes(true)}
-              className={cn(
-                'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md',
-                'text-[12px] font-medium text-foreground hover:bg-secondary transition-all duration-150',
-              )}
-            >
-              <Plus className="w-3 h-3" />
-              Notes
-            </button>
-          )}
-        </div>
-
-        <div>
-          {showDeadline ? (
-            <div>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative">
-                  <Calendar className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/60 pointer-events-none" />
-                  <input
-                    type="date"
-                    required={false}
-                    value={deadlineDate}
-                    onChange={(e) => setDeadlineDate(e.target.value)}
-                    className={cn(
-                      'h-8 pl-8 pr-3 text-[13px] rounded-md',
-                      'bg-card border border-input text-foreground',
-                      'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
-                      'transition-all duration-150',
-                    )}
-                  />
-                </div>
-                {showTime ? (
-                  <div className="flex items-center gap-1.5 flex-wrap">
-                    <div className="relative">
-                      <Clock className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-foreground/60 pointer-events-none" />
-                      <input
-                        type="time"
-                        required={false}
-                        value={deadlineTime}
-                        onChange={(e) => setDeadlineTime(e.target.value)}
-                        className={cn(
-                          'h-8 pl-8 pr-3 text-[13px] rounded-md',
-                          'bg-card border border-input text-foreground',
-                          'focus:outline-none focus:ring-2 focus:ring-ring/20 focus:border-ring',
-                          'transition-all duration-150',
-                        )}
-                      />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setDeadlineTime('');
-                        setShowTime(false);
-                      }}
-                      className="text-[11px] text-foreground hover:underline px-1"
-                    >
-                      Date only
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => setShowTime(true)}
-                    className="flex items-center gap-1 px-2.5 py-1.5 text-[11px] font-medium text-foreground hover:bg-secondary rounded-md transition-colors"
-                  >
-                    <Plus className="w-3 h-3" />
-                    Time
-                  </button>
-                )}
-                <button
-                  type="button"
-                  onClick={() => removeField('deadline')}
-                  className="p-1.5 text-foreground/60 hover:text-foreground transition-colors"
-                  title="Remove deadline"
-                >
-                  <X className="w-3.5 h-3.5" />
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={showDueField}
-              className={cn(
-                'inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-md',
-                'text-[12px] font-medium text-foreground hover:bg-secondary transition-all duration-150',
-              )}
-            >
-              <Plus className="w-3 h-3" />
-              Due
-            </button>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       {showDeadline && showRecurrence && (

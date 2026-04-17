@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -7,9 +7,11 @@ interface SideDrawerProps {
   onClose: () => void;
   title: string;
   children: ReactNode;
+  /** Optional ref to the scrollable body (overflow-y-auto) for scroll anchoring. */
+  scrollBodyRef?: RefObject<HTMLDivElement | null>;
 }
 
-export function SideDrawer({ open, onClose, title, children }: SideDrawerProps) {
+export function SideDrawer({ open, onClose, title, children, scrollBodyRef }: SideDrawerProps) {
   if (!open) return null;
 
   return (
@@ -57,7 +59,7 @@ export function SideDrawer({ open, onClose, title, children }: SideDrawerProps) 
         </div>
 
         {/* Content */}
-        <div className="flex-1 overflow-y-auto p-5">{children}</div>
+        <div ref={scrollBodyRef} className="flex-1 overflow-y-auto p-5">{children}</div>
       </div>
     </>
   );

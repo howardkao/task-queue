@@ -1,5 +1,5 @@
 import { useState, useMemo } from 'react';
-import { useIceboxedTasks, useReactivateTask, useDeleteTask } from '../../hooks/useTasks';
+import { useIceboxedTasks, useReactivateTask, useDeleteTask, useUpdateTask } from '../../hooks/useTasks';
 import { useInvestments } from '../../hooks/useInvestments';
 import { useAuth } from '../../hooks/useAuth';
 import type { Task, TaskSize } from '../../types';
@@ -8,6 +8,7 @@ import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
   formatTaskDeadlineForMeta,
+  formatTaskSizeForUi,
   sizeBadgeStyle,
 } from '../shared/collapsedTaskMeta';
 import { TaskCollapsedSharingIndicator } from '../shared/TaskCollapsedSharingIndicator';
@@ -22,12 +23,14 @@ export function IceboxView() {
   );
   const reactivateTask = useReactivateTask();
   const deleteTask = useDeleteTask();
-  const vitalTasks = tasks.filter(t => t.vital);
-  const otherTasks = tasks.filter(t => !t.vital && t.size != null);
+  const updateTask = useUpdateTask();
+  const vitalTasks = tasks.filter(t => t.vital === true && t.size != null);
+  const otherTasks = tasks.filter(t => t.vital === false && t.size != null);
+  const needImportanceTasks = tasks.filter(t => t.vital === null && t.size != null);
   const unsizedTasks = tasks.filter(t => t.size == null);
 
   return (
-    <div style={{ padding: '20px 24px', maxWidth: '800px', margin: '0 auto' }}>
+    <div style={{ height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: '20px 24px', maxWidth: '800px', margin: '0 auto' }}>
       <h2 style={sectionHeader}>
         Icebox ({tasks.length} task{tasks.length !== 1 ? 's' : ''})
       </h2>
@@ -83,6 +86,26 @@ export function IceboxView() {
         </>
       )}
 
+      {needImportanceTasks.length > 0 && (
+        <>
+          <h3 style={groupHeader}>Set importance</h3>
+          {needImportanceTasks.map(t => (
+            <IceboxCard
+              key={t.id}
+              task={t}
+              onReactivate={reactivateTask}
+              onDelete={deleteTask}
+              onSetVital={(v) => updateTask.mutate({ id: t.id, data: { vital: v } })}
+              familyVisibleParent={
+                t.investmentId ? investmentById.get(t.investmentId)?.familyVisible === true : false
+              }
+              viewerUid={user?.uid ?? ''}
+              viewerEmail={user?.email}
+            />
+          ))}
+        </>
+      )}
+
       {unsizedTasks.length > 0 && (
         <>
           <h3 style={groupHeader}>Unsized</h3>
@@ -105,10 +128,12 @@ export function IceboxView() {
   );
 }
 
-function IceboxCard({ task, onReactivate, onDelete, familyVisibleParent, viewerUid, viewerEmail }: {
+function IceboxCard({ task, onReactivate, onDelete, onSetVital, familyVisibleParent, viewerUid, viewerEmail }: {
   task: Task;
   onReactivate: { mutate: (args: { id: string; size?: TaskSize }) => void };
   onDelete: { mutate: (id: string) => void };
+  /** When set, show Vital / Other to resolve null `vital` while still iceboxed. */
+  onSetVital?: (vital: boolean) => void;
   familyVisibleParent: boolean;
   viewerUid: string;
   viewerEmail: string | null | undefined;
@@ -134,21 +159,34 @@ function IceboxCard({ task, onReactivate, onDelete, familyVisibleParent, viewerU
             viewerUid={viewerUid}
             viewerEmail={viewerEmail}
           />
-          {task.size && <span style={sizeBadgeStyle}>{task.size}</span>}
+          {task.size && (
+            <span style={sizeBadgeStyle}>{formatTaskSizeForUi(task.size)}</span>
+          )}
         </div>
         {collapsedMeta && (
           <div style={collapsedTaskMetaLineStyle}>{collapsedMeta}</div>
         )}
       </div>
-      <div style={{ display: 'flex', gap: '6px', flexShrink: 0 }}>
-        {(['S', 'M', 'L'] as const).map(s => (
+      <div style={{ display: 'flex', gap: '6px', flexShrink: 0, flexWrap: 'wrap', alignItems: 'center' }}>
+        {onSetVital && (
+          <>
+            <button type="button" onClick={() => onSetVital(true)} style={iceboxVitalBtnStyle} title="Mark as vital">
+              Vital
+            </button>
+            <button type="button" onClick={() => onSetVital(false)} style={iceboxOtherBtnStyle} title="Mark as other">
+              Other
+            </button>
+            <span style={iceboxImportanceDividerStyle} aria-hidden>|</span>
+          </>
+        )}
+        {(['S', 'M', 'L'] as const).map((s) => (
           <button
             key={s}
             onClick={() => onReactivate.mutate({ id: task.id, size: s })}
             style={actionBtn}
-            title={`Reactivate as ${s}`}
+            title={`Reactivate as ${formatTaskSizeForUi(s)}`}
           >
-            {s}
+            {formatTaskSizeForUi(s)}
           </button>
         ))}
         {!confirming ? (
@@ -203,13 +241,38 @@ const cardStyle: React.CSSProperties = {
 
 const actionBtn: React.CSSProperties = {
   padding: '4px 10px',
-  border: '1px solid #E7E3DF',
-  borderRadius: '8px',
-  background: '#F2F0ED',
+  border: '1px solid #C9C4BE',
+  borderRadius: '6px',
+  background: '#fff',
   cursor: 'pointer',
   fontSize: '12px',
-  fontWeight: 600,
+  fontWeight: 700,
   color: '#1D212B',
   fontFamily: 'inherit',
   transition: 'all 0.15s ease',
+};
+
+const iceboxVitalBtnStyle: React.CSSProperties = {
+  padding: '4px 10px',
+  border: '1px solid #D4CFC9',
+  borderRadius: '999px',
+  background: 'transparent',
+  cursor: 'pointer',
+  fontSize: '12px',
+  fontWeight: 600,
+  color: '#5c6470',
+  fontFamily: 'inherit',
+};
+
+const iceboxOtherBtnStyle: React.CSSProperties = {
+  ...iceboxVitalBtnStyle,
+};
+
+const iceboxImportanceDividerStyle: React.CSSProperties = {
+  color: '#B8B2AB',
+  fontSize: '13px',
+  fontWeight: 300,
+  userSelect: 'none',
+  lineHeight: '26px',
+  padding: '0 2px',
 };

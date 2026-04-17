@@ -5,7 +5,7 @@ import { useIsMobile } from '../../hooks/useViewport';
 import { useAuth } from '../../hooks/useAuth';
 import type { Investment, Task } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
-import { sizeBadgeStyle } from '../shared/collapsedTaskMeta';
+import { formatTaskSizeForUi, sizeBadgeStyle } from '../shared/collapsedTaskMeta';
 import { listCardCompleteButtonStyle } from '../shared/listCardStyles';
 import { InlineEditableTitle } from '../shared/InlineEditableTitle';
 import { onExpandedTaskHeaderBackgroundClick } from '../shared/expandedTaskHeader';
@@ -150,7 +150,7 @@ export function InvestmentListView({ onOpenInvestment }: InvestmentListViewProps
   }, []);
 
   return (
-    <div style={{ padding: '20px 24px', maxWidth: '1100px', margin: '0 auto' }}>
+    <div style={{ height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: '20px 24px', maxWidth: '1100px', margin: '0 auto' }}>
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '16px' }}>
         {!showInput ? (
           <button onClick={() => setShowInput(true)} style={btnStyle}>+ New Investment</button>
@@ -266,7 +266,9 @@ export function InvestmentListView({ onOpenInvestment }: InvestmentListViewProps
                           <span>{task.title}</span>
                         )}
                       </div>
-                      {task.size && <span style={sizeBadgeStyle}>{task.size}</span>}
+                      {task.size && (
+                        <span style={sizeBadgeStyle}>{formatTaskSizeForUi(task.size)}</span>
+                      )}
                       <button
                         type="button"
                         onClick={(e) => {

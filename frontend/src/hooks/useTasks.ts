@@ -59,7 +59,7 @@ export function useVitalTasks() {
   return useQuery({
     queryKey: ACTIVE_TASKS_QUERY_KEY,
     queryFn: () => listTasks({ status: 'active' }),
-    select: (tasks) => tasks.filter(t => t.vital === true),
+    select: (tasks) => tasks.filter(t => t.vital === true && t.size != null),
   });
 }
 
@@ -67,16 +67,16 @@ export function useOtherTasks() {
   return useQuery({
     queryKey: ACTIVE_TASKS_QUERY_KEY,
     queryFn: () => listTasks({ status: 'active' }),
-    select: (tasks) => tasks.filter(t => t.vital !== true && t.size != null),
+    select: (tasks) => tasks.filter(t => t.vital === false && t.size != null),
   });
 }
 
-/** Untriaged tasks: no size set (inbox). */
+/** Untriaged tasks: missing size or importance (inbox). */
 export function useInboxTasksV2() {
   return useQuery({
     queryKey: ACTIVE_TASKS_QUERY_KEY,
     queryFn: () => listTasks({ status: 'active' }),
-    select: (tasks) => tasks.filter(t => t.size == null),
+    select: (tasks) => tasks.filter(t => t.size == null || t.vital === null),
   });
 }
 
@@ -163,7 +163,7 @@ export function useTriageTask() {
   return useMutation({
     mutationFn: ({ id, vital, size, investmentId, initiativeId }: {
       id: string;
-      vital?: boolean;
+      vital?: boolean | null;
       size?: Task['size'];
       investmentId?: string | null;
       initiativeId?: string | null;

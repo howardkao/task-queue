@@ -117,7 +117,7 @@ export interface EditableTaskState {
   excludeFromFamily: boolean;
   familyPinned: boolean;
   // v2 fields
-  vital: boolean;
+  vital: boolean | null;
   size: TaskSize | null;
   investmentId: string | null;
   initiativeId: string | null;

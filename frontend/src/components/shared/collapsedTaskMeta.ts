@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import type { TaskSize } from '../../types';
 
 /**
  * Due line on task cards: "Mon, Apr 15" for date-only; "Mon, Apr 15 · 3:00 PM" when a time is set.
@@ -59,7 +60,6 @@ export type CollapsedTaskMetaParts = {
   extraTrailing?: string | null;
 };
 
-/** Due and ↻ are one segment (no dot between them); other parts joined with · */
 /** Size badge style for collapsed task rows — small pill with muted text. */
 export const sizeBadgeStyle: CSSProperties = {
   fontSize: '10px',
@@ -70,7 +70,20 @@ export const sizeBadgeStyle: CSSProperties = {
   padding: '1px 6px',
   lineHeight: '16px',
   flexShrink: 0,
+  whiteSpace: 'nowrap',
 };
+
+/** Human-readable size copy for UI; persisted task size remains S / M / L. */
+export const TASK_SIZE_UI_LABEL: Record<TaskSize, string> = {
+  S: '<15 min',
+  M: '<1 hr',
+  L: '<3 hr',
+};
+
+export function formatTaskSizeForUi(size: TaskSize | null | undefined): string | null {
+  if (size == null) return null;
+  return TASK_SIZE_UI_LABEL[size] ?? null;
+}
 
 /** Due and ↻ are one segment (no dot between them); other parts joined with · */
 export function formatCollapsedTaskMetaLine(parts: CollapsedTaskMetaParts): string | null {

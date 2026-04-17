@@ -17,6 +17,7 @@ import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
   formatTaskDeadlineForMeta,
+  formatTaskSizeForUi,
   sizeBadgeStyle,
 } from '../shared/collapsedTaskMeta';
 import { InlineEditableTitle } from '../shared/InlineEditableTitle';
@@ -316,7 +317,9 @@ export function TaskSidebar({
                       viewerUid={uid}
                       viewerEmail={user?.email}
                     />
-                    {task.size && <span style={sizeBadgeStyle}>{task.size}</span>}
+                    {task.size && (
+                      <span style={sizeBadgeStyle}>{formatTaskSizeForUi(task.size)}</span>
+                    )}
                     <button
                       type="button"
                       onClick={(e) => {

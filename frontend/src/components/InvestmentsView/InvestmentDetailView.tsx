@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useInvestment, useUpdateInvestment, useSetInvestmentStatus, useDeleteInvestment } from '../../hooks/useInvestments';
 import { useInitiatives, useCreateInitiative } from '../../hooks/useInitiatives';
-import { useTasksByInvestment, useCompleteTask, useCreateTask, useIceboxTask } from '../../hooks/useTasks';
+import { useTasksByInvestment, useCompleteTask, useCreateTask, useIceboxTask, useUpdateTask } from '../../hooks/useTasks';
 import { useIsMobile } from '../../hooks/useViewport';
 import { useAuth } from '../../hooks/useAuth';
 import { reorderPrivateTaskPlacements, reorderTasks as reorderTasksApi } from '../../api/tasks';
@@ -14,7 +14,7 @@ import {
 } from '../../lib/taskOrdering';
 import type { Task, TaskSize } from '../../types';
 import { TaskEditPanel } from '../shared/TaskEditPanel';
-import { sizeBadgeStyle } from '../shared/collapsedTaskMeta';
+import { formatTaskSizeForUi, sizeBadgeStyle } from '../shared/collapsedTaskMeta';
 import { listCardCompleteButtonStyle } from '../shared/listCardStyles';
 import { InlineEditableTitle } from '../shared/InlineEditableTitle';
 import { onExpandedTaskHeaderBackgroundClick } from '../shared/expandedTaskHeader';
@@ -36,6 +36,7 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
   const completeTask = useCompleteTask();
   const iceboxTask = useIceboxTask();
   const createTask = useCreateTask();
+  const updateTask = useUpdateTask();
   const { data: initiatives = [] } = useInitiatives(investmentId);
   const createInitiative = useCreateInitiative();
   const { data: tasks = [] } = useTasksByInvestment(investmentId);
@@ -131,8 +132,22 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
     setShowInitInput(false);
   }, [newInitName, investmentId, createInitiative]);
 
-  const vitalTasks = useMemo(() => displayTasks.filter((task) => task.vital), [displayTasks]);
-  const otherTasks = useMemo(() => displayTasks.filter((task) => !task.vital), [displayTasks]);
+  const importanceUnsetTasks = useMemo(
+    () => displayTasks.filter((task) => task.vital === null && task.size != null),
+    [displayTasks],
+  );
+  const vitalTasks = useMemo(
+    () => displayTasks.filter((task) => task.vital === true && task.size != null),
+    [displayTasks],
+  );
+  const otherTasks = useMemo(
+    () => displayTasks.filter((task) => task.vital === false && task.size != null),
+    [displayTasks],
+  );
+  const needsSizeTasks = useMemo(
+    () => displayTasks.filter((task) => task.size == null && task.vital != null),
+    [displayTasks],
+  );
 
   const persistSectionOrder = useCallback(async (sectionTasks: Task[]) => {
     try {
@@ -207,14 +222,14 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
 
   if (isLoading || !investment) {
     return (
-      <div style={{ padding: '20px 24px', maxWidth: '1100px', margin: '0 auto' }}>
+      <div style={{ height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: '20px 24px', maxWidth: '1100px', margin: '0 auto' }}>
         <div style={{ textAlign: 'center', padding: '40px', color: '#9ca3af' }}>Loading...</div>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '20px 24px', maxWidth: '1100px', margin: '0 auto' }}>
+    <div style={{ height: '100%', overflowY: 'auto', boxSizing: 'border-box', padding: '20px 24px', maxWidth: '1100px', margin: '0 auto' }}>
       <div style={{ fontSize: '14px', color: '#6b7280', marginBottom: '6px' }}>
         <span
           onClick={onBack}
@@ -322,11 +337,124 @@ export function InvestmentDetailView({ investmentId, onBack }: InvestmentDetailV
               onChange={e => setNewTaskSize(e.target.value as TaskSize)}
               style={{ padding: '4px 8px', border: '1px solid #E7E3DF', borderRadius: '8px', fontSize: '12px', fontFamily: 'inherit' }}
             >
-              <option value="S">S</option>
-              <option value="M">M</option>
-              <option value="L">L</option>
+              <option value="S">{formatTaskSizeForUi('S')}</option>
+              <option value="M">{formatTaskSizeForUi('M')}</option>
+              <option value="L">{formatTaskSizeForUi('L')}</option>
             </select>
           </div>
+
+          {needsSizeTasks.length > 0 && (
+            <div style={{ marginBottom: '16px' }}>
+              <h4 style={railSectionHeader}>Set size ({needsSizeTasks.length})</h4>
+              {needsSizeTasks.map((task) => (
+                <div key={task.id} style={{ ...taskRowStyle, marginBottom: '6px', padding: '10px 12px', fontSize: '13px' }}>
+                  <div style={{ marginBottom: '8px', fontWeight: 500 }}>{task.title}</div>
+                  <div style={{ display: 'flex', gap: '6px', flexWrap: 'wrap' }}>
+                    {(['S', 'M', 'L'] as const).map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => updateTask.mutate({ id: task.id, data: { size: s } })}
+                        style={btnSmStyle}
+                        title={`Size: ${formatTaskSizeForUi(s)}`}
+                      >
+                        {formatTaskSizeForUi(s)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {importanceUnsetTasks.length > 0 && (
+            <div style={{ marginBottom: '16px' }}>
+              <h4 style={railSectionHeader}>Set importance ({importanceUnsetTasks.length})</h4>
+              {importanceUnsetTasks.map((task) => (
+                <div key={task.id} style={{ ...taskRowStyle, marginBottom: '6px' }}>
+                  <div
+                    style={{ display: 'flex', alignItems: 'flex-start', flexWrap: 'wrap', gap: '8px', padding: '10px 12px' }}
+                    onClick={(e) =>
+                      onExpandedTaskHeaderBackgroundClick(e, expandedTaskId === task.id, () => setExpandedTaskId(null))
+                    }
+                  >
+                    <div
+                      onClick={expandedTaskId === task.id ? undefined : () => setExpandedTaskId(task.id)}
+                      style={{
+                        ...taskTitleStyle,
+                        flex: 1,
+                        minWidth: '120px',
+                        padding: 0,
+                        cursor: expandedTaskId === task.id ? undefined : 'pointer',
+                        whiteSpace: 'normal',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {expandedTaskId === task.id ? (
+                        <InlineEditableTitle taskId={task.id} initialTitle={task.title} style={{ ...taskTitleStyle, padding: 0 }} />
+                      ) : (
+                        <span>{task.title}</span>
+                      )}
+                    </div>
+                    <TaskCollapsedSharingIndicator
+                      task={task}
+                      familyVisibleParent={investment.familyVisible === true}
+                      viewerUid={user?.uid ?? ''}
+                      viewerEmail={user?.email}
+                    />
+                    {task.size && (
+                      <span style={sizeBadgeStyle}>{formatTaskSizeForUi(task.size)}</span>
+                    )}
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, flexWrap: 'wrap' }}>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateTask.mutate({ id: task.id, data: { vital: true } });
+                        }}
+                        style={railImportanceBtnStyle}
+                        title="Vital"
+                      >
+                        Vital
+                      </button>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          updateTask.mutate({ id: task.id, data: { vital: false } });
+                        }}
+                        style={railImportanceBtnStyle}
+                        title="Other"
+                      >
+                        Other
+                      </button>
+                      <span style={railTriageDividerStyle} aria-hidden>|</span>
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          completeTask.mutate(task.id);
+                        }}
+                        style={listCardCompleteButtonStyle}
+                        title="Complete"
+                      >
+                        &#10003;
+                      </button>
+                    </div>
+                  </div>
+                  {expandedTaskId === task.id && (
+                    <TaskEditPanel
+                      task={task}
+                      onClose={() => setExpandedTaskId(null)}
+                      onComplete={(id) => completeTask.mutate(id)}
+                      onIcebox={(id) => iceboxTask.mutate(id)}
+                      seamless
+                    />
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
 
           {vitalTasks.length > 0 && (
             <div style={{ marginBottom: '16px' }}>
@@ -470,7 +598,9 @@ function TaskRow({
             viewerUid={viewerUid}
             viewerEmail={viewerEmail}
           />
-          {task.size && <span style={sizeBadgeStyle}>{task.size}</span>}
+          {task.size && (
+            <span style={sizeBadgeStyle}>{formatTaskSizeForUi(task.size)}</span>
+          )}
           <button
             type="button"
             onClick={(e) => {
@@ -585,5 +715,26 @@ const dropIndicatorLine: React.CSSProperties = {
   background: '#EA6657',
   borderRadius: '2px',
   margin: '2px 0',
+};
+
+const railImportanceBtnStyle: React.CSSProperties = {
+  padding: '4px 10px',
+  border: '1px solid #D4CFC9',
+  borderRadius: '999px',
+  background: 'transparent',
+  cursor: 'pointer',
+  fontSize: '12px',
+  fontWeight: 600,
+  color: '#5c6470',
+  fontFamily: 'inherit',
+};
+
+const railTriageDividerStyle: React.CSSProperties = {
+  color: '#B8B2AB',
+  fontSize: '13px',
+  fontWeight: 300,
+  userSelect: 'none',
+  lineHeight: '26px',
+  padding: '0 2px',
 };
 

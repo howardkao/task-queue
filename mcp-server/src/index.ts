@@ -36,11 +36,11 @@ const server = new McpServer({
 
 server.tool(
   'add_task',
-  'Create a new task. Lands in inbox (no size) by default. Set vital flag for strategic/critical tasks. Size: S (~5 min), M (~1 hr), L (2-3 hr). Tasks in family investments are shared by default; set excludeFromFamily to make them private.',
+  'Create a new task. Lands in inbox when size or vital is omitted (untriaged). Size: S (~5 min), M (~1 hr), L (2-3 hr). Tasks in family investments are shared by default; set excludeFromFamily to make them private.',
   {
     title: z.string().describe('Task title'),
     notes: z.string().optional().describe('Optional notes or context'),
-    vital: z.boolean().optional().describe('True if strategic or critical. Defaults to false.'),
+    vital: z.boolean().optional().describe('True = vital, false = other backlog; omit until user chooses (inbox).'),
     size: z.enum(['S', 'M', 'L']).optional().describe('Task size: S (~5 min), M (~1 hr), L (2-3 hr). Omit for inbox.'),
     investmentId: z.string().optional().describe('Investment ID to assign this task to'),
     initiativeId: z.string().optional().describe('Initiative ID within the investment'),
@@ -57,11 +57,11 @@ server.tool(
 
 server.tool(
   'list_inbox',
-  'List all untriaged tasks (no size set yet).',
+  'List all active tasks still in inbox (missing size and/or vital).',
   {},
   async () => {
     const tasks = await listTasks({ status: 'active' });
-    const inbox = tasks.filter(t => t.size == null);
+    const inbox = tasks.filter(t => t.size == null || t.vital == null);
     return {
       content: [{
         type: 'text',
@@ -75,19 +75,19 @@ server.tool(
 
 server.tool(
   'triage_task',
-  'Triage an inbox task: set size, vital flag, and optionally assign to an investment/initiative.',
+  'Triage an inbox task: set size, vital flag, and optionally assign to an investment/initiative. Partial updates are allowed (e.g. only size or only vital) while the task stays in inbox until both are set.',
   {
     taskId: z.string().describe('ID of the task to triage'),
-    size: z.enum(['S', 'M', 'L']).describe('Task size: S (~5 min), M (~1 hr), L (2-3 hr)'),
-    vital: z.boolean().optional().describe('True if strategic or critical. Defaults to false.'),
+    size: z.enum(['S', 'M', 'L']).optional().describe('Task size: S (~5 min), M (~1 hr), L (2-3 hr)'),
+    vital: z.boolean().optional().describe('True if strategic/critical; false for normal backlog.'),
     investmentId: z.string().optional().describe('Investment ID to assign to'),
     initiativeId: z.string().optional().describe('Initiative ID within the investment'),
     deadline: z.string().optional().describe('Deadline as ISO date string'),
   },
   async ({ taskId, size, vital, investmentId, initiativeId, deadline }) => {
     const task = await updateTask(taskId, {
-      size,
-      vital: vital ?? false,
+      ...(size !== undefined ? { size } : {}),
+      ...(vital !== undefined ? { vital } : {}),
       investmentId: investmentId ?? undefined,
       initiativeId: initiativeId ?? undefined,
       deadline: deadline ?? undefined,
@@ -126,7 +126,7 @@ server.tool(
     const text = matches.map((task, index) => (
       `${index + 1}. "${task.title}" [id: ${task.id}]`
       + ` [${task.size || 'unsized'}/${task.status}]`
-      + `${task.vital ? ' [vital]' : ''}`
+      + `${task.vital === true ? ' [vital]' : ''}`
       + `${task.deadline ? ` (due ${task.deadline.slice(0, 10)})` : ''}`
       + `${task.investmentId ? ' [investment-linked]' : ''}`
       + `${task.notes ? `\n   Notes: ${task.notes}` : ''}`
@@ -379,9 +379,9 @@ server.tool(
     const activeTasks = await listTasks({ investmentId, status: 'active' });
     const completedTasks = await listTasks({ investmentId, status: 'completed' });
 
-    const vital = activeTasks.filter(t => t.vital);
-    const other = activeTasks.filter(t => !t.vital && t.size != null);
-    const inbox = activeTasks.filter(t => t.size == null);
+    const vital = activeTasks.filter(t => t.vital === true);
+    const other = activeTasks.filter(t => t.vital === false && t.size != null);
+    const inbox = activeTasks.filter(t => t.size == null || t.vital == null);
 
     let text = `# ${investment.name}\n`;
     text += `Status: ${investment.status} | Rank: ${investment.rank}\n`;
@@ -563,9 +563,9 @@ server.tool(
 
     const investmentById = new Map(investments.map(inv => [inv.id, inv]));
 
-    const inbox = allActive.filter(t => t.size == null);
-    const vital = allActive.filter(t => t.vital && t.size != null);
-    const other = allActive.filter(t => !t.vital && t.size != null);
+    const inbox = allActive.filter(t => t.size == null || t.vital == null);
+    const vital = allActive.filter(t => t.vital === true && t.size != null);
+    const other = allActive.filter(t => t.vital === false && t.size != null);
 
     let text = '# Today\n\n';
 
@@ -624,17 +624,17 @@ server.tool(
 
     text += `\n## Current State\n\n`;
 
-    const vital = activeTasks.filter(t => t.vital);
-    const otherSized = activeTasks.filter(t => !t.vital && t.size != null);
-    const unsized = activeTasks.filter(t => t.size == null);
+    const vital = activeTasks.filter(t => t.vital === true);
+    const otherSized = activeTasks.filter(t => t.vital === false && t.size != null);
+    const untriaged = activeTasks.filter(t => t.size == null || t.vital == null);
 
     text += `Active vital (${vital.length}):\n`;
     vital.forEach(t => { text += `  • "${t.title}" [${t.size}]${t.initiativeId ? ` [initiative: ${t.initiativeId}]` : ''} [id: ${t.id}]\n`; });
     text += `\nActive other (${otherSized.length}):\n`;
     otherSized.forEach(t => { text += `  • "${t.title}" [${t.size}]${t.initiativeId ? ` [initiative: ${t.initiativeId}]` : ''} [id: ${t.id}]\n`; });
-    if (unsized.length > 0) {
-      text += `\nUntriaged (${unsized.length}):\n`;
-      unsized.forEach(t => { text += `  • "${t.title}" [id: ${t.id}]\n`; });
+    if (untriaged.length > 0) {
+      text += `\nUntriaged (${untriaged.length}):\n`;
+      untriaged.forEach(t => { text += `  • "${t.title}" [id: ${t.id}]\n`; });
     }
 
     if (completedTasks.length > 0) {
@@ -654,10 +654,10 @@ server.tool(
 
 // ─── Helpers ─────────────────────────────────────────────────
 
-function formatTaskList(tasks: { title: string; id: string; size: string | null; vital: boolean; deadline: string | null; sortOrder: number }[]): string {
+function formatTaskList(tasks: { title: string; id: string; size: string | null; vital: boolean | null; deadline: string | null; sortOrder: number }[]): string {
   return tasks.map(t => {
     let line = `  • "${t.title}" [${t.size || '?'}]`;
-    if (t.vital) line += ' [vital]';
+    if (t.vital === true) line += ' [vital]';
     if (t.deadline) line += ` (due ${t.deadline.slice(0, 10)})`;
     line += ` [id: ${t.id}]`;
     return line;
@@ -665,7 +665,7 @@ function formatTaskList(tasks: { title: string; id: string; size: string | null;
 }
 
 function formatGroupedByInvestment(
-  tasks: { title: string; id: string; size: string | null; vital: boolean; deadline: string | null; sortOrder: number; investmentId: string | null }[],
+  tasks: { title: string; id: string; size: string | null; vital: boolean | null; deadline: string | null; sortOrder: number; investmentId: string | null }[],
   investments: { id: string; name: string }[],
   investmentById: Map<string, { name: string }>,
 ): string {

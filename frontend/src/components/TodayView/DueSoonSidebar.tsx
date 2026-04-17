@@ -14,6 +14,7 @@ import {
   collapsedTaskMetaLineStyle,
   formatCollapsedTaskMetaLine,
   formatTaskDeadlineForMeta,
+  formatTaskSizeForUi,
   sizeBadgeStyle,
 } from '../shared/collapsedTaskMeta';
 import { InlineEditableTitle } from '../shared/InlineEditableTitle';
@@ -83,7 +84,7 @@ export function DueSoonSidebar({
         alignItems: 'center',
         gap: '6px'
       }}>
-        <span style={{ fontSize: '12px' }}>⏱</span> Overdue & Today
+        <span style={{ fontSize: '12px' }}>⏱</span> Due and overdue
       </div>
       {tasks.map((task) => {
         const isEditing = expandedTaskId === task.id;
@@ -153,7 +154,9 @@ export function DueSoonSidebar({
                   viewerUid={uid}
                   viewerEmail={user?.email}
                 />
-                {task.size && <span style={sizeBadgeStyle}>{task.size}</span>}
+                {task.size && (
+                  <span style={sizeBadgeStyle}>{formatTaskSizeForUi(task.size)}</span>
+                )}
                 <button
                   type="button"
                   onClick={(e) => {

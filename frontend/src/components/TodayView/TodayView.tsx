@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import { useState, useMemo, useCallback, useEffect, useRef, useLayoutEffect } from 'react';
 import { DayCalendar } from './DayCalendar';
 import { TaskSidebar } from './TaskSidebar';
 import {
@@ -27,6 +27,7 @@ import {
   listCardInnerStyle,
   listCardTitleStyle,
 } from '../shared/listCardStyles';
+import { formatTaskSizeForUi, sizeBadgeStyle } from '../shared/collapsedTaskMeta';
 import {
   clampStartDateForCalendarScroll,
   isCalendarScrollAtFutureLimit,
@@ -43,8 +44,21 @@ import { snapToGrid } from './dayCalendarUtils';
 import { isTaskVisibleInFamily, isTaskVisibleInMe } from '../../taskPolicy';
 import { sortTasksWithinInvestments } from '../../lib/taskOrdering';
 import { defaultPlacementDurationHoursForTaskSize } from '../../lib/taskSizePlacement';
+import { usePreserveExpandedTaskRowScroll } from '../../hooks/usePreserveExpandedTaskRowScroll';
 
 type SidebarMode = 'vital' | 'other';
+
+type DesktopCalendarDayCount = 2 | 5;
+
+/** Desktop calendar column count; migrates legacy stored values (1, 3). */
+function desktopCalendarDayCountFromStorage(saved: string | null): DesktopCalendarDayCount {
+  if (!saved) return 5;
+  const n = parseInt(saved, 10);
+  if (n === 2 || n === 5) return n;
+  if (n === 1) return 2;
+  if (n === 3) return 5;
+  return 5;
+}
 
 /** Day only changes when the pointer is inside an adjacent column (not merely past the inner edge). */
 function resolveStickyDateKey(
@@ -116,15 +130,48 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
     if (saved === 'vital' || saved === 'other') return saved;
     return 'vital';
   });
+  const [sidebarOnlySmall, setSidebarOnlySmall] = useState(() =>
+    readPlannerStorage(plannerScope, 'sidebarOnlySmall') === '1',
+  );
+  const dueSoonForSidebar = useMemo(
+    () => (sidebarOnlySmall ? dueSoonTasks.filter((t) => t.size === 'S') : dueSoonTasks),
+    [dueSoonTasks, sidebarOnlySmall],
+  );
   const [expandedTaskId, setExpandedTaskId] = useState<string | null>(null);
-  const skipClearExpandedOnNextSidebarMode = useRef(false);
+  const listPaneScrollRef = useRef<HTMLDivElement>(null);
+  const taskDrawerScrollRef = useRef<HTMLDivElement>(null);
+
+  const sidebarListTasks = useMemo(() => {
+    const base = sidebarMode === 'vital' ? scopedVitalTasks : scopedOtherTasks;
+    return sidebarOnlySmall ? base.filter((t) => t.size === 'S') : base;
+  }, [sidebarMode, scopedVitalTasks, scopedOtherTasks, sidebarOnlySmall]);
+
+  const listScrollStabilizeKey = useMemo(
+    () =>
+      [
+        expandedTaskId,
+        sidebarMode,
+        sidebarOnlySmall,
+        sidebarListTasks
+          .map((t) => `${t.id}:${t.investmentId ?? ''}:${t.vital === true ? 1 : t.vital === false ? 0 : 'u'}:${t.deadline ?? ''}:${t.size ?? ''}`)
+          .join('|'),
+        dueSoonForSidebar.map((t) => `${t.id}:${t.deadline ?? ''}`).join('|'),
+      ].join('\n'),
+    [expandedTaskId, sidebarMode, sidebarOnlySmall, sidebarListTasks, dueSoonForSidebar],
+  );
+
+  const getTaskListScrollParent = useCallback(
+    () => (isMobile ? taskDrawerScrollRef.current : listPaneScrollRef.current),
+    [isMobile],
+  );
+
+  usePreserveExpandedTaskRowScroll(expandedTaskId, getTaskListScrollParent, listScrollStabilizeKey);
   const dayGridElementsRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const [placedTaskDragPreview, setPlacedTaskDragPreview] = useState<PlacedTaskDragPreview | null>(null);
   const sidebarDropDurationHoursRef = useRef(2);
-  const [dayCount, setDayCount] = useState(() => {
-    const saved = readPlannerStorage(plannerScope, 'dayCount');
-    return saved ? parseInt(saved, 10) : 3;
-  });
+  const [dayCount, setDayCount] = useState<DesktopCalendarDayCount>(() =>
+    desktopCalendarDayCountFromStorage(readPlannerStorage(plannerScope, 'dayCount')),
+  );
   const [wakeUpHour, setWakeUpHour] = useState(() => {
     const saved = readPlannerStorage(plannerScope, 'wakeUpHour');
     return saved ? parseInt(saved, 10) : 8;
@@ -148,12 +195,27 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
     writePlannerStorage(plannerScope, 'sidebarMode', sidebarMode);
   }, [plannerScope, sidebarMode]);
   useEffect(() => {
-    if (skipClearExpandedOnNextSidebarMode.current) {
-      skipClearExpandedOnNextSidebarMode.current = false;
-      return;
+    writePlannerStorage(plannerScope, 'sidebarOnlySmall', sidebarOnlySmall ? '1' : '0');
+  }, [plannerScope, sidebarOnlySmall]);
+  /** After autosave, follow Vital/Other tab to match expanded task so it stays in-list before paint. */
+  useLayoutEffect(() => {
+    if (!expandedTaskId) return;
+    const expanded = allSizedTasks.find((t) => t.id === expandedTaskId);
+    if (!expanded) return;
+    const want: SidebarMode = expanded.vital === true ? 'vital' : 'other';
+    if (want !== sidebarMode) {
+      setSidebarMode(want);
     }
-    setExpandedTaskId(null);
-  }, [sidebarMode]);
+  }, [expandedTaskId, allSizedTasks, sidebarMode]);
+
+  /** If "only S" hides the expanded task, turn the filter off instead of closing the card. */
+  useLayoutEffect(() => {
+    if (!expandedTaskId || !sidebarOnlySmall) return;
+    const expanded = allSizedTasks.find((t) => t.id === expandedTaskId);
+    if (expanded && expanded.size !== 'S') {
+      setSidebarOnlySmall(false);
+    }
+  }, [expandedTaskId, sidebarOnlySmall, allSizedTasks]);
   useEffect(() => {
     writePlannerStorage(plannerScope, 'dayCount', dayCount.toString());
   }, [plannerScope, dayCount]);
@@ -242,8 +304,12 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
     setTimeout(() => setShouldBustCache(false), 1000);
   }, []);
 
-  const handleTriage = useCallback((id: string, taskSize: TaskSize, taskVital: boolean) => {
-    triageTask.mutate({ id, size: taskSize, vital: taskVital });
+  const handleInboxSetSize = useCallback((id: string, taskSize: TaskSize) => {
+    triageTask.mutate({ id, size: taskSize });
+  }, [triageTask]);
+
+  const handleInboxSetVital = useCallback((id: string, taskVital: boolean) => {
+    triageTask.mutate({ id, vital: taskVital });
   }, [triageTask]);
 
   // Build calendar events per day
@@ -395,14 +461,14 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
       const task = [...allSizedTasks, ...dueSoonTasks].find((t) => t.id === taskId);
       if (!task) return;
 
-      skipClearExpandedOnNextSidebarMode.current = true;
-      setSidebarMode(task.vital ? 'vital' : 'other');
+      setSidebarMode(task.vital === true ? 'vital' : 'other');
 
       setExpandedTaskId(taskId);
       if (isMobile) setDrawerOpen(true);
 
       requestAnimationFrame(() => {
-        document.querySelector(`[data-task-row-id="${taskId}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        const safe = typeof CSS !== 'undefined' && typeof CSS.escape === 'function' ? CSS.escape(taskId) : taskId;
+        document.querySelector(`[data-task-row-id="${safe}"]`)?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
       });
     },
     [allSizedTasks, dueSoonTasks, isMobile],
@@ -480,6 +546,30 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
     setCaptureValue('');
   };
 
+  const handleSidebarModeSelect = useCallback(
+    (mode: SidebarMode) => {
+      if (mode === sidebarMode) return;
+      if (expandedTaskId) {
+        const nextBase = mode === 'vital' ? scopedVitalTasks : scopedOtherTasks;
+        const nextList = sidebarOnlySmall ? nextBase.filter((t) => t.size === 'S') : nextBase;
+        const inMain = nextList.some((t) => t.id === expandedTaskId);
+        const inDueSoon = dueSoonForSidebar.some((t) => t.id === expandedTaskId);
+        if (!inMain && !inDueSoon) {
+          setExpandedTaskId(null);
+        }
+      }
+      setSidebarMode(mode);
+    },
+    [
+      sidebarMode,
+      expandedTaskId,
+      scopedVitalTasks,
+      scopedOtherTasks,
+      sidebarOnlySmall,
+      dueSoonForSidebar,
+    ],
+  );
+
   const navigateBack = () =>
     setStartDate((prev) => clampStartDateForCalendarScroll(addDays(prev, -1), visibleDayCount));
   const navigateForward = () =>
@@ -492,9 +582,9 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
 
   const sidebarContent = (
     <>
-      {dueSoonTasks.length > 0 && (
+      {dueSoonForSidebar.length > 0 && (
         <DueSoonSidebar
-          tasks={dueSoonTasks}
+          tasks={dueSoonForSidebar}
           placedTasks={placedTasksMap}
           investments={investments}
           expandedTaskId={expandedTaskId}
@@ -529,72 +619,170 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
 
         {inboxTasks.length > 0 && (
           <div style={{ marginTop: '8px' }}>
-            {scopedInboxTasks.map(task => (
-              <div key={task.id} style={listCardStyle}>
-                <div style={{ ...listCardInnerStyle, alignItems: 'center', flexWrap: 'wrap', rowGap: '8px' }}>
+            {scopedInboxTasks.map(task => {
+              // While size is unset, legacy docs often have vital:false; treat as “not chosen” so neither pill looks selected.
+              const importanceForUi: boolean | null =
+                task.size == null && task.vital === false ? null : task.vital;
+              return (
+                <div key={task.id} style={listCardStyle}>
                   <div
                     style={{
-                      ...listCardTitleStyle,
-                      flex: 1,
-                      minWidth: '120px',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      whiteSpace: 'nowrap',
+                      ...listCardInnerStyle,
+                      flexDirection: 'column',
+                      alignItems: 'stretch',
+                      gap: '10px',
                     }}
                   >
-                    {task.title}
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                    {(['S', 'M', 'L'] as const).map(s => (
-                      <button key={s} type="button" onClick={() => handleTriage(task.id, s, false)} style={triageBtnStyle}>
-                        {s}
+                    <div
+                      style={{
+                        ...listCardTitleStyle,
+                        width: '100%',
+                        minWidth: 0,
+                        whiteSpace: 'normal',
+                        wordBreak: 'break-word',
+                      }}
+                    >
+                      {task.title}
+                    </div>
+                    <div
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        flexWrap: 'wrap',
+                        gap: '6px',
+                        justifyContent: 'flex-start',
+                      }}
+                    >
+                      {(['S', 'M', 'L'] as const).map((s) => (
+                        <button
+                          key={s}
+                          type="button"
+                          onClick={() => handleInboxSetSize(task.id, s)}
+                          style={{
+                            ...triageSizeBtnStyle,
+                            ...(task.size === s ? triageSizeBtnSelectedStyle : {}),
+                          }}
+                          title={`Size: ${formatTaskSizeForUi(s)}`}
+                        >
+                          {formatTaskSizeForUi(s)}
+                        </button>
+                      ))}
+                      <span style={triageControlDividerStyle} aria-hidden>
+                        |
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => handleInboxSetVital(task.id, true)}
+                        style={{
+                          ...triageImportanceIdleStyle,
+                          ...(importanceForUi === true ? triageImportanceVitalActiveStyle : {}),
+                        }}
+                        title="Vital — schedule first"
+                      >
+                        Vital
                       </button>
-                    ))}
-                    <button type="button" onClick={() => handleTriage(task.id, 'M', true)} style={triageVitalBtnStyle}>
-                      Vital
-                    </button>
+                      <button
+                        type="button"
+                        onClick={() => handleInboxSetVital(task.id, false)}
+                        style={{
+                          ...triageImportanceIdleStyle,
+                          ...(importanceForUi === false ? triageImportanceOtherActiveStyle : {}),
+                        }}
+                        title="Other — normal backlog"
+                      >
+                        Other
+                      </button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
 
-      <div style={{
-        display: 'flex',
-        border: '1px solid #E7E3DF',
-        borderRadius: '12px',
-        overflow: 'hidden',
-        marginBottom: '12px',
-        background: '#F2F0ED',
-      }}>
-        {(['vital', 'other'] as const).map(mode => (
-          <div
-            key={mode}
-            onClick={() => setSidebarMode(mode)}
+      <div
+        style={{
+          display: 'flex',
+          alignItems: 'stretch',
+          gap: '8px',
+          marginBottom: '12px',
+        }}
+      >
+        <div
+          style={{
+            flex: 1,
+            minWidth: 0,
+            display: 'flex',
+            border: '1px solid #E7E3DF',
+            borderRadius: '12px',
+            overflow: 'hidden',
+            background: '#F2F0ED',
+          }}
+        >
+          {(['vital', 'other'] as const).map((mode) => (
+            <div
+              key={mode}
+              onClick={() => handleSidebarModeSelect(mode)}
+              style={{
+                flex: 1,
+                textAlign: 'center',
+                padding: '8px',
+                cursor: 'pointer',
+                fontSize: '14px',
+                color: sidebarMode === mode ? '#fff' : '#1D212B',
+                background: sidebarMode === mode ? '#EA6657' : 'transparent',
+                fontWeight: sidebarMode === mode ? 700 : 500,
+                userSelect: 'none',
+                textTransform: 'capitalize',
+                transition: 'all 0.2s ease',
+                borderRadius: '12px',
+              }}
+            >
+              {mode === 'vital' ? 'Vital' : 'Other'}
+            </div>
+          ))}
+        </div>
+        <label
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '6px',
+            flexShrink: 0,
+            padding: '6px 10px',
+            border: '1px solid #E7E3DF',
+            borderRadius: '12px',
+            background: '#fff',
+            cursor: 'pointer',
+            userSelect: 'none',
+            whiteSpace: 'nowrap',
+            fontSize: '13px',
+            color: '#1D212B',
+            fontWeight: 500,
+            boxSizing: 'border-box',
+          }}
+        >
+          <input
+            type="checkbox"
+            checked={sidebarOnlySmall}
+            onChange={(e) => setSidebarOnlySmall(e.target.checked)}
             style={{
-              flex: 1,
-              textAlign: 'center',
-              padding: '8px',
+              width: '14px',
+              height: '14px',
+              margin: 0,
               cursor: 'pointer',
-              fontSize: '14px',
-              color: sidebarMode === mode ? '#fff' : '#1D212B',
-              background: sidebarMode === mode ? '#EA6657' : 'transparent',
-              fontWeight: sidebarMode === mode ? 700 : 500,
-              userSelect: 'none',
-              textTransform: 'capitalize',
-              transition: 'all 0.2s ease',
-              borderRadius: '12px',
+              flexShrink: 0,
             }}
-          >
-            {mode === 'vital' ? 'Vital' : 'Other'}
-          </div>
-        ))}
+          />
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: '5px' }}>
+            only
+            <span style={sizeBadgeStyle}>{formatTaskSizeForUi('S')}</span>
+          </span>
+        </label>
       </div>
 
       <TaskSidebar
-        tasks={sidebarMode === 'vital' ? scopedVitalTasks : scopedOtherTasks}
+        tasks={sidebarListTasks}
         placedTasks={placedTasksMap}
         investments={investments}
         expandedTaskId={expandedTaskId}
@@ -607,18 +795,43 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
   );
 
   return (
-    <div style={{ maxWidth: '1700px', margin: '0 auto' }}>
+    <div
+      style={{
+        ...(isMobile
+          ? {
+              maxWidth: '1700px',
+              margin: '0 auto',
+              paddingLeft: '12px',
+              paddingRight: '12px',
+            }
+          : {
+              maxWidth: 'none',
+              margin: 0,
+              paddingLeft: 0,
+              paddingRight: 0,
+            }),
+        height: '100%',
+        minHeight: 0,
+        display: 'flex',
+        flexDirection: 'column',
+        overflow: 'hidden',
+        boxSizing: 'border-box',
+      }}
+    >
       {syncWarnings.length > 0 && (
-        <div style={{
-          background: '#FFF4E5',
-          border: '1px solid #FFD5AD',
-          borderRadius: '12px',
-          padding: '12px 16px',
-          marginBottom: '16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '4px'
-        }}>
+        <div
+          style={{
+            flexShrink: 0,
+            background: '#FFF4E5',
+            border: '1px solid #FFD5AD',
+            borderRadius: '12px',
+            padding: '12px 16px',
+            marginBottom: '12px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '4px',
+          }}
+        >
           <div style={{ fontSize: '13px', fontWeight: 700, color: '#663C00', display: 'flex', alignItems: 'center', gap: '8px' }}>
             ⚠️ Calendar Sync Warnings
           </div>
@@ -628,17 +841,34 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
         </div>
       )}
 
-      <div style={{ display: 'flex', gap: 0, alignItems: 'flex-start' }}>
-        {/* Day Calendars — off-white panel (nav + grid) */}
+      <div
+        style={{
+          display: 'flex',
+          gap: 0,
+          alignItems: 'stretch',
+          flex: 1,
+          minHeight: 0,
+        }}
+      >
+        {/* Day Calendars — scrolls as one unit (nav + grids + footer note) */}
         <div
           style={{
             flex: 1,
             minWidth: 0,
+            minHeight: 0,
             background: '#FBFAF9',
-            padding: '12px 0',
             borderRight: '1px solid #E7E3DF',
+            overflow: 'auto',
+            WebkitOverflowScrolling: 'touch',
           }}
         >
+          <div
+            style={{
+              padding: '12px 12px',
+              boxSizing: 'border-box',
+              minWidth: 'min-content',
+            }}
+          >
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -691,7 +921,9 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
                 <>
                   <select
                     value={dayCount}
-                    onChange={(e) => setDayCount(parseInt(e.target.value, 10))}
+                    onChange={(e) =>
+                      setDayCount(parseInt(e.target.value, 10) as DesktopCalendarDayCount)
+                    }
                     style={{
                       padding: '4px 8px',
                       border: '1px solid #E7E3DF',
@@ -704,8 +936,10 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
                       outline: 'none',
                     }}
                   >
-                    {[1, 2, 3, 5].map(count => (
-                      <option key={count} value={count}>{count} Days</option>
+                    {([2, 5] as const).map((count) => (
+                      <option key={count} value={count}>
+                        {count} Days
+                      </option>
                     ))}
                   </select>
                   
@@ -758,12 +992,48 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
               />
             ))}
           </div>
+
+          {!apiConfigured && (
+            <div
+              style={{
+                marginTop: '8px',
+                paddingBottom: '8px',
+                fontSize: '12px',
+                color: '#9ca3af',
+                fontStyle: 'italic',
+                textAlign: 'center',
+              }}
+            >
+              Showing sample events for today. Set VITE_API_BASE to connect your Google Calendar via iCal feeds.
+            </div>
+          )}
+          </div>
         </div>
 
-        {/* Sidebar */}
+        {/* Task list — scrolls independently from calendar */}
         {!isMobile && (
-          <div style={{ width: '600px', flexShrink: 0, padding: '12px 16px' }}>
-            {sidebarContent}
+          <div
+            ref={listPaneScrollRef}
+            style={{
+              width: '600px',
+              flexShrink: 0,
+              minHeight: 0,
+              padding: '12px 16px',
+              overflow: 'auto',
+              WebkitOverflowScrolling: 'touch',
+              boxSizing: 'border-box',
+            }}
+          >
+            <div
+              style={{
+                // Always-on bottom slack: if this toggled with expand/collapse, scrollHeight would
+                // change and the browser would clamp scrollTop, shifting the list when a card closes.
+                paddingBottom: 'clamp(72px, 22vh, 320px)',
+                boxSizing: 'border-box',
+              }}
+            >
+              {sidebarContent}
+            </div>
           </div>
         )}
       </div>
@@ -773,8 +1043,16 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
           open={drawerOpen}
           onClose={() => setDrawerOpen(false)}
           title={plannerScope === 'family' ? 'Family tasks' : 'Me'}
+          scrollBodyRef={taskDrawerScrollRef}
         >
-          {sidebarContent}
+          <div
+            style={{
+              paddingBottom: 'clamp(56px, 18vh, 260px)',
+              boxSizing: 'border-box',
+            }}
+          >
+            {sidebarContent}
+          </div>
         </SideDrawer>
       )}
 
@@ -813,14 +1091,6 @@ export function TodayView({ plannerScope = 'me' }: TodayViewProps) {
         </div>
       </SideDrawer>
 
-      {!apiConfigured && (
-        <div style={{
-          marginTop: '8px', fontSize: '12px', color: '#9ca3af',
-          fontStyle: 'italic', textAlign: 'center',
-        }}>
-          Showing sample events for today. Set VITE_API_BASE to connect your Google Calendar via iCal feeds.
-        </div>
-      )}
     </div>
   );
 }
@@ -843,25 +1113,63 @@ const navBtnDisabled: React.CSSProperties = {
   cursor: 'not-allowed',
 };
 
-const triageBtnStyle: React.CSSProperties = {
+/** Size triage: neutral “chip” look (distinct from importance pills). */
+const triageSizeBtnStyle: React.CSSProperties = {
   padding: '4px 10px',
-  border: '1px solid #E7E3DF',
-  borderRadius: '8px',
-  background: '#F2F0ED',
+  border: '1px solid #C9C4BE',
+  borderRadius: '6px',
+  background: '#fff',
+  cursor: 'pointer',
+  fontSize: '12px',
+  fontWeight: 700,
+  color: '#1D212B',
+  fontFamily: 'inherit',
+  transition: 'all 0.15s ease',
+  flexShrink: 0,
+  minWidth: '32px',
+};
+
+const triageSizeBtnSelectedStyle: React.CSSProperties = {
+  background: '#E8E4DF',
+  borderColor: '#1D212B',
+  boxShadow: 'inset 0 0 0 1px #1D212B',
+};
+
+/** Importance triage: idle state (both Vital and Other use this when unset). */
+const triageImportanceIdleStyle: React.CSSProperties = {
+  padding: '4px 10px',
+  border: '1px solid #D4CFC9',
+  borderRadius: '999px',
+  background: 'transparent',
   cursor: 'pointer',
   fontSize: '12px',
   fontWeight: 600,
-  color: '#1D212B',
+  color: '#5c6470',
   fontFamily: 'inherit',
   transition: 'all 0.15s ease',
   flexShrink: 0,
 };
 
-const triageVitalBtnStyle: React.CSSProperties = {
-  ...triageBtnStyle,
-  background: '#E14747',
-  borderColor: '#E14747',
+const triageImportanceVitalActiveStyle: React.CSSProperties = {
+  background: '#EA6657',
+  borderColor: '#EA6657',
   color: '#fff',
+};
+
+const triageImportanceOtherActiveStyle: React.CSSProperties = {
+  background: '#475569',
+  borderColor: '#475569',
+  color: '#fff',
+};
+
+const triageControlDividerStyle: React.CSSProperties = {
+  color: '#B8B2AB',
+  fontSize: '13px',
+  fontWeight: 300,
+  userSelect: 'none',
+  lineHeight: '26px',
+  padding: '0 2px',
+  flexShrink: 0,
 };
 
 const settingLabelStyle: React.CSSProperties = {

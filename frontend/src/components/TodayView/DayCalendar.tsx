@@ -84,6 +84,8 @@ export function DayCalendar({
   const [dragOverHour, setDragOverHour] = useState<number | null>(null);
   const [now, setNow] = useState(new Date());
   const [selectedEvent, setSelectedEvent] = useState<CalEvent | null>(null);
+  const [openTimedOverflow, setOpenTimedOverflow] = useState<'before' | 'after' | null>(null);
+  const timedOverflowRef = useRef<HTMLDivElement | null>(null);
 
   const propsRef = useRef({
     dateKey,
@@ -113,6 +115,18 @@ export function DayCalendar({
     const timer = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(timer);
   }, [isToday]);
+
+  useEffect(() => {
+    if (!openTimedOverflow) return;
+    const close = (e: MouseEvent) => {
+      const el = timedOverflowRef.current;
+      if (el && e.target instanceof Node && !el.contains(e.target)) {
+        setOpenTimedOverflow(null);
+      }
+    };
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
+  }, [openTimedOverflow]);
 
   const currentHour = useMemo(() => {
     return now.getHours() + now.getMinutes() / 60;
@@ -413,6 +427,18 @@ export function DayCalendar({
     [timedEventsForLayout],
   );
 
+  const { timedOverflowBefore, timedOverflowAfter } = useMemo(() => {
+    const before = timedEventsForLayout
+      .filter((e) => e.startHour < startHour)
+      .slice()
+      .sort((a, b) => a.startHour - b.startHour);
+    const after = timedEventsForLayout
+      .filter((e) => e.startHour + e.duration > endHour)
+      .slice()
+      .sort((a, b) => a.startHour - b.startHour);
+    return { timedOverflowBefore: before, timedOverflowAfter: after };
+  }, [timedEventsForLayout, startHour, endHour]);
+
   const getEventStyle = (event: CalEvent): React.CSSProperties => {
     const isInteractingResize = interacting?.eventId === event.id;
     const displayStartHour = isInteractingResize ? interacting.currentStartHour : event.startHour;
@@ -688,6 +714,7 @@ export function DayCalendar({
             right: `${TIMED_TRACK_RIGHT_MARGIN_PX}px`,
             top: 0,
             bottom: 0,
+            overflow: 'hidden',
             pointerEvents: 'none',
             zIndex: 1,
           }}
@@ -779,6 +806,200 @@ export function DayCalendar({
           </div>
           );
         })}
+        </div>
+
+        <div
+          ref={timedOverflowRef}
+          style={{
+            position: 'absolute',
+            left: `${timeColWidth + TIMED_TRACK_LEFT_GUTTER_PX}px`,
+            right: `${TIMED_TRACK_RIGHT_MARGIN_PX}px`,
+            top: 0,
+            bottom: 0,
+            pointerEvents: 'none',
+            zIndex: 45,
+          }}
+        >
+          {timedOverflowBefore.length > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                top: 4,
+                left: 0,
+                right: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: 4,
+                pointerEvents: 'auto',
+              }}
+            >
+              <button
+                type="button"
+                aria-expanded={openTimedOverflow === 'before'}
+                onClick={() =>
+                  setOpenTimedOverflow((v) => (v === 'before' ? null : 'before'))
+                }
+                style={{
+                  padding: '3px 8px',
+                  borderRadius: '8px',
+                  border: '1px solid #E7E3DF',
+                  background: 'rgba(255, 255, 255, 0.96)',
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  color: '#6b7280',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  lineHeight: 1.3,
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                }}
+              >
+                {timedOverflowBefore.length} before {formatHourMinute(startHour)}
+              </button>
+              {openTimedOverflow === 'before' && (
+                <div
+                  role="listbox"
+                  style={{
+                    maxHeight: 'min(200px, 40vh)',
+                    overflowY: 'auto',
+                    border: '1px solid #E7E3DF',
+                    borderRadius: '8px',
+                    background: '#fff',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                    minWidth: 'min(100%, 220px)',
+                    maxWidth: '100%',
+                  }}
+                >
+                  {timedOverflowBefore.map((ev) => (
+                    <button
+                      key={ev.id}
+                      type="button"
+                      role="option"
+                      onClick={() => {
+                        setOpenTimedOverflow(null);
+                        if (ev.type === 'meeting' || ev.type === 'personal') {
+                          setSelectedEvent(ev);
+                        } else if (isPlacedTaskEventType(ev.type)) {
+                          onPlacedTaskInList?.(ev.id.replace('task-', ''));
+                        }
+                      }}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '8px 10px',
+                        border: 'none',
+                        borderBottom: '1px solid #EFEDEB',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        fontSize: '11px',
+                        color: '#1D212B',
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {ev.title}
+                      </div>
+                      <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>
+                        {formatHourMinute(ev.startHour)} – {formatHourMinute(ev.startHour + ev.duration)}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {timedOverflowAfter.length > 0 && (
+            <div
+              style={{
+                position: 'absolute',
+                bottom: 4,
+                left: 0,
+                right: 0,
+                display: 'flex',
+                flexDirection: 'column',
+                alignItems: 'flex-start',
+                gap: 4,
+                pointerEvents: 'auto',
+              }}
+            >
+              {openTimedOverflow === 'after' && (
+                <div
+                  role="listbox"
+                  style={{
+                    maxHeight: 'min(200px, 40vh)',
+                    overflowY: 'auto',
+                    border: '1px solid #E7E3DF',
+                    borderRadius: '8px',
+                    background: '#fff',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.08)',
+                    minWidth: 'min(100%, 220px)',
+                    maxWidth: '100%',
+                    order: -1,
+                  }}
+                >
+                  {timedOverflowAfter.map((ev) => (
+                    <button
+                      key={ev.id}
+                      type="button"
+                      role="option"
+                      onClick={() => {
+                        setOpenTimedOverflow(null);
+                        if (ev.type === 'meeting' || ev.type === 'personal') {
+                          setSelectedEvent(ev);
+                        } else if (isPlacedTaskEventType(ev.type)) {
+                          onPlacedTaskInList?.(ev.id.replace('task-', ''));
+                        }
+                      }}
+                      style={{
+                        display: 'block',
+                        width: '100%',
+                        textAlign: 'left',
+                        padding: '8px 10px',
+                        border: 'none',
+                        borderBottom: '1px solid #EFEDEB',
+                        background: 'transparent',
+                        cursor: 'pointer',
+                        fontFamily: 'inherit',
+                        fontSize: '11px',
+                        color: '#1D212B',
+                      }}
+                    >
+                      <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                        {ev.title}
+                      </div>
+                      <div style={{ fontSize: '10px', color: '#9ca3af', marginTop: '2px' }}>
+                        {formatHourMinute(ev.startHour)} – {formatHourMinute(ev.startHour + ev.duration)}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              )}
+              <button
+                type="button"
+                aria-expanded={openTimedOverflow === 'after'}
+                onClick={() =>
+                  setOpenTimedOverflow((v) => (v === 'after' ? null : 'after'))
+                }
+                style={{
+                  padding: '3px 8px',
+                  borderRadius: '8px',
+                  border: '1px solid #E7E3DF',
+                  background: 'rgba(255, 255, 255, 0.96)',
+                  fontSize: '10px',
+                  fontWeight: 600,
+                  color: '#6b7280',
+                  cursor: 'pointer',
+                  fontFamily: 'inherit',
+                  lineHeight: 1.3,
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.04)',
+                }}
+              >
+                {timedOverflowAfter.length} after {formatHourMinute(endHour)}
+              </button>
+            </div>
+          )}
         </div>
       </div>
 

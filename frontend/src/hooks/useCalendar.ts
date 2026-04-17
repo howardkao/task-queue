@@ -23,6 +23,33 @@ const apiBase = import.meta.env.VITE_API_BASE || '';
 const lastCalendarAutoSyncByUid = new Map<string, number>();
 const CALENDAR_AUTO_SYNC_MIN_INTERVAL_MS = 4 * 60 * 1000;
 
+/** Worker fetch + mirror write; respects throttle when `bust` is false. */
+function tryCalendarAutoSync(uid: string, bust: boolean): void {
+  const now = Date.now();
+  if (!bust) {
+    const last = lastCalendarAutoSyncByUid.get(uid) ?? 0;
+    if (now - last < CALENDAR_AUTO_SYNC_MIN_INTERVAL_MS) {
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console -- intentional diagnostics
+        console.debug('[calendarFirestore] runCalendarSync skipped (throttle)', {
+          msSinceLast: now - last,
+          minIntervalMs: CALENDAR_AUTO_SYNC_MIN_INTERVAL_MS,
+        });
+      }
+      return;
+    }
+  }
+  if (import.meta.env.DEV) {
+    // eslint-disable-next-line no-console -- intentional diagnostics
+    console.debug('[calendarFirestore] runCalendarSync invoking', { bust });
+  }
+  void runCalendarSync(uid, bust)
+    .then(() => {
+      lastCalendarAutoSyncByUid.set(uid, Date.now());
+    })
+    .catch(console.error);
+}
+
 function localYmd(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
@@ -82,31 +109,20 @@ function useEventsForRangeImpl(
 
   useEffect(() => {
     if (!user || !apiBase) return;
-    const uid = user.uid;
-    const now = Date.now();
-    if (!bust) {
-      const last = lastCalendarAutoSyncByUid.get(uid) ?? 0;
-      if (now - last < CALENDAR_AUTO_SYNC_MIN_INTERVAL_MS) {
-        if (import.meta.env.DEV) {
-          // eslint-disable-next-line no-console -- intentional diagnostics
-          console.debug('[calendarFirestore] runCalendarSync skipped (throttle)', {
-            msSinceLast: now - last,
-            minIntervalMs: CALENDAR_AUTO_SYNC_MIN_INTERVAL_MS,
-          });
-        }
-        return;
-      }
-    }
-    if (import.meta.env.DEV) {
-      // eslint-disable-next-line no-console -- intentional diagnostics
-      console.debug('[calendarFirestore] runCalendarSync invoking', { bust });
-    }
-    void runCalendarSync(uid, bust)
-      .then(() => {
-        lastCalendarAutoSyncByUid.set(uid, Date.now());
-      })
-      .catch(console.error);
+    tryCalendarAutoSync(user.uid, bust);
   }, [user?.uid, apiBase, bust]);
+
+  /** Background tabs never re-ran the mount effect; refetch iCal when the user comes back. */
+  useEffect(() => {
+    if (!user || !apiBase) return;
+    const uid = user.uid;
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      tryCalendarAutoSync(uid, false);
+    };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => document.removeEventListener('visibilitychange', onVisible);
+  }, [user?.uid, apiBase]);
 
   const dataForRange = useMemo((): CalendarResponse | null | undefined => {
     if (!apiBase) return null;
